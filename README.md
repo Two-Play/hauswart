@@ -30,6 +30,9 @@ in containers, not on physical machines or over a real VPN. See
 - Notifications to admins about new requests, through ntfy or email
 - Tasks signed on your own computer, so a hacked server alone cannot reach root
   on protected devices
+- Optional approval with a passkey from a browser or phone, limited per device
+  to a list of task types and weaker than a signature
+- Roles for admins, parents who approve, and members with their own devices
 - Audit log of every action
 - Backup and restore
 
@@ -76,6 +79,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, certificate renewal, signed tasks against a simulated hacked server, and admin notifications |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
 | `make test-vm` | Flatpak, `rpm-ostree`, real reboots and popups in a GNOME session, in real virtual machines. Needs KVM and downloads about 1.5 GB of images, plus GNOME inside a VM |
+| `node test/passkeys.mjs` | The passkey flow in Chromium with a virtual authenticator, including what a hacked server tries. Needs `make build` |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
 
 The privileged tests run inside throwaway containers and need Podman.
@@ -96,5 +100,7 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
   hand. Flatpak browsers are not measured.
 - Only devices with pinned signing keys are protected against a compromised
   server. See [the security model](docs/security.md).
+- Passkeys are tested with a virtual authenticator only, not on real phones or
+  security keys.
 - Only `amd64` packages are built.
 - The update check for classic `dnf` is written for it but only tested with `dnf5`.

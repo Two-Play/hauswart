@@ -120,6 +120,14 @@ func checkKeys(p KeysPayload) error {
 			return Fail(ErrInvalidKeys)
 		}
 	}
+	if len(p.Passkeys) > sign.MaxPasskeys {
+		return Fail(ErrInvalidKeys)
+	}
+	for _, passkey := range p.Passkeys {
+		if err := sign.ValidPasskey(passkey); err != nil {
+			return Fail(ErrInvalidKeys)
+		}
+	}
 	return nil
 }
 

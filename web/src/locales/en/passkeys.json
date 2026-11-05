@@ -1,0 +1,53 @@
+{
+  "nav": { "approvals": "Approvals" },
+  "users": {
+    "parent": "Parent",
+    "devices": "Devices",
+    "allDevices": "All devices",
+    "noDevices": "No device assigned",
+    "devicesOf": "Devices of {{name}}",
+    "roleOf": "Role of {{name}}"
+  },
+  "approvals": {
+    "weaknessTitle": "A passkey is weaker than hauswart-admin",
+    "weakness": "This page comes from the server. If the server is hacked, it can show you one task here and have your passkey confirm another one. Your device then does what was confirmed, not what you saw. That is why a passkey only works for the task types a device allows, such as packages, and never for sudo, certificates, passwords or keys. Even so, a hacked server can use a single touch to install or remove any package from the device's repositories. Only touch your passkey for something you just asked for here. If this page asks you to try again for no reason, stop.",
+    "unavailableTitle": "Passkeys do not work here",
+    "unavailable": "Passkeys need this page on a DNS name over HTTPS with a certificate the browser trusts. A bare VPN address does not work, and a phone needs the Hauswart CA installed.",
+    "queue": "Waiting for approval",
+    "empty": "Nothing is waiting for a passkey.",
+    "time": "Requested",
+    "device": "Device",
+    "task": "Task",
+    "from": "From",
+    "approve": "Approve with passkey",
+    "reject": "Reject",
+    "confirmTitle": "Confirm this task",
+    "confirm": "Confirm with passkey",
+    "validUntil": "This approval is valid until {{time}}.",
+    "approved": "Approved. The device checks the approval itself.",
+    "signing": "Only with hauswart-admin",
+    "signingHint": "These tasks go beyond what a passkey may approve. Sign them on your computer with hauswart-admin approve.",
+    "signingEmpty": "Nothing is waiting for a signature.",
+    "passkeys": "Passkeys",
+    "passkeysHint": "A new passkey does nothing yet. An admin has to pin it on each device with hauswart-admin passkeys pin. Deleting it here does not remove it from a device, that also takes hauswart-admin.",
+    "noPasskeys": "No passkeys yet.",
+    "passkeyName": "Name",
+    "passkeyNameHint": "For example: phone",
+    "owner": "Owner",
+    "added": "Added",
+    "register": "Add passkey",
+    "registered": "Passkey added. Now ask an admin to pin it.",
+    "deletePasskey": "Delete"
+  },
+  "errors": {
+    "approver_only": "Only admins and parents may do this.",
+    "own_request": "Someone else has to decide your own request.",
+    "device_not_assigned": "This device is not assigned to you.",
+    "not_for_passkey": "{{value}} cannot be approved with a passkey. Use hauswart-admin.",
+    "invalid_passkey": "The passkey could not be registered.",
+    "passkey_refused": "The passkey approval was refused.",
+    "passkey_retry": "Another approval went first. Please approve this task again.",
+    "no_passkey_host": "Passkeys need a DNS name in the server URL, not an IP address.",
+    "passkey_not_pinned": "None of your passkeys is pinned on this device yet."
+  }
+}

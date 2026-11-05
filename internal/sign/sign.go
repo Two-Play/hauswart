@@ -28,12 +28,19 @@ type Envelope struct {
 	DeviceID string          `json:"device_id"`
 	Counter  uint64          `json:"counter"`
 	NotAfter time.Time       `json:"not_after"`
+	// Freshness holds a value the device made up recently. Only passkey
+	// approvals use it: the server chooses their expiry, so this is what ties
+	// an approval to the time it was given.
+	Freshness string `json:"freshness,omitempty"`
 }
 
 // Signed travels through the server, which can read it but not change it.
 type Signed struct {
 	Envelope  []byte `json:"envelope"`
 	Signature []byte `json:"signature"`
+	// Passkey replaces Signature on a task approved in a browser, which is
+	// weaker and limited by the device. See VerifyPasskey.
+	Passkey *Assertion `json:"passkey,omitempty"`
 }
 
 // Only Ed25519 keys are accepted: one algorithm without hash choices, in a
@@ -92,6 +99,9 @@ func Sign(signer ssh.Signer, env Envelope) (Signed, error) {
 // Verify checks a signature against the pinned keys and only then parses the
 // envelope, so unverified bytes never reach the JSON decoder.
 func Verify(s Signed, keys []ssh.PublicKey) (Envelope, error) {
+	if s.Passkey != nil {
+		return Envelope{}, errors.New("task carries a passkey assertion")
+	}
 	var sig ssh.Signature
 	if err := ssh.Unmarshal(s.Signature, &sig); err != nil {
 		return Envelope{}, fmt.Errorf("malformed signature: %w", err)

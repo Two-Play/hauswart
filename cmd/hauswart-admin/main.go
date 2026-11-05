@@ -54,6 +54,9 @@ const (
 type device struct {
 	Name    string `json:"name"`
 	Counter uint64 `json:"counter"`
+	// Passkeys are those pinned from this computer. keys.set replaces the whole
+	// list, and the device does not say anything the server could not fake.
+	Passkeys []sign.Passkey `json:"passkeys,omitempty"`
 }
 
 type config struct {
@@ -196,6 +199,7 @@ func main() {
 		"approve":        approve,
 		"start-password": startPassword,
 		"rotate-keys":    rotateKeys,
+		"passkeys":       passkeys,
 	}
 	command, ok := commands[os.Args[1]]
 	if !ok {
@@ -220,6 +224,10 @@ func usage() {
   approve                 review and sign waiting tasks
   start-password --device ID --user NAME
   rotate-keys --device ID replace the keys pinned on a device
+  passkeys list           show registered passkeys and what is pinned from here
+  passkeys pin --device ID --passkey N
+  passkeys unpin --device ID [--name NAME]
+  passkeys renew --device ID
 `)
 	os.Exit(2)
 }
@@ -675,7 +683,26 @@ func rotateKeys(args []string) error {
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(api.KeysPayload{Keys: cfg.Keys})
+	// keys.set replaces the passkeys too. admin.json is per computer, so an older
+	// copy could bring back one that was removed: say what is about to happen.
+	var pins []sign.Passkey
+	if known := cfg.Devices[*id]; known != nil {
+		pins = known.Passkeys
+	}
+	if len(pins) > 0 {
+		fmt.Println("These passkeys stay pinned on the device:")
+		for _, p := range pins {
+			fmt.Println(describePasskey(p))
+		}
+		ok, err := confirm(os.Stdin, "Sign?")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("nothing changed")
+		}
+	}
+	payload, err := json.Marshal(api.KeysPayload{Keys: cfg.Keys, Passkeys: pins})
 	if err != nil {
 		return err
 	}

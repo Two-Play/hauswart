@@ -155,6 +155,33 @@ var migrations = []string{
 		created_by TEXT NOT NULL,
 		created_at INTEGER NOT NULL
 	);`,
+	// A new column instead of a rebuilt table: dropping users would run its
+	// ON DELETE CASCADE into sessions and requests.
+	`ALTER TABLE users ADD COLUMN role_new TEXT NOT NULL DEFAULT 'member' CHECK (role_new IN ('admin','parent','member'));
+	UPDATE users SET role_new = role;
+	ALTER TABLE users DROP COLUMN role;
+	ALTER TABLE users RENAME COLUMN role_new TO role;`,
+	// Members see only what is assigned to them. Until now they saw everything,
+	// so nothing disappears for them through this update.
+	`CREATE TABLE device_members (
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		PRIMARY KEY (user_id, device_id)
+	);
+	INSERT INTO device_members SELECT u.id, d.id FROM users u, devices d WHERE u.role = 'member';`,
+	`CREATE TABLE passkeys (
+		id INTEGER PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		credential_id BLOB NOT NULL UNIQUE,
+		public_key BLOB NOT NULL,
+		rp_id TEXT NOT NULL,
+		origin TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	);
+	ALTER TABLE devices ADD COLUMN passkey_counter INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE tasks ADD COLUMN passkey_envelope BLOB NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN passkey_counter INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func migrate(db *sql.DB) error {
@@ -510,7 +537,8 @@ func (s *Store) AttachSignature(ctx context.Context, taskID string, signed sign.
 	}
 	var device string
 	err = s.db.QueryRowContext(ctx, `
-		UPDATE tasks SET status = 'pending', signed = ? WHERE id = ? AND status = 'signing'
+		UPDATE tasks SET status = 'pending', signed = ?, passkey_envelope = '', passkey_counter = 0
+		WHERE id = ? AND status = 'signing'
 		RETURNING device_id`, string(raw), taskID).Scan(&device)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
@@ -521,7 +549,7 @@ func (s *Store) AttachSignature(ctx context.Context, taskID string, signed sign.
 // RejectTask closes a queued task an admin refused to sign.
 func (s *Store) RejectTask(ctx context.Context, taskID, by string) error {
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = 'failed', output = ?, finished_at = ?
+		UPDATE tasks SET status = 'failed', output = ?, finished_at = ?, passkey_counter = 0, passkey_envelope = ''
 		WHERE id = ? AND status = 'signing'`, "rejected by "+by, time.Now().Unix(), taskID)
 	if err != nil {
 		return err
@@ -542,19 +570,28 @@ func (s *Store) SigningQueue(ctx context.Context) ([]TaskRow, error) {
 // DeviceProtected reports whether a device says it requires signatures. A
 // device that lies only makes its own tasks fail: it decides by itself.
 func (s *Store) DeviceProtected(ctx context.Context, id string) (bool, error) {
-	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT report FROM devices WHERE id = ?`, id).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, ErrNotFound
-	}
+	report, err := s.DeviceReport(ctx, id)
 	if err != nil {
 		return false, err
 	}
+	return report.Protected, nil
+}
+
+// DeviceReport returns what a device last said about itself.
+func (s *Store) DeviceReport(ctx context.Context, id string) (*api.Report, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT report FROM devices WHERE id = ?`, id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
 	var report api.Report
 	if err := json.Unmarshal([]byte(raw), &report); err != nil {
-		return false, err
+		return nil, err
 	}
-	return report.Protected, nil
+	return &report, nil
 }
 
 // ClaimTask atomically moves the oldest pending task to running.
@@ -563,7 +600,7 @@ func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, erro
 	var payload, signed string
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET status = 'running', claimed_at = ?
-		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY created_at, rowid LIMIT 1)
+		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY passkey_counter, created_at, rowid LIMIT 1)
 		RETURNING id, type, payload, signed`, time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

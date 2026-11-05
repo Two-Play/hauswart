@@ -202,6 +202,9 @@ func TestNewRequestNotifiesAdminsWithoutItsDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.SetUserDevices(ctx, id, []string{"d1"}); err != nil {
+		t.Fatal(err)
+	}
 	resp, out := call(t, ts, &http.Cookie{Name: sessionCookie, Value: token}, "POST", "/api/requests",
 		`{"device_id":"d1","kind":"software","detail":"secretpkg","reason":"my password is hunter2"}`)
 	if resp.StatusCode != http.StatusCreated {

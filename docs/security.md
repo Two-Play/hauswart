@@ -43,6 +43,75 @@ popups. The agent refuses these without a valid
 signature, and `test/e2e.py signing` proves it by writing such tasks straight
 into the database.
 
+**This holds for packages only as long as no passkey is pinned.** With a passkey,
+see [the next section](#with-control-of-the-server-on-a-device-with-pinned-passkeys).
+Sudo, CAs, passwords, keys and files stay out of reach either way.
+
+### With control of the server, on a device with pinned passkeys
+
+Passkeys are the optional way to approve tasks without the CLI, for example from a
+phone. They are **weaker than `hauswart-admin`, and that is a deliberate trade**.
+The CLI decodes and shows a task on your own computer, and the server has no part
+in what you read. A passkey approval happens on a page the server delivers, so a
+hacked server can:
+
+- **Show one task and have another confirmed.** The authenticator signs a hash,
+  and it cannot show you what the hash stands for. The dialog says what the server
+  wants it to say.
+- **Collect several touches.** A fake "failed, try again" gets another approval
+  each time, for any device the passkey is pinned on. Touching for the child's PC
+  can approve something for your laptop.
+- **Pick the expiry and the counter**, within the limits below.
+
+What a touch can reach is limited by the device, not by the server, and only to
+the types in its local list. By default those are `pkg.install`, `pkg.remove`,
+`pkg.upgrade`, `flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`
+and `notify.send`.
+
+**Do not read that list as harmless.** With one touch, a hacked server can:
+
+- Install any package from the repositories of the device. Packages run scripts
+  as root, and some start services that trust the network.
+- Remove any package, including the agent, the firewall or the kernel. Some package
+  managers also read a name as a pattern, so one name can match many packages.
+- Install any Flatpak from Flathub with the permissions it asks for, without a
+  prompt. Anyone can publish there, subject to Flathub's review. On the computer
+  you sign on, an app with access to the ssh-agent reaches your signing key, which
+  is root on all protected devices. **Never pin a passkey on that computer.**
+- Reboot or shut down the device, and show a false notification on it.
+
+If that is too much for a device, narrow its list. See
+[Operating Hauswart](operations.md#approve-with-a-passkey).
+
+Whatever a passkey approves, these limits are checked on the device:
+
+- `sudo.*`, `ca.install`, `user.*`, `keys.set`, `file.put` and `limit.set` are
+  refused, even if the local list names them. New task types stay CLI only until
+  someone adds them to the ceiling in `internal/api/passkeys.go`.
+- An approval is valid for 24 hours at most, whatever its envelope says. It has to
+  name a random value the device changes every 12 hours, so approvals cannot be
+  collected in advance for later use.
+- A device runs at most 20 passkey approvals within any 24 hours.
+- A device has to be online for a passkey approval, because the value comes from
+  its latest report.
+- Each passkey pin ends after 180 days, unless `hauswart-admin` renews it.
+- What the agent ran on a passkey approval is in the device's own journal, with the
+  name of the passkey and the payload. That is the record to trust, not the
+  server's audit log.
+
+`test/passkeys.mjs` proves this in a real browser with a virtual authenticator,
+by writing assertions straight into the database.
+
+**Pinning trusts the server at that moment, and this cannot be fixed.** Registering
+a passkey happens on a page from the server, so a server that is already hacked can
+swap in a key of its own. Nothing tells you: any fingerprint you could compare comes
+from the same server. `hauswart-admin` then pins the attacker's key, and the attacker
+approves listed tasks without any touch, as often as the limits above allow. The
+pin stays after the server is cleaned up, until it expires or you remove it.
+
+So pin only while you trust the server, and **after any incident on the server,
+remove all passkeys from all devices and register them again.**
+
 ### With control of the server, on an unprotected device
 
 - **Reach root.** There is no task that runs a command, but the path exists: set
@@ -70,6 +139,25 @@ everything else:
   hacked server root there, and with it the key.
 - Keep the second key offline.
 
+### With a stolen phone or security key
+
+Passkeys need the screen lock or PIN of the authenticator on every use, and the
+device refuses an approval without that. Whoever knows the phone's PIN and has a
+dashboard session can approve listed tasks. That includes a child who knows a
+parent's PIN.
+
+- **Removing a lost passkey takes `hauswart-admin`**, because only a signed
+  `keys.set` reaches the device. Deleting it in the dashboard does nothing there.
+- A hacked server can withhold that `keys.set`. Then only the expiry of the pin
+  ends it, or root on the device.
+- `admin.json` remembers what is pinned, per computer. `rotate-keys` from an older
+  copy brings back a removed passkey, so it shows the list and asks.
+- **Synced passkeys** live in the account of the passkey provider, such as Apple,
+  Google or a password manager. Whoever takes over that account has the passkey.
+  Hauswart does not tell them apart from passkeys on one device. A security key
+  with a PIN avoids this.
+- Changing someone's role in the dashboard does not unpin their passkey.
+
 ### With the CA key
 
 New CAs are limited by name constraints to the addresses of your home network.
@@ -89,7 +177,7 @@ it out at once.
 
 ### With a member account
 
-- See device names, and file requests.
+- See the names of the devices assigned to them, and file requests for those.
 - See only their own requests.
 - Not create tasks, see device details, or reach admin functions.
 
@@ -132,6 +220,20 @@ address, and no details or free text, because they leave the house when ntfy or
 mail run elsewhere. A device name comes from the device and is cleaned, so that it
 adds no lines, headers or links. With `SMTP_TLS=starttls`, mail is not sent if the
 server offers no STARTTLS, so nobody in between can downgrade the connection.
+### With a parent account
+
+- See all device names and all requests, and approve or deny requests.
+- Approve queued tasks with their own passkey, on devices where it is pinned.
+- Not create tasks, see device details, or reach admin functions.
+- Not approve their own requests, or those for their own Linux user.
+
+**Approving is more than it sounds.** On an unprotected device, approving a sudo
+request creates the grant at once. Two parents can therefore give each other sudo
+there, and a parent can approve a sudo request for a member account they control.
+Protect a device, and sudo needs `hauswart-admin` no matter who approves.
+
+Roles are checks of the server. They mean nothing against a hacked server, where
+only what is pinned on a device still holds.
 
 ### During a sudo grant
 
@@ -143,11 +245,20 @@ family member who sets out to keep root. Grants limited to specific commands are
 safer, but the task supports that through the API only, not yet in the dashboard.
 Many commands also allow escaping to a shell.
 
+### Registering passkeys
+
+The server does not inspect the key behind a registration. A parent, or someone
+with the server, can register a key held by a script that claims user presence and
+verification. **`hauswart-admin passkeys pin` is the decision:** pin only keys you
+registered yourself, on a device you can see. Whether a pinned passkey really asks
+for a PIN is up to that passkey, not to Hauswart.
+
 ## Defences
 
 | Area | Measure |
 | --- | --- |
 | Protected devices | Tasks signed by a pinned Ed25519 key, bound to the device, with a counter against replay and an expiry |
+| Passkey approvals | Verified by the agent against passkeys pinned through a signed `keys.set`: signature, RP ID, exact origin, user presence and verification, a hash of the envelope as challenge. Local list of task types below a fixed ceiling, own counter, 24 hours, 20 per day |
 | Signing tool | Decodes, shows and re-encodes tasks itself, strips control characters, makes passwords and enroll commands locally |
 | CA | Name constrained to the home network |
 | Agent authentication | mTLS with a client certificate per device, serial checked on every request |
@@ -178,6 +289,10 @@ Many commands also allow escaping to a shell.
   `hauswart-admin enroll-command`, not from the dashboard, for a protected device.
 - **The dashboard is not protected by signatures.** A hacked server can show
   anything there and capture dashboard passwords.
+- **Passkeys are weaker than signatures**, and a swapped pin stays unnoticed. See
+  [above](#with-control-of-the-server-on-a-device-with-pinned-passkeys).
+- **A bad counter from the server** can still upset `hauswart-admin`, which trusts
+  the reported counter of a device when it is higher than its own.
 - **Lost signing state stops the agent on purpose.** Enroll the device again.
 - **The enrollment command contains a token.** It may land in the shell history.
   It works once and for one hour, so the exposure is small.
