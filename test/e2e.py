@@ -2,7 +2,7 @@
 """End-to-end test: real server on the host, real agents as root in containers.
 
 Everything privileged happens inside throwaway containers; the host is never
-touched. Usage: test/e2e.py [fedora debian arch opensuse]
+touched. Usage: test/e2e.py [fedora debian arch opensuse systemd]
 """
 import http.cookiejar
 import json
@@ -131,6 +131,13 @@ def test_distro(name, admin, agent_bin, ca_pem):
         check(name, "pkg.install", task["status"] == "done", task["output"])
         check(name, "package really installed", inside(f"command -v {package}").returncode == 0)
 
+        task = run_task(admin, id_, "pkg.remove", {"packages": [package]})
+        check(name, "pkg.remove", task["status"] == "done", task["output"])
+        check(name, "package really removed", inside(f"command -v {package}").returncode != 0)
+
+        task = run_task(admin, id_, "pkg.upgrade", {}, wait=580)
+        check(name, "pkg.upgrade", task["status"] == "done", task["output"])
+
         task = run_task(admin, id_, "user.create", {"user": "anna", "full_name": "Anna Test"})
         check(name, "user.create", task["status"] == "done", task["output"])
         check(name, "user exists", inside("id anna").returncode == 0)
@@ -179,11 +186,81 @@ def test_distro(name, admin, agent_bin, ca_pem):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+SYSTEMD_IMAGE = "localhost/hauswart-e2e-systemd"
+SYSTEMD_CONTAINERFILE = """FROM registry.fedoraproject.org/fedora:44
+RUN dnf5 install -y systemd sudo shadow-utils && dnf5 clean all
+"""
+MEMORY_HOG = "head -c 300M /dev/zero | tail >/dev/null"
+
+
+def test_systemd(admin, agent_bin):
+    """Proves that limit.set takes effect, which needs a real systemd."""
+    name = "systemd"
+    print(f"\n== {name} (Fedora with systemd as PID 1)", flush=True)
+    subprocess.run(["podman", "build", "-q", "-t", SYSTEMD_IMAGE, "-"],
+                   input=SYSTEMD_CONTAINERFILE, text=True, check=True, capture_output=True, timeout=600)
+    container = "hauswart-e2e-systemd"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--systemd=always", "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", SYSTEMD_IMAGE, "/sbin/init")
+
+    def inside(cmd, timeout=120):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=timeout)
+
+    try:
+        inside("systemctl is-system-running --wait")
+        inside("useradd anna")
+        uid = inside("id -u anna").stdout.strip()
+        slice_ = f"user-{uid}.slice"
+        # A process already running in the slice, as for someone who is logged
+        # in: the limit has to reach a live cgroup, not only future ones.
+        running = inside(f"systemd-run --quiet --unit=logged-in --slice={slice_} sleep 600")
+        check(name, "user session running", running.returncode == 0, running.stderr)
+
+        _, enroll = admin.call("POST", "/api/enroll-tokens")
+        check(name, "enrollment", inside(enroll["command"].replace("sudo ", "", 1)).returncode == 0)
+        sh("podman", "exec", "-d", container, "sh", "-c", "hauswart-agent run >/var/log/agent.log 2>&1")
+
+        device = None
+        deadline = time.time() + 20
+        while time.time() < deadline and not device:
+            _, devices = admin.call("GET", "/api/devices")
+            live = [d for d in devices if not d["revoked"] and d["report"].get("distro") and d["id"] not in seen]
+            device = live[0] if live else None
+            time.sleep(1)
+        check(name, "report arrives", device)
+        if not device:
+            return
+        seen.add(device["id"])
+
+        task = run_task(admin, device["id"], "limit.set", {"user": "anna", "cpu_percent": 150, "memory_mb": 64})
+        check(name, "limit.set", task["status"] == "done", task["output"])
+
+        shown = inside(f"systemctl show -p MemoryMax -p CPUQuotaPerSecUSec {slice_}").stdout
+        check(name, "systemd reports the limits", "MemoryMax=67108864" in shown and "CPUQuotaPerSecUSec=1.5" in shown, shown)
+
+        cgroup = f"/sys/fs/cgroup/user.slice/{slice_}"
+        memory_max = inside(f"cat {cgroup}/memory.max").stdout.strip()
+        cpu_max = inside(f"cat {cgroup}/cpu.max").stdout.strip()
+        check(name, "cgroup carries the limits on a running slice",
+              memory_max == "67108864" and cpu_max.startswith("150000 "), f"{memory_max} / {cpu_max}")
+
+        run = "systemd-run --quiet --wait -p MemorySwapMax=0 --slice={} sh -c '" + MEMORY_HOG + "'"
+        check(name, "control: process runs outside the limit", inside(run.format("system.slice")).returncode == 0)
+        limited = inside(run.format(slice_))
+        check(name, "process over the limit is killed", limited.returncode != 0, limited.stdout + limited.stderr)
+    except Exception as err:
+        check(name, "no crash", False, str(err))
+        print(inside("tail -20 /var/log/agent.log 2>/dev/null").stdout)
+    finally:
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 seen = set()
 
 
 def main():
-    names = sys.argv[1:] or list(DISTROS)
+    names = sys.argv[1:] or [*DISTROS, "systemd"]
     work = tempfile.mkdtemp(prefix="hauswart-e2e-", dir=os.environ.get("E2E_TMP"))
     server_bin, agent_bin = f"{work}/server", f"{work}/agent"
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -212,7 +289,10 @@ def main():
         assert code == 200, code
         ca_pem = open(ca_file).read()
         for name in names:
-            test_distro(name, admin, agent_bin, ca_pem)
+            if name == "systemd":
+                test_systemd(admin, agent_bin)
+            else:
+                test_distro(name, admin, agent_bin, ca_pem)
     finally:
         server.terminate()
         server.wait()
