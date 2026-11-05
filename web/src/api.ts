@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import i18n from './i18n';
 
 export interface User {
   id: number;
@@ -81,11 +82,23 @@ export async function api<T = void>(method: string, path: string, body?: unknown
     onUnauthorized();
   }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
   if (!res.ok) {
-    throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`);
+    throw new ApiError(res.status, errorMessage(res.status, text));
   }
-  return data as T;
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** Prefers the translation of the error code over the server's English text. */
+function errorMessage(status: number, text: string): string {
+  let data: { error?: string; code?: string; value?: string } = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Not from our API, for example a proxy error page.
+  }
+  const key = `errors.${data.code}`;
+  if (data.code && i18n.exists(key)) return i18n.t(key, { value: data.value });
+  return data.error ?? `HTTP ${status}`;
 }
 
 /** Loads a resource, optionally refreshing it on an interval. */

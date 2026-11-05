@@ -288,6 +288,23 @@ func TestStartPasswordOnlyThroughItsRoute(t *testing.T) {
 	}
 }
 
+func TestErrorsCarryCodes(t *testing.T) {
+	e := setup(t)
+	_, data := e.do(e.client(), "POST", "/api/login", map[string]string{"username": "admin", "password": "wrong"})
+	var out map[string]string
+	json.Unmarshal(data, &out)
+	if out["code"] != api.ErrWrongCredentials || out["error"] == "" {
+		t.Fatalf("got %s", data)
+	}
+	id, _ := e.enroll()
+	_, data = e.do(e.login("admin"), "POST", "/api/devices/"+id+"/tasks",
+		map[string]any{"type": api.TaskPkgInstall, "payload": map[string]any{"packages": []string{"--evil"}}})
+	json.Unmarshal(data, &out)
+	if out["code"] != api.ErrInvalidPackage || out["value"] != "--evil" {
+		t.Fatalf("got %s", data)
+	}
+}
+
 func TestLogin(t *testing.T) {
 	e := setup(t)
 	code, _ := e.do(e.client(), "POST", "/api/login", map[string]string{"username": "admin", "password": "wrong"})

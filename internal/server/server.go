@@ -180,17 +180,17 @@ func (s *Server) user(next userHandler) http.Handler {
 		// Browsers cannot attach a custom header to a cross-site form post,
 		// so this backs up the SameSite cookie against CSRF.
 		if r.Method != http.MethodGet && r.Header.Get("X-Hauswart") != "1" {
-			fail(w, http.StatusForbidden, "missing X-Hauswart header")
+			fail(w, http.StatusForbidden, api.ErrMissingHeader)
 			return
 		}
 		c, err := r.Cookie(sessionCookie)
 		if err != nil {
-			fail(w, http.StatusUnauthorized, "not logged in")
+			fail(w, http.StatusUnauthorized, api.ErrNotLoggedIn)
 			return
 		}
 		u, err := s.store.SessionUser(r.Context(), c.Value)
 		if errors.Is(err, store.ErrNotFound) {
-			fail(w, http.StatusUnauthorized, "not logged in")
+			fail(w, http.StatusUnauthorized, api.ErrNotLoggedIn)
 			return
 		}
 		if err != nil {
@@ -204,7 +204,7 @@ func (s *Server) user(next userHandler) http.Handler {
 func (s *Server) admin(next userHandler) http.Handler {
 	return s.user(func(w http.ResponseWriter, r *http.Request, u store.User) {
 		if u.Role != "admin" {
-			fail(w, http.StatusForbidden, "admin only")
+			fail(w, http.StatusForbidden, api.ErrAdminOnly)
 			return
 		}
 		next(w, r, u)
@@ -214,7 +214,7 @@ func (s *Server) admin(next userHandler) http.Handler {
 func (s *Server) agent(next deviceHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			fail(w, http.StatusUnauthorized, "client certificate required")
+			fail(w, http.StatusUnauthorized, api.ErrClientCertRequired)
 			return
 		}
 		leaf := r.TLS.VerifiedChains[0][0]
@@ -225,7 +225,7 @@ func (s *Server) agent(next deviceHandler) http.Handler {
 			return
 		}
 		if !ok {
-			fail(w, http.StatusForbidden, "device revoked or unknown")
+			fail(w, http.StatusForbidden, api.ErrDeviceRefused)
 			return
 		}
 		next(w, r, id)
@@ -264,7 +264,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := clientIP(r)
 	if s.lockedOut(ip) {
-		fail(w, http.StatusTooManyRequests, "too many attempts, try again in a minute")
+		fail(w, http.StatusTooManyRequests, api.ErrTooManyAttempts)
 		return
 	}
 	u, err := s.store.UserByName(r.Context(), in.Username)
@@ -279,7 +279,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil || cmpErr != nil {
 		s.recordFailure(ip)
 		s.audit(r, in.Username, "login.failed", ip)
-		fail(w, http.StatusUnauthorized, "wrong username or password")
+		fail(w, http.StatusUnauthorized, api.ErrWrongCredentials)
 		return
 	}
 	s.clearFailures(ip)
@@ -341,13 +341,13 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		fail(w, http.StatusForbidden, "enrollment token invalid or expired")
+		fail(w, http.StatusForbidden, api.ErrEnrollTokenInvalid)
 		return
 	}
 	id := store.RandomToken()[:32]
 	cert, serial, err := s.ca.SignDevice([]byte(in.CSR), id)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "invalid CSR")
+		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
 		return
 	}
 	hostname := in.Hostname
@@ -373,7 +373,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	cert, serial, err := s.ca.SignDevice([]byte(in.CSR), id)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "invalid CSR")
+		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
 		return
 	}
 	if err := s.store.SetNextSerial(r.Context(), id, serial); err != nil {
@@ -455,7 +455,7 @@ func (s *Server) handleResult(w http.ResponseWriter, r *http.Request, id string)
 	}
 	err := s.store.FinishTask(r.Context(), id, r.PathValue("id"), res)
 	if errors.Is(err, store.ErrNotFound) {
-		fail(w, http.StatusNotFound, "no such running task")
+		fail(w, http.StatusNotFound, api.ErrNoSuchTask)
 		return
 	}
 	if err != nil {
@@ -516,7 +516,7 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request, u store.Us
 	id := r.PathValue("id")
 	err := s.store.RevokeDevice(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
-		fail(w, http.StatusNotFound, "no such device")
+		fail(w, http.StatusNotFound, api.ErrNoSuchDevice)
 		return
 	}
 	if err != nil {
@@ -541,11 +541,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request, u stor
 	if in.Type == api.TaskUserPassword {
 		// Only the start-password route may create these, because it keeps
 		// the hash out of the audit log.
-		fail(w, http.StatusBadRequest, "use the start-password route")
+		fail(w, http.StatusBadRequest, api.ErrUseStartPassword)
 		return
 	}
 	if err := api.Validate(in.Type, in.Payload); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		failErr(w, http.StatusBadRequest, err)
 		return
 	}
 	id, err := s.enqueue(r, r.PathValue("id"), in.Type, in.Payload, u.Username)
@@ -577,7 +577,7 @@ func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u s
 		return
 	}
 	if err := api.Validate(api.TaskUserPassword, payload); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		failErr(w, http.StatusBadRequest, err)
 		return
 	}
 	deviceID := r.PathValue("id")
@@ -643,12 +643,12 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 	// Validate now, so a bad request fails for the person filing it rather
 	// than for the admin approving it.
 	if _, _, err := requestTask(in.Kind, in.Detail, u.LinuxUser); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		failErr(w, http.StatusBadRequest, err)
 		return
 	}
 	id, err := s.store.CreateRequest(r.Context(), u.ID, in.DeviceID, in.Kind, in.Detail, in.Reason)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "unknown device")
+		fail(w, http.StatusBadRequest, api.ErrNoSuchDevice)
 		return
 	}
 	s.audit(r, u.Username, "request.created", in.Kind+" "+in.Detail)
@@ -670,12 +670,12 @@ func requestTask(kind, detail, linuxUser string) (string, []byte, error) {
 	case "sudo":
 		minutes, err := strconv.Atoi(strings.TrimSpace(detail))
 		if err != nil || minutes < 1 || minutes > maxSudoMinutes {
-			return "", nil, fmt.Errorf("duration must be 1 to %d minutes", maxSudoMinutes)
+			return "", nil, api.Fail(api.ErrInvalidDuration, strconv.Itoa(maxSudoMinutes))
 		}
 		taskType = api.TaskSudoGrant
 		payload = api.SudoGrantPayload{User: linuxUser, ExpiresAt: time.Now().Add(time.Duration(minutes) * time.Minute)}
 	default:
-		return "", nil, fmt.Errorf("unknown request kind %q", kind)
+		return "", nil, api.Fail(api.ErrUnknownRequestKind, kind)
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -690,7 +690,7 @@ func requestTask(kind, detail, linuxUser string) (string, []byte, error) {
 func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.User) {
 	req, err := s.store.GetRequest(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
-		fail(w, http.StatusNotFound, "no such request")
+		fail(w, http.StatusNotFound, api.ErrNoSuchRequest)
 		return
 	}
 	if err != nil {
@@ -699,7 +699,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 	}
 	taskType, payload, err := requestTask(req.Kind, req.Detail, req.LinuxUser)
 	if err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		failErr(w, http.StatusBadRequest, err)
 		return
 	}
 	won, err := s.store.DecideRequest(r.Context(), req.ID, "approved", u.Username)
@@ -708,7 +708,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 		return
 	}
 	if !won {
-		fail(w, http.StatusConflict, "request was already decided")
+		fail(w, http.StatusConflict, api.ErrRequestDecided)
 		return
 	}
 	if _, err := s.enqueue(r, req.DeviceID, taskType, payload, u.Username); err != nil {
@@ -726,7 +726,7 @@ func (s *Server) handleDeny(w http.ResponseWriter, r *http.Request, u store.User
 		return
 	}
 	if !won {
-		fail(w, http.StatusConflict, "request not open")
+		fail(w, http.StatusConflict, api.ErrRequestDecided)
 		return
 	}
 	s.audit(r, u.Username, "request.denied", id)
@@ -758,24 +758,24 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, u stor
 		in.LinuxUser = in.Username
 	}
 	if !api.ValidUser(in.Username) || !api.ValidUser(in.LinuxUser) {
-		fail(w, http.StatusBadRequest, "invalid username")
+		fail(w, http.StatusBadRequest, api.ErrInvalidUsername)
 		return
 	}
 	if in.Role != "admin" && in.Role != "member" {
-		fail(w, http.StatusBadRequest, "role must be admin or member")
+		fail(w, http.StatusBadRequest, api.ErrInvalidRole)
 		return
 	}
 	if len(in.Password) < minPasswordLen {
-		fail(w, http.StatusBadRequest, fmt.Sprintf("password needs at least %d characters", minPasswordLen))
+		fail(w, http.StatusBadRequest, api.ErrPasswordTooShort, strconv.Itoa(minPasswordLen))
 		return
 	}
 	hash, err := HashPassword(in.Password)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "password too long")
+		fail(w, http.StatusBadRequest, api.ErrPasswordTooLong)
 		return
 	}
 	if _, err := s.store.CreateUser(r.Context(), in.Username, in.LinuxUser, hash, in.Role); err != nil {
-		fail(w, http.StatusConflict, "username already exists")
+		fail(w, http.StatusConflict, api.ErrUsernameTaken)
 		return
 	}
 	s.audit(r, u.Username, "user.created", in.Username+" ("+in.Role+")")
@@ -785,14 +785,14 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, u stor
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, u store.User) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "invalid user id")
+		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
 		return
 	}
 	switch err := s.store.DeleteUser(r.Context(), id); {
 	case errors.Is(err, store.ErrNotFound):
-		fail(w, http.StatusNotFound, "no such user")
+		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
 	case errors.Is(err, store.ErrLastAdmin):
-		fail(w, http.StatusConflict, "the last admin cannot be removed")
+		fail(w, http.StatusConflict, api.ErrLastAdmin)
 	case err != nil:
 		s.internal(w, err)
 	default:
@@ -811,7 +811,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, u 
 	}
 	ip := clientIP(r)
 	if s.lockedOut(ip) {
-		fail(w, http.StatusTooManyRequests, "too many attempts, try again in a minute")
+		fail(w, http.StatusTooManyRequests, api.ErrTooManyAttempts)
 		return
 	}
 	current, err := s.store.UserPasswordHash(r.Context(), u.ID)
@@ -822,16 +822,16 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, u 
 	if bcrypt.CompareHashAndPassword([]byte(current), []byte(in.Current)) != nil {
 		s.recordFailure(ip)
 		s.audit(r, u.Username, "password.change_failed", ip)
-		fail(w, http.StatusForbidden, "current password is wrong")
+		fail(w, http.StatusForbidden, api.ErrWrongPassword)
 		return
 	}
 	if len(in.New) < minPasswordLen {
-		fail(w, http.StatusBadRequest, fmt.Sprintf("password needs at least %d characters", minPasswordLen))
+		fail(w, http.StatusBadRequest, api.ErrPasswordTooShort, strconv.Itoa(minPasswordLen))
 		return
 	}
 	hash, err := HashPassword(in.New)
 	if err != nil {
-		fail(w, http.StatusBadRequest, "password too long")
+		fail(w, http.StatusBadRequest, api.ErrPasswordTooLong)
 		return
 	}
 	cookie, err := r.Cookie(sessionCookie)
@@ -872,7 +872,7 @@ func (s *Server) audit(r *http.Request, actor, action, detail string) {
 
 func (s *Server) internal(w http.ResponseWriter, err error) {
 	s.log.Error("request failed", "err", err)
-	fail(w, http.StatusInternalServerError, "internal error")
+	fail(w, http.StatusInternalServerError, api.ErrInternal)
 }
 
 func clientIP(r *http.Request) string {
@@ -885,7 +885,7 @@ func clientIP(r *http.Request) string {
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		fail(w, http.StatusBadRequest, "invalid JSON")
+		fail(w, http.StatusBadRequest, api.ErrInvalidJSON)
 		return false
 	}
 	return true
@@ -897,6 +897,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func fail(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+func fail(w http.ResponseWriter, status int, code string, value ...string) {
+	e := api.Fail(code, value...)
+	writeJSON(w, status, map[string]string{"error": e.Error(), "code": e.Code, "value": e.Value})
+}
+
+// failErr reports a validation error with its code.
+func failErr(w http.ResponseWriter, status int, err error) {
+	var e *api.Error
+	if errors.As(err, &e) {
+		fail(w, status, e.Code, e.Value)
+		return
+	}
+	fail(w, status, api.ErrInvalidPayload, err.Error())
 }

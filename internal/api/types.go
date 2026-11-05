@@ -5,8 +5,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -147,11 +145,11 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if len(p.Packages) == 0 {
-			return errors.New("no packages given")
+			return Fail(ErrNoPackages)
 		}
 		for _, name := range p.Packages {
 			if !ValidPackage(name) {
-				return fmt.Errorf("invalid package name %q", name)
+				return Fail(ErrInvalidPackage, name)
 			}
 		}
 	case TaskPkgUpgrade:
@@ -162,10 +160,10 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !strings.HasPrefix(p.Path, "/") || strings.Contains(p.Path, "..") {
-			return fmt.Errorf("invalid path %q", p.Path)
+			return Fail(ErrInvalidPath, p.Path)
 		}
 		if p.Mode != "" && !modeRe.MatchString(p.Mode) {
-			return fmt.Errorf("invalid mode %q", p.Mode)
+			return Fail(ErrInvalidMode, p.Mode)
 		}
 	case TaskCAInstall:
 		var p CAInstallPayload
@@ -173,10 +171,10 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !caNameRe.MatchString(p.Name) {
-			return fmt.Errorf("invalid CA name %q", p.Name)
+			return Fail(ErrInvalidCAName, p.Name)
 		}
 		if !strings.Contains(p.PEM, "BEGIN CERTIFICATE") {
-			return errors.New("not a PEM certificate")
+			return Fail(ErrNotPEM)
 		}
 	case TaskSudoGrant:
 		var p SudoGrantPayload
@@ -184,17 +182,17 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !ValidUser(p.User) {
-			return fmt.Errorf("invalid user %q", p.User)
+			return Fail(ErrInvalidUser, p.User)
 		}
 		if p.ExpiresAt.IsZero() {
-			return errors.New("sudo grant needs an expiry")
+			return Fail(ErrSudoNoExpiry)
 		}
 		if time.Until(p.ExpiresAt) > MaxGrant {
-			return fmt.Errorf("sudo grant longer than %s", MaxGrant)
+			return Fail(ErrSudoTooLong, MaxGrant.String())
 		}
 		for _, c := range p.Commands {
 			if !commandRe.MatchString(c) || strings.Contains(c, "..") {
-				return fmt.Errorf("invalid command %q", c)
+				return Fail(ErrInvalidCommand, c)
 			}
 		}
 	case TaskSudoRevoke, TaskUserLock, TaskUserUnlock:
@@ -203,7 +201,7 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !ValidUser(p.User) {
-			return fmt.Errorf("invalid user %q", p.User)
+			return Fail(ErrInvalidUser, p.User)
 		}
 	case TaskUserPassword:
 		var p PasswordPayload
@@ -211,10 +209,10 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !ValidUser(p.User) {
-			return fmt.Errorf("invalid user %q", p.User)
+			return Fail(ErrInvalidUser, p.User)
 		}
 		if !hashRe.MatchString(p.Hash) {
-			return errors.New("not a SHA-512 crypt hash")
+			return Fail(ErrInvalidHash)
 		}
 	case TaskUserCreate:
 		var p UserPayload
@@ -222,16 +220,16 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !ValidUser(p.User) {
-			return fmt.Errorf("invalid user %q", p.User)
+			return Fail(ErrInvalidUser, p.User)
 		}
 		if strings.ContainsAny(p.FullName, ":\n\r") {
-			return errors.New("invalid full name")
+			return Fail(ErrInvalidFullName)
 		}
 		for _, g := range p.Groups {
 			// Group membership in these equals root, so it must go through
 			// the time-limited sudo grant instead.
 			if !userRe.MatchString(g) || privilegedGroups[g] {
-				return fmt.Errorf("group %q not allowed", g)
+				return Fail(ErrGroupNotAllowed, g)
 			}
 		}
 	case TaskLimitSet:
@@ -240,16 +238,16 @@ func Validate(taskType string, payload json.RawMessage) error {
 			return err
 		}
 		if !ValidUser(p.User) {
-			return fmt.Errorf("invalid user %q", p.User)
+			return Fail(ErrInvalidUser, p.User)
 		}
 		if p.CPUPercent < 0 || p.MemoryMB < 0 {
-			return errors.New("limits must not be negative")
+			return Fail(ErrNegativeLimit)
 		}
 		if p.CPUPercent == 0 && p.MemoryMB == 0 {
-			return errors.New("no limit given")
+			return Fail(ErrNoLimit)
 		}
 	default:
-		return fmt.Errorf("unknown task type %q", taskType)
+		return Fail(ErrUnknownTaskType, taskType)
 	}
 	return nil
 }
@@ -263,7 +261,7 @@ func strictDecode(raw json.RawMessage, v any) error {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("invalid payload: %w", err)
+		return Fail(ErrInvalidPayload, err.Error())
 	}
 	return nil
 }
