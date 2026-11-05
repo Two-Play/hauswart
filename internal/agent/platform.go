@@ -95,8 +95,12 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 
 func detectTrust(has func(string) bool, dirExists func(string) bool) *Trust {
 	switch {
-	case has("update-ca-trust"):
+	// Fedora and Arch both ship update-ca-trust but read different
+	// directories, so the command alone does not identify the layout.
+	case has("update-ca-trust") && dirExists("/etc/pki/ca-trust/source"):
 		return &Trust{Dir: "/etc/pki/ca-trust/source/anchors", Update: []string{"update-ca-trust", "extract"}}
+	case has("update-ca-trust") && dirExists("/etc/ca-certificates/trust-source"):
+		return &Trust{Dir: "/etc/ca-certificates/trust-source/anchors", Update: []string{"update-ca-trust", "extract"}}
 	case has("update-ca-certificates") && dirExists("/etc/pki/trust/anchors"):
 		return &Trust{Dir: "/etc/pki/trust/anchors", Update: []string{"update-ca-certificates"}}
 	case has("update-ca-certificates"):

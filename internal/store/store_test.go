@@ -1,0 +1,249 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/philippe/hauswart/internal/api"
+)
+
+var ctx = context.Background()
+
+func open(t *testing.T) *Store {
+	t.Helper()
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+func device(t *testing.T, s *Store, id string) {
+	t.Helper()
+	if err := s.CreateDevice(ctx, id, "host-"+id, "serial-"+id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionExpiry(t *testing.T) {
+	s := open(t)
+	id, err := s.CreateUser(ctx, "anna", "anna", "hash", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := s.CreateSession(ctx, id, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := s.SessionUser(ctx, live); err != nil || u.Username != "anna" {
+		t.Fatalf("live session: %v %v", u, err)
+	}
+	expired, err := s.CreateSession(ctx, id, -time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SessionUser(ctx, expired); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired session accepted: %v", err)
+	}
+	if err := s.DeleteSession(ctx, live); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SessionUser(ctx, live); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted session accepted: %v", err)
+	}
+}
+
+func TestTokensAreStoredHashed(t *testing.T) {
+	s := open(t)
+	token, err := s.CreateEnrollToken(ctx, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM enroll_tokens WHERE token_hash = ?`, token).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("token stored in clear text")
+	}
+}
+
+func TestEnrollTokenExpiry(t *testing.T) {
+	s := open(t)
+	token, err := s.CreateEnrollToken(ctx, -time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ConsumeEnrollToken(ctx, token); err != nil || ok {
+		t.Fatalf("expired token accepted: %v %v", ok, err)
+	}
+}
+
+func TestDeviceAuthorized(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	cases := []struct {
+		id, serial string
+		want       bool
+	}{
+		{"a", "serial-a", true},
+		{"a", "old-serial", false},
+		{"unknown", "serial-a", false},
+	}
+	for _, c := range cases {
+		if got, err := s.DeviceAuthorized(ctx, c.id, c.serial); err != nil || got != c.want {
+			t.Errorf("%s/%s: got %v, %v", c.id, c.serial, got, err)
+		}
+	}
+	if err := s.RevokeDevice(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.DeviceAuthorized(ctx, "a", "serial-a"); got {
+		t.Error("revoked device authorized")
+	}
+	if err := s.RevokeDevice(ctx, "unknown"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revoking unknown device: %v", err)
+	}
+}
+
+func TestClaimTaskOrderAndIsolation(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	device(t, s, "b")
+	first, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task, err := s.ClaimTask(ctx, "b"); err != nil || task != nil {
+		t.Fatalf("device b got a task of device a: %v %v", task, err)
+	}
+	for _, want := range []string{first, second} {
+		task, err := s.ClaimTask(ctx, "a")
+		if err != nil || task == nil || task.ID != want {
+			t.Fatalf("want %s, got %+v, %v", want, task, err)
+		}
+	}
+	if task, err := s.ClaimTask(ctx, "a"); err != nil || task != nil {
+		t.Fatalf("task claimed twice: %+v %v", task, err)
+	}
+}
+
+func TestFinishTaskOnlyOnce(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: true}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("finished a task nobody claimed: %v", err)
+	}
+	if _, err := s.ClaimTask(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: false, Output: "boom"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: true}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("result overwritten: %v", err)
+	}
+	tasks, err := s.ListTasks(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tasks[0].Status != "failed" || tasks[0].Output != "boom" {
+		t.Fatalf("got %+v", tasks[0])
+	}
+}
+
+func TestCleanup(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimTask(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	tasks, _ := s.ListTasks(ctx, 10)
+	if tasks[0].Status != "running" {
+		t.Fatalf("fresh task failed: %s", tasks[0].Status)
+	}
+	if _, err := s.db.Exec(`UPDATE tasks SET claimed_at = ? WHERE id = ?`, time.Now().Add(-2*time.Hour).Unix(), id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	tasks, _ = s.ListTasks(ctx, 10)
+	if tasks[0].Status != "failed" {
+		t.Fatalf("stale task still %s", tasks[0].Status)
+	}
+}
+
+func TestDecideRequestOnce(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	user, err := s.CreateUser(ctx, "anna", "anna", "hash", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.CreateRequest(ctx, user, "a", "software", "vim", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if won, err := s.DecideRequest(ctx, id, "approved", "admin"); err != nil || !won {
+		t.Fatalf("first decision: %v %v", won, err)
+	}
+	if won, err := s.DecideRequest(ctx, id, "denied", "other"); err != nil || won {
+		t.Fatalf("second decision won: %v %v", won, err)
+	}
+	r, err := s.GetRequest(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "approved" || r.DecidedBy != "admin" {
+		t.Fatalf("got %+v", r)
+	}
+}
+
+func TestRequestForUnknownDeviceFails(t *testing.T) {
+	s := open(t)
+	user, err := s.CreateUser(ctx, "anna", "anna", "hash", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateRequest(ctx, user, "missing", "software", "vim", ""); err == nil {
+		t.Fatal("foreign keys are not enforced")
+	}
+}
+
+func TestSaveReportRoundTrip(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	if err := s.SaveReport(ctx, "a", api.Report{Hostname: "new-name", MemTotal: 42}); err != nil {
+		t.Fatal(err)
+	}
+	devices, err := s.ListDevices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := devices[0]
+	if got.Hostname != "new-name" || got.Report.MemTotal != 42 || got.LastSeen == 0 {
+		raw, _ := json.Marshal(got)
+		t.Fatalf("got %s", raw)
+	}
+}
