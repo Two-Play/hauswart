@@ -101,6 +101,10 @@ the envelope, so nothing the server added survives. A clock far behind the last
 seen time is refused, because it could revive expired tasks. If the state file is
 gone, the agent does not start.
 
+The tool continues from its own counter, or from the device's report when that is
+higher. The report comes through the server, so the tool refuses one more than
+`maxCounterJump` ahead, and it never lets the counter wrap.
+
 Tasks for a protected device wait in status `signing`. The tool fetches them,
 decodes and shows them, and signs its own encoding, never bytes from the server.
 Password hashes and key lists are made by the tool itself and refused from the

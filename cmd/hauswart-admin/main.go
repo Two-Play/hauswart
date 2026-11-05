@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -39,6 +40,13 @@ const (
 	startPasswordLen = 20
 	minimumKeys      = 2
 	maxResponse      = 8 << 20
+
+	// maxCounterJump is how far a device's reported counter may lie above the
+	// local one. A device gets ahead when a second admin computer signs, or after
+	// an old admin.json comes back, and a family will not sign a million tasks in
+	// between. A hacked server gains little within it: skipped counters do no
+	// harm, and using them all up would take 2^44 real signatures.
+	maxCounterJump = 1 << 20
 )
 
 // device is what this tool knows on its own. The name was given here, and the
@@ -472,11 +480,11 @@ func seal(cfg *config, key ssh.Signer, id string, report *api.Report, taskType s
 	if known == nil || known.Name == "" {
 		return sign.Signed{}, fmt.Errorf("device %s has no name here, check it and run hauswart-admin name", id)
 	}
-	counter := known.Counter
-	if report != nil && report.Counter > counter {
-		counter = report.Counter
+	counter, err := nextCounter(known.Counter, report)
+	if err != nil {
+		return sign.Signed{}, fmt.Errorf("device %s (%s): %w", known.Name, id, err)
 	}
-	known.Counter = counter + 1
+	known.Counter = counter
 	if err := cfg.save(); err != nil {
 		return sign.Signed{}, err
 	}
@@ -487,6 +495,24 @@ func seal(cfg *config, key ssh.Signer, id string, report *api.Report, taskType s
 		Counter:  known.Counter,
 		NotAfter: notAfter,
 	})
+}
+
+// nextCounter picks the counter for the next signature. The report comes through
+// the server, so it may only move the counter forward by a plausible distance.
+func nextCounter(local uint64, report *api.Report) (uint64, error) {
+	counter := local
+	if report != nil && report.Counter > local {
+		if report.Counter-local > maxCounterJump {
+			return 0, fmt.Errorf("refusing the counter %d from the server, it is more than %d above the one here, %d: "+
+				"the server may be hacked, or this admin.json is very old. If the device really is that far ahead, "+
+				"copy the counter from your newest admin.json", report.Counter, maxCounterJump, local)
+		}
+		counter = report.Counter
+	}
+	if counter == math.MaxUint64 {
+		return 0, errors.New("the counter is used up, enroll the device again")
+	}
+	return counter + 1, nil
 }
 
 func signedUntil(taskType string, payload []byte) time.Time {
