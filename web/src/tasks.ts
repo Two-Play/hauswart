@@ -1,3 +1,5 @@
+import { ACTION_FIELDS, addActionPayload } from './tasks_actions';
+
 export type FieldKind = 'text' | 'number' | 'textarea';
 
 export interface TaskField {
@@ -35,6 +37,7 @@ export const TASK_FIELDS: Record<string, TaskField[]> = {
     { name: 'cpu_percent', kind: 'number' },
     { name: 'memory_mb', kind: 'number' },
   ],
+  ...ACTION_FIELDS,
 };
 
 /** Translation key of a task type; i18next reads dots as nesting. */
@@ -42,7 +45,7 @@ export function taskKey(type: string): string {
   return `taskTypes.${type.replace('.', '_')}`;
 }
 
-export function buildPayload(values: Record<string, string>): Record<string, unknown> {
+export function buildPayload(values: Record<string, string>, type = ''): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     if (value === '') continue;
@@ -56,5 +59,5 @@ export function buildPayload(values: Record<string, string>): Record<string, unk
       payload[key] = value;
     }
   }
-  return payload;
+  return addActionPayload(type, payload);
 }

@@ -260,6 +260,70 @@ The server's own certificate also lasts two years. It is replaced at a service
 start once less than 30 days are left, so restart the server at least once a
 year, which any system update with a reboot does. The CA lasts ten years.
 
+### Service certificates
+
+To run a home service on trusted HTTPS, open **Certificates** in the dashboard and
+enter its host names or IP addresses. They have to be inside the scope chosen with
+`-ca-scope`, and they cannot be names of the Hauswart server. A CA that was created
+without constraints issues no service certificates.
+
+**Copy the private key at once.** It is shown only in that dialog and stored
+nowhere. If it is lost, issue a new certificate. The dashboard lists everything
+issued with its expiry, and turns red 30 days before the end. Renewal is manual,
+and the limit is 397 days.
+
+## Restart and shut down devices
+
+Choose **Restart device** or **Shut down device** in the action dialog of a device,
+with the minutes of warning. Terminals and desktops see the warning, and new
+logins stop for the last five minutes. On a protected device, sign it with
+`hauswart-admin approve`, which has to happen within the hour.
+
+**Cancel restart or shutdown** stops it. It needs no signature, so it works quickly.
+On GNOME, the warning stays on the screen until someone closes it, and the message
+about the cancellation appears after that.
+
+Agents come back on their own, as long as the service is enabled.
+
+## Send a message to a desktop
+
+**Send desktop message** shows a popup titled `Hauswart` to everyone logged in to a
+desktop, or to one Linux user. The task fails if no session took it, which is not
+the same as someone reading it: GNOME shows one banner at a time and keeps it up
+until the user is active. A device that is off or offline for more than an hour
+does not show it later. The fixed warnings about restarts are in English.
+
+## Notifications about requests
+
+To hear about new requests, edit `/etc/hauswart/notify.env`. Everything is off until
+you do. Either channel works alone.
+
+```bash
+NTFY_URL=https://ntfy.example.org/a-long-random-topic
+NTFY_TOKEN=tk_...
+SMTP_HOST=mail.example.org
+SMTP_PORT=587
+SMTP_TLS=starttls
+SMTP_USER=hauswart@example.org
+SMTP_PASSWORD=...
+SMTP_FROM=Hauswart <hauswart@example.org>
+SMTP_TO=admin@example.org, second-admin@example.org
+```
+
+- The file must keep mode `0600` and belong to the `hauswart` user, as installed.
+  With other modes, the server does not use it and logs why.
+- `SMTP_TLS` is `starttls`, `tls` for port 465, or `none`. A password needs TLS,
+  and so does an ntfy token, except on the same machine.
+- The Hauswart CA is trusted in addition to the system's, so a mail or ntfy server
+  with a service certificate works.
+- Use a mail account and an ntfy token only for this. The ntfy topic works like a
+  password, so make it long and random.
+
+Run `sudo systemctl restart hauswart-server`, and look for
+`admin notifications are on` in the log. Failed attempts show up there too.
+
+The file is not part of backups, so keep the credentials somewhere else as well.
+
 ## Back up
 
 ```bash

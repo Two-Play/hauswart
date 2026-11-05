@@ -27,6 +27,9 @@ if [ "$component" = server ]; then
 	if [ ! -e /etc/hauswart/server.env ]; then
 		install -Dm644 server.env /etc/hauswart/server.env
 	fi
+	if [ ! -e /etc/hauswart/notify.env ]; then
+		install -Dm600 -o hauswart -g hauswart notify.env /etc/hauswart/notify.env
+	fi
 fi
 systemctl daemon-reload
 echo "Installed hauswart-$component."

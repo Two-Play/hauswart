@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconCertificate,
   IconClipboardList,
   IconDevicesPc,
   IconFolders,
@@ -31,6 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { api, setUnauthorizedHandler, type User } from './api';
 import { LANGUAGES, setLanguage } from './i18n';
 import { AuditView } from './views/AuditView';
+import { CertificatesView } from './views/CertificatesView';
 import { DevicesView } from './views/DevicesView';
 import { GroupsView } from './views/GroupsView';
 import { LoginView } from './views/LoginView';
@@ -53,6 +55,7 @@ const VIEWS: {
   { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
   { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
+  { key: 'certificates', icon: IconCertificate, view: CertificatesView, adminOnly: true },
   { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },
   { key: 'audit', icon: IconHistory, view: AuditView, adminOnly: true },
 ];

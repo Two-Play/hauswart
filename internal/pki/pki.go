@@ -32,6 +32,11 @@ const (
 	backdateLeeway = time.Hour
 )
 
+// These fill a name type that has no entry, and match nothing real.
+const placeholderDomain = "invalid"
+
+var placeholderIP = net.IPv4(192, 0, 2, 0)
+
 type CA struct {
 	Cert    *x509.Certificate
 	CertPEM []byte
@@ -99,10 +104,10 @@ func constrain(tmpl *x509.Certificate, permitted []string) error {
 		}
 	}
 	if len(tmpl.PermittedDNSDomains) == 0 {
-		tmpl.PermittedDNSDomains = []string{"invalid"}
+		tmpl.PermittedDNSDomains = []string{placeholderDomain}
 	}
 	if len(tmpl.PermittedIPRanges) == 0 {
-		tmpl.PermittedIPRanges = []*net.IPNet{{IP: net.IPv4(192, 0, 2, 0).To4(), Mask: net.CIDRMask(32, 32)}}
+		tmpl.PermittedIPRanges = []*net.IPNet{{IP: placeholderIP.To4(), Mask: net.CIDRMask(32, 32)}}
 	}
 	return nil
 }

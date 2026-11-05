@@ -1,0 +1,43 @@
+{
+  "nav": { "certificates": "Certificates" },
+  "taskTypes": {
+    "power_reboot": "Restart device",
+    "power_shutdown": "Shut down device",
+    "power_cancel": "Cancel restart or shutdown",
+    "notify_send": "Send desktop message",
+    "group_add": "Add user to Linux group",
+    "group_remove": "Remove user from Linux group"
+  },
+  "fields": {
+    "delay_minutes": "Warning time in minutes",
+    "power_message": "Addition to the warning",
+    "notify_message": "Message, shown under the title Hauswart",
+    "notify_user": "Linux user, empty for everyone logged in",
+    "group": "Linux group"
+  },
+  "certificates": {
+    "hint": "Certificates for home services, such as a NAS. Devices that trust the Hauswart CA accept them.",
+    "names": "Host names or IP addresses",
+    "days": "Valid for days",
+    "issue": "Issue certificate",
+    "empty": "No certificates yet.",
+    "expires": "Expires",
+    "issuedBy": "Issued by",
+    "keyOnce": "Copy the private key now. It is shown only here and stored nowhere. If it is lost, issue a new certificate.",
+    "key": "Private key",
+    "cert": "Certificate",
+    "ca": "CA certificate"
+  },
+  "errors": {
+    "invalid_delay": "The warning time must be 1 to {{value}} minutes.",
+    "invalid_message": "The message is empty, too long or has characters that are not allowed. It must be a single line.",
+    "no_expiry": "The task needs an expiry.",
+    "expiry_too_far": "The expiry is further away than {{value}}.",
+    "no_cert_names": "Give 1 to {{value}} host names.",
+    "invalid_cert_name": "{{value}} is not a valid host name. Wildcards are not supported.",
+    "cert_outside_ca": "{{value}} is outside the names this CA may issue for.",
+    "cert_server_name": "{{value}} belongs to the Hauswart server itself.",
+    "ca_not_constrained": "This CA has no name constraints, so it must not issue service certificates.",
+    "invalid_cert_days": "The validity must be 1 to {{value}} days."
+  }
+}

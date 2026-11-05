@@ -490,6 +490,9 @@ func seal(cfg *config, key ssh.Signer, id string, report *api.Report, taskType s
 }
 
 func signedUntil(taskType string, payload []byte) time.Time {
+	if deadline, ok := actionDeadline(taskType, payload); ok {
+		return deadline
+	}
 	if taskType == api.TaskSudoGrant {
 		var p api.SudoGrantPayload
 		if json.Unmarshal(payload, &p) == nil {

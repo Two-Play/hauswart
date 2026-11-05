@@ -19,6 +19,7 @@ test:
 e2e:
 	python3 test/e2e.py
 	python3 test/e2e.py renewal
+	python3 test/e2e.py notify
 
 test-vm:
 	python3 test/vm.py
@@ -39,7 +40,7 @@ packages: build
 	packaging/build-deb.sh admin $(VERSION)
 	rm -rf dist/hauswart-$(VERSION)
 	mkdir -p dist/hauswart-$(VERSION)
-	cp dist/hauswart-server dist/hauswart-agent dist/hauswart-admin LICENSE packaging/install.sh packaging/server.env packaging/hauswart.sysusers packaging/systemd/*.service dist/hauswart-$(VERSION)/
+	cp dist/hauswart-server dist/hauswart-agent dist/hauswart-admin LICENSE packaging/install.sh packaging/server.env packaging/notify.env packaging/hauswart.sysusers packaging/systemd/*.service dist/hauswart-$(VERSION)/
 	tar -czf dist/hauswart-$(VERSION)-linux-amd64.tar.gz -C dist hauswart-$(VERSION)
 	rm -rf dist/hauswart-$(VERSION)
 

@@ -1,0 +1,43 @@
+{
+  "nav": { "certificates": "Zertifikate" },
+  "taskTypes": {
+    "power_reboot": "Gerät neu starten",
+    "power_shutdown": "Gerät herunterfahren",
+    "power_cancel": "Neustart oder Herunterfahren abbrechen",
+    "notify_send": "Desktop-Nachricht senden",
+    "group_add": "Benutzer zu Linux-Gruppe hinzufügen",
+    "group_remove": "Benutzer aus Linux-Gruppe entfernen"
+  },
+  "fields": {
+    "delay_minutes": "Vorwarnzeit in Minuten",
+    "power_message": "Zusatz zur Warnung",
+    "notify_message": "Nachricht, erscheint unter dem Titel Hauswart",
+    "notify_user": "Linux-Benutzer, leer für alle Angemeldeten",
+    "group": "Linux-Gruppe"
+  },
+  "certificates": {
+    "hint": "Zertifikate für Dienste im Haus, zum Beispiel ein NAS. Geräte, die der Hauswart-CA vertrauen, akzeptieren sie.",
+    "names": "Hostnamen oder IP-Adressen",
+    "days": "Gültig für Tage",
+    "issue": "Zertifikat ausstellen",
+    "empty": "Noch keine Zertifikate.",
+    "expires": "Läuft ab",
+    "issuedBy": "Ausgestellt von",
+    "keyOnce": "Kopiere den privaten Schlüssel jetzt. Er wird nur hier angezeigt und nirgends gespeichert. Geht er verloren, stelle ein neues Zertifikat aus.",
+    "key": "Privater Schlüssel",
+    "cert": "Zertifikat",
+    "ca": "CA-Zertifikat"
+  },
+  "errors": {
+    "invalid_delay": "Die Vorwarnzeit muss 1 bis {{value}} Minuten betragen.",
+    "invalid_message": "Die Nachricht ist leer, zu lang oder enthält unerlaubte Zeichen. Sie muss einzeilig sein.",
+    "no_expiry": "Die Aufgabe braucht ein Ablaufdatum.",
+    "expiry_too_far": "Das Ablaufdatum liegt weiter entfernt als {{value}}.",
+    "no_cert_names": "Gib 1 bis {{value}} Hostnamen an.",
+    "invalid_cert_name": "{{value}} ist kein gültiger Hostname. Wildcards werden nicht unterstützt.",
+    "cert_outside_ca": "{{value}} liegt außerhalb der Namen, für die diese CA ausstellen darf.",
+    "cert_server_name": "{{value}} gehört dem Hauswart-Server selbst.",
+    "ca_not_constrained": "Diese CA hat keine Namensbeschränkung und darf deshalb keine Dienst-Zertifikate ausstellen.",
+    "invalid_cert_days": "Die Gültigkeit muss 1 bis {{value}} Tage betragen."
+  }
+}

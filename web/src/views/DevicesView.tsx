@@ -72,7 +72,7 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
         setStartPassword(out.password);
         return;
       }
-      await api('POST', `/api/devices/${device.id}/tasks`, { type, payload: buildPayload(values) });
+      await api('POST', `/api/devices/${device.id}/tasks`, { type, payload: buildPayload(values, type) });
       notifications.show({ color: 'teal', message: t('actions.queued', { name: device.hostname }) });
       onClose(true);
     } catch (err) {

@@ -179,6 +179,7 @@ func singleCertificate(s string) bool {
 var privilegedGroups = map[string]bool{
 	"root": true, "wheel": true, "sudo": true, "adm": true,
 	"docker": true, "lxd": true, "libvirt": true, "disk": true, "shadow": true,
+	"admin": true, "kmem": true, "tty": true, "input": true, "incus": true, "incus-admin": true,
 }
 
 func strictDecode(raw json.RawMessage, v any) error {

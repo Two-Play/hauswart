@@ -148,6 +148,13 @@ var migrations = []string{
 		disk_total INTEGER NOT NULL,
 		PRIMARY KEY (device_id, minute)
 	) WITHOUT ROWID;`,
+	`CREATE TABLE service_certs (
+		serial TEXT PRIMARY KEY,
+		names TEXT NOT NULL,
+		not_after INTEGER NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {
