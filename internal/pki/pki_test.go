@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -122,5 +123,42 @@ func TestServerCertCoversHosts(t *testing.T) {
 	}
 	if err := cert.VerifyHostname("other.home"); err == nil {
 		t.Error("certificate covers an unrelated host")
+	}
+}
+
+func TestServerCertSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := LoadOrCreate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := ca.ServerCert([]string{"hauswart.home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := LoadOrCreate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := restarted.ServerCert([]string{"hauswart.home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.Certificate[0], second.Certificate[0]) {
+		t.Fatal("certificate changed across restart")
+	}
+	third, err := restarted.ServerCert([]string{"hauswart.home", "new.home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(first.Certificate[0], third.Certificate[0]) {
+		t.Fatal("kept a certificate that does not cover a new host")
+	}
+	info, err := os.Stat(filepath.Join(dir, serverKeyFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("server key mode %v", info.Mode().Perm())
 	}
 }

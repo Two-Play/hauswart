@@ -28,10 +28,8 @@ export function LoginView({ onLogin, controls }: { onLogin: (user: User) => void
       <Paper withBorder p="lg" w={360} maw="100%">
         <form onSubmit={submit}>
           <Stack>
-            <Group justify="space-between" wrap="nowrap">
-              <Title order={3}>{t('login.title')}</Title>
-              {controls}
-            </Group>
+            <Group justify="flex-end">{controls}</Group>
+            <Title order={3}>{t('login.title')}</Title>
             <TextInput
               label={t('login.username')}
               autoComplete="username"

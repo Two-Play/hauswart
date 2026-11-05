@@ -26,6 +26,9 @@ const (
 	leafValidity   = 2 * 365 * 24 * time.Hour
 	caCertFile     = "ca.pem"
 	caKeyFile      = "ca-key.pem"
+	serverCertFile = "server.pem"
+	serverKeyFile  = "server-key.pem"
+	renewBefore    = 30 * 24 * time.Hour
 	backdateLeeway = time.Hour
 )
 
@@ -33,6 +36,7 @@ type CA struct {
 	Cert    *x509.Certificate
 	CertPEM []byte
 	key     *ecdsa.PrivateKey
+	dir     string
 }
 
 // LoadOrCreate reads the CA from dir, creating it on first start.
@@ -63,7 +67,7 @@ func LoadOrCreate(dir string) (*CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CA{Cert: cert, CertPEM: certPEM, key: key}, nil
+	return &CA{Cert: cert, CertPEM: certPEM, key: key, dir: dir}, nil
 }
 
 func create(dir string) (*CA, error) {
@@ -102,11 +106,40 @@ func create(dir string) (*CA, error) {
 	if err := os.WriteFile(filepath.Join(dir, caCertFile), certPEM, 0o644); err != nil {
 		return nil, err
 	}
-	return &CA{Cert: cert, CertPEM: certPEM, key: key}, nil
+	return &CA{Cert: cert, CertPEM: certPEM, key: key, dir: dir}, nil
 }
 
-// ServerCert issues a fresh TLS certificate for the given DNS names and IPs.
+// ServerCert returns the stored TLS certificate if it still fits, and issues
+// a new one otherwise. Keeping it stable across restarts means a browser
+// exception or a pinned certificate survives a service restart.
 func (c *CA) ServerCert(hosts []string) (tls.Certificate, error) {
+	if pair, ok := c.storedServerCert(hosts); ok {
+		return pair, nil
+	}
+	return c.issueServerCert(hosts)
+}
+
+func (c *CA) storedServerCert(hosts []string) (tls.Certificate, bool) {
+	pair, err := tls.LoadX509KeyPair(filepath.Join(c.dir, serverCertFile), filepath.Join(c.dir, serverKeyFile))
+	if err != nil {
+		return tls.Certificate{}, false
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil || time.Until(leaf.NotAfter) < renewBefore {
+		return tls.Certificate{}, false
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: c.Pool(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+		return tls.Certificate{}, false
+	}
+	for _, h := range hosts {
+		if leaf.VerifyHostname(h) != nil {
+			return tls.Certificate{}, false
+		}
+	}
+	return pair, true
+}
+
+func (c *CA) issueServerCert(hosts []string) (tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -129,6 +162,18 @@ func (c *CA) ServerCert(hosts []string) (tls.Certificate, error) {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Cert, &key.PublicKey, c.key)
 	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	chainPEM := append(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), c.CertPEM...)
+	if err := os.WriteFile(filepath.Join(c.dir, serverKeyFile), keyPEM, 0o600); err != nil {
+		return tls.Certificate{}, err
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, serverCertFile), chainPEM, 0o644); err != nil {
 		return tls.Certificate{}, err
 	}
 	return tls.Certificate{Certificate: [][]byte{der, c.Cert.Raw}, PrivateKey: key}, nil
