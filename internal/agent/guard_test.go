@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,7 +207,10 @@ const passkeyPayload = `{"packages":["vim"]}`
 func passkeyGuard(t *testing.T, a *passkeytest.Authenticator) *Guard {
 	t.Helper()
 	g := newGuard(t, newKey(t))
-	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	// Long enough for the tests that move far into the future.
+	pin := a.Pin(t)
+	pin.NotAfter = time.Now().Add(365 * 24 * time.Hour)
+	g.SetPasskeys([]sign.Passkey{pin}, api.DefaultPasskeyTypes)
 	g.state.Freshness = testFreshness
 	g.state.FreshnessAt = time.Now()
 	return g
@@ -236,8 +240,9 @@ func TestGuardRefusesStockpiledApprovals(t *testing.T) {
 	collected.NotAfter = now.Add(170 * 24 * time.Hour)
 	task := approved(t, a, collected)
 	late := now.Add(169*24*time.Hour + 12*time.Hour)
-	if _, err := g.Admit(task, guardDevice, late); err == nil {
-		t.Fatal("admitted an approval collected months ago")
+	_, err := g.Admit(task, guardDevice, late)
+	if err == nil || !strings.Contains(err.Error(), "too old") {
+		t.Fatalf("approval collected months ago: %v", err)
 	}
 }
 
@@ -255,7 +260,9 @@ func TestFreshnessKeepsApprovalsForADay(t *testing.T) {
 	if current == testFreshness {
 		t.Fatal("value not rotated")
 	}
-	if _, err := g.Admit(approved(t, a, passkeyEnvelope(1)), guardDevice, later); err != nil {
+	lasting := passkeyEnvelope(1)
+	lasting.NotAfter = later.Add(time.Hour)
+	if _, err := g.Admit(approved(t, a, lasting), guardDevice, later); err != nil {
 		t.Fatalf("previous value refused: %v", err)
 	}
 	// Rotated twice: it is gone.
@@ -263,8 +270,11 @@ func TestFreshnessKeepsApprovalsForADay(t *testing.T) {
 	if _, err := g.Freshness(muchLater); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Admit(approved(t, a, passkeyEnvelope(2)), guardDevice, muchLater); err == nil {
-		t.Fatal("value older than a day admitted")
+	stale := passkeyEnvelope(2)
+	stale.NotAfter = muchLater.Add(time.Hour)
+	_, err = g.Admit(approved(t, a, stale), guardDevice, muchLater)
+	if err == nil || !strings.Contains(err.Error(), "too old") {
+		t.Fatalf("value older than a day: %v", err)
 	}
 }
 
@@ -273,8 +283,11 @@ func TestFreshnessExpiresWhileSwitchedOff(t *testing.T) {
 	a := passkeytest.New(t)
 	g := passkeyGuard(t, a)
 	back := time.Now().Add(5 * 24 * time.Hour)
-	if _, err := g.Admit(approved(t, a, passkeyEnvelope(1)), guardDevice, back); err == nil {
-		t.Fatal("old approval admitted right after a long time off")
+	env := passkeyEnvelope(1)
+	env.NotAfter = back.Add(time.Hour)
+	_, err := g.Admit(approved(t, a, env), guardDevice, back)
+	if err == nil || !strings.Contains(err.Error(), "too old") {
+		t.Fatalf("old approval right after a long time off: %v", err)
 	}
 }
 
@@ -284,15 +297,21 @@ func TestPasskeyLimitIsASlidingWindow(t *testing.T) {
 	start := time.Now()
 	end := start.Add(passkeyTaskWindow - time.Minute)
 	g.state.FreshnessAt = end
+	at := func(counter uint64) sign.Envelope {
+		env := passkeyEnvelope(counter)
+		env.NotAfter = end.Add(time.Hour)
+		return env
+	}
 	for i := range maxPasskeyTasks {
-		if _, err := g.Admit(approved(t, a, passkeyEnvelope(uint64(i+1))), guardDevice, end); err != nil {
+		if _, err := g.Admit(approved(t, a, at(uint64(i+1))), guardDevice, end); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// With a fixed window, a new one would start here and allow 20 more.
 	next := end.Add(2 * time.Minute)
-	if _, err := g.Admit(approved(t, a, passkeyEnvelope(maxPasskeyTasks+1)), guardDevice, next); err == nil {
-		t.Fatal("limit reset at a window boundary")
+	_, err := g.Admit(approved(t, a, at(maxPasskeyTasks+1)), guardDevice, next)
+	if err == nil || !strings.Contains(err.Error(), "within a day") {
+		t.Fatalf("limit at a window boundary: %v", err)
 	}
 }
 
@@ -416,6 +435,7 @@ func TestGuardPasskeyCounterSurvivesTouchSignedTaskAndRestart(t *testing.T) {
 	signer := newKey(t)
 	g := newGuard(t, signer)
 	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	g.state.Freshness, g.state.FreshnessAt = testFreshness, time.Now()
 	task := approved(t, a, passkeyEnvelope(3))
 	if _, err := g.Admit(task, guardDevice, time.Now()); err != nil {
 		t.Fatal(err)

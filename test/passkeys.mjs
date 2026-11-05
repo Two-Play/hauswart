@@ -329,7 +329,10 @@ function database(work) {
     db.close();
   }
 }
-function envelope(type, payload, counter) {
+// The value the device last reported, which a hacked server can read as well.
+const deviceFreshness = () =>
+  JSON.parse(database((db) => db.prepare('SELECT report FROM devices WHERE id = ?').get(deviceId)).report).passkey_freshness;
+function envelope(type, payload, counter, freshness = deviceFreshness()) {
   return Buffer.from(
     JSON.stringify({
       type,
@@ -337,6 +340,7 @@ function envelope(type, payload, counter) {
       device_id: deviceId,
       counter,
       not_after: new Date(Date.now() + 3600_000).toISOString(),
+      freshness,
     }),
   );
 }
@@ -386,6 +390,8 @@ const sudo = envelope('sudo.grant', { user: 'attacker', expires_at: new Date(Dat
 const keys = envelope('keys.set', { keys: [readFileSync(join(tmp, 'two.pub'), 'utf8').trim()] }, 100);
 const good = envelope('pkg.install', { packages: ['nmap'] }, 100);
 const swapped = Buffer.from(good.toString().replace('nmap', 'evil'));
+// An approval collected for later names a value the device no longer knows.
+const stockpiled = envelope('pkg.install', { packages: ['nmap'] }, 100, 'collected-months-ago');
 const otherCredential = await ev(`(async () => {
   const created = await navigator.credentials.create({ publicKey: {
     challenge: new Uint8Array(32),
@@ -401,6 +407,7 @@ const refused = [
   ['unlisted type sudo.grant', inject('sudo.grant', sudo, await assertion(sudo)), 'may not approve sudo.grant'],
   ['unlisted type keys.set', inject('keys.set', keys, await assertion(keys)), 'may not approve keys.set'],
   ['changed envelope', inject('pkg.install', swapped, await assertion(good)), 'different envelope'],
+  ['stockpiled approval', inject('pkg.install', stockpiled, await assertion(stockpiled)), 'too old'],
   ['passkey not pinned', inject('pkg.install', good, await assertion(good, otherCredential)), 'not pinned'],
 ];
 await navigate(`https://${HOST}:${OTHER_PORT}/`);
