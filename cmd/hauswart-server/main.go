@@ -50,6 +50,7 @@ func run(log *slog.Logger) error {
 	dataDir := flag.String("data", defaultDataDir, "data directory")
 	publicURL := flag.String("url", "https://localhost:8443", "URL under which agents reach this server")
 	extraHosts := flag.String("hosts", "", "additional comma-separated DNS names or IPs for the TLS certificate")
+	deviceValidity := flag.Duration("device-cert-validity", 0, "testing only: lifetime of device certificates")
 	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
 	flag.Parse()
 
@@ -64,6 +65,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("CA: %w", err)
 	}
+	ca.DeviceValidity = *deviceValidity
 	st, err := store.Open(filepath.Join(*dataDir, "hauswart.db"))
 	if err != nil {
 		return fmt.Errorf("database: %w", err)

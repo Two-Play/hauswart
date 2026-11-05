@@ -271,11 +271,92 @@ def test_systemd(admin, agent_bin):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+RENEWAL_VALIDITY = 90
+
+
+def test_renewal(admin, agent_bin):
+    """Runs an agent past the expiry of its first certificate."""
+    name = "renewal"
+    print(f"\n== {name} (certificates valid for {RENEWAL_VALIDITY}s)", flush=True)
+    container = "hauswart-e2e-renewal"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "1200")
+
+    def inside(cmd):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=120)
+
+    def start_agent():
+        sh("podman", "exec", "-d", container, "sh", "-c",
+           "echo $$ >/run/agent.pid; exec hauswart-agent run >>/var/log/agent.log 2>&1")
+
+    def enroll():
+        _, token = admin.call("POST", "/api/enroll-tokens")
+        return inside(token["command"].replace("sudo ", "", 1))
+
+    def wait_device():
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            _, devices = admin.call("GET", "/api/devices")
+            live = [d for d in devices if not d["revoked"] and d["report"].get("distro") and d["id"] not in seen]
+            if live:
+                seen.add(live[0]["id"])
+                return live[0]["id"]
+            time.sleep(1)
+        return None
+
+    def digest(path):
+        return inside(f"sha256sum {path}").stdout.split()[0]
+
+    cert, key = "/var/lib/hauswart/agent.pem", "/var/lib/hauswart/agent-key.pem"
+    try:
+        check(name, "enrollment", enroll().returncode == 0)
+        start_agent()
+        device = wait_device()
+        check(name, "report arrives", device)
+        first_cert, first_key = digest(cert), digest(key)
+
+        time.sleep(RENEWAL_VALIDITY + 25)  # past the expiry of the first certificate
+        check(name, "certificate was replaced", digest(cert) != first_cert)
+        check(name, "private key stayed", digest(key) == first_key)
+        log = inside("cat /var/log/agent.log").stdout
+        check(name, "renewed without a restart", "certificate renewed" in log, log)
+        path = {"path": "/etc/hauswart.d/after-expiry", "content": "x"}
+        task = run_task(admin, device, "file.put", path, wait=30)
+        check(name, "works after the first certificate expired", task["status"] == "done", task["output"])
+        _, audit = admin.call("GET", "/api/audit")
+        check(name, "renewal is in the audit log", any(e["action"] == "device.renewed" for e in audit))
+
+        inside("kill $(cat /run/agent.pid)")
+        start_agent()
+        task = run_task(admin, device, "file.put", path, wait=30)
+        check(name, "renewed certificate survives an agent restart", task["status"] == "done", task["output"])
+
+        # Switched off for longer than the certificate lives.
+        inside("kill $(cat /run/agent.pid); : >/var/log/agent.log")
+        time.sleep(RENEWAL_VALIDITY + 10)
+        start_agent()
+        time.sleep(5)
+        log = inside("cat /var/log/agent.log").stdout
+        check(name, "expired device is refused, visibly", "poll failed" in log, log)
+        inside("kill $(cat /run/agent.pid)")
+        check(name, "enrolling again recovers the device", enroll().returncode == 0)
+        start_agent()
+        check(name, "recovered device reports", wait_device())
+    except Exception as err:
+        check(name, "no crash", False, str(err))
+        print(inside("tail -20 /var/log/agent.log").stdout)
+    finally:
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 seen = set()
 
 
 def main():
+    # Short lifetimes apply to the whole server, so this runs on its own.
     names = sys.argv[1:] or [*DISTROS, "systemd"]
+    extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
     work = tempfile.mkdtemp(prefix="hauswart-e2e-", dir=os.environ.get("E2E_TMP"))
     server_bin, agent_bin = f"{work}/server", f"{work}/agent"
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -285,7 +366,7 @@ def main():
     log_path = f"{work}/server.log"
     with open(log_path, "w") as log:
         server = subprocess.Popen(
-            [server_bin, "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", URL],
+            [server_bin, "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", URL, *extra_args],
             stderr=log, stdout=log)
     try:
         password = None
@@ -305,6 +386,8 @@ def main():
         for name in names:
             if name == "systemd":
                 test_systemd(admin, agent_bin)
+            elif name == "renewal":
+                test_renewal(admin, agent_bin)
             else:
                 test_distro(name, admin, agent_bin, ca_pem)
     finally:

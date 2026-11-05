@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"os"
@@ -273,6 +274,32 @@ func TestDetectTrustUsesTheDistroLayout(t *testing.T) {
 				t.Fatalf("got %+v, want %s", got, c.want)
 			}
 		})
+	}
+}
+
+func TestRenewDue(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	leaf := &x509.Certificate{NotBefore: start, NotAfter: start.Add(300 * 24 * time.Hour)}
+	cases := []struct {
+		day  int
+		want bool
+	}{{0, false}, {100, false}, {199, false}, {201, true}, {299, true}, {400, true}}
+	for _, c := range cases {
+		if got := renewDue(leaf, start.Add(time.Duration(c.day)*24*time.Hour)); got != c.want {
+			t.Errorf("day %d: got %v", c.day, got)
+		}
+	}
+}
+
+func TestRenewInterval(t *testing.T) {
+	start := time.Now()
+	long := &x509.Certificate{NotBefore: start, NotAfter: start.Add(2 * 365 * 24 * time.Hour)}
+	if got := renewInterval(long); got != maxRenewInterval {
+		t.Errorf("long lifetime: %v", got)
+	}
+	short := &x509.Certificate{NotBefore: start, NotAfter: start.Add(5 * time.Second)}
+	if got := renewInterval(short); got != minRenewInterval {
+		t.Errorf("short lifetime: %v", got)
 	}
 }
 

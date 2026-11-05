@@ -97,7 +97,41 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migration: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrations run once each, in order, on top of the base schema. Append only:
+// an existing database or a restored backup may be at any earlier version.
+var migrations = []string{
+	`ALTER TABLE devices ADD COLUMN next_serial TEXT NOT NULL DEFAULT ''`,
+}
+
+func migrate(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	for ; version < len(migrations); version++ {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(migrations[version]); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, version+1)); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -296,15 +330,33 @@ func (s *Store) CreateDevice(ctx context.Context, id, hostname, serial string) e
 // accepting a revoked device's still-valid certificate.
 func (s *Store) DeviceAuthorized(ctx context.Context, id, serial string) (bool, error) {
 	var revoked bool
-	var want string
-	err := s.db.QueryRowContext(ctx, `SELECT revoked, cert_serial FROM devices WHERE id = ?`, id).Scan(&revoked, &want)
+	var current, next string
+	err := s.db.QueryRowContext(ctx, `SELECT revoked, cert_serial, next_serial FROM devices WHERE id = ?`, id).
+		Scan(&revoked, &current, &next)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return !revoked && want == serial, nil
+	if revoked {
+		return false, nil
+	}
+	if next != "" && serial == next {
+		// The device proved it received the renewed certificate, so the old
+		// one can stop working now and not any earlier.
+		_, err := s.db.ExecContext(ctx, `UPDATE devices SET cert_serial = ?, next_serial = '' WHERE id = ?`, next, id)
+		return err == nil, err
+	}
+	return serial == current, nil
+}
+
+// SetNextSerial records a renewed certificate. The current one stays valid
+// until the device uses the new one: if the response gets lost on the way,
+// the device simply tries again instead of being locked out.
+func (s *Store) SetNextSerial(ctx context.Context, id, serial string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE devices SET next_serial = ? WHERE id = ?`, serial, id)
+	return err
 }
 
 func (s *Store) SaveReport(ctx context.Context, id string, r api.Report) error {

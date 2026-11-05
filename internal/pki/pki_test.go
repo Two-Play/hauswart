@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newCSR(t *testing.T, commonName string) []byte {
@@ -84,6 +85,25 @@ func TestSignDeviceSetsIdentityItself(t *testing.T) {
 	_, err = cert.Verify(x509.VerifyOptions{Roots: ca.Pool(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
 	if err == nil {
 		t.Fatal("device certificate can impersonate the server")
+	}
+}
+
+func TestDeviceValidityOverride(t *testing.T) {
+	ca, err := LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca.DeviceValidity = 80 * time.Second
+	certPEM, _, err := ca.SignDevice(newCSR(t, "x"), "d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := ParseCert(certPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cert.NotAfter.Sub(cert.NotBefore); got != 100*time.Second {
+		t.Fatalf("lifetime %v", got)
 	}
 }
 

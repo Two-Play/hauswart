@@ -37,6 +37,10 @@ type CA struct {
 	CertPEM []byte
 	key     *ecdsa.PrivateKey
 	dir     string
+
+	// DeviceValidity overrides the lifetime of device certificates, which
+	// makes renewal testable. Zero means the default.
+	DeviceValidity time.Duration
 }
 
 // LoadOrCreate reads the CA from dir, creating it on first start.
@@ -194,12 +198,16 @@ func (c *CA) SignDevice(csrPEM []byte, deviceID string) (certPEM []byte, serial 
 	if err := csr.CheckSignature(); err != nil {
 		return nil, "", fmt.Errorf("CSR signature: %w", err)
 	}
+	validity := leafValidity
+	if c.DeviceValidity > 0 {
+		validity = c.DeviceValidity
+	}
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber: randomSerial(),
 		Subject:      pkix.Name{CommonName: deviceID},
-		NotBefore:    now.Add(-backdateLeeway),
-		NotAfter:     now.Add(leafValidity),
+		NotBefore:    now.Add(-min(backdateLeeway, validity/4)),
+		NotAfter:     now.Add(validity),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}

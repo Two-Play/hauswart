@@ -38,6 +38,12 @@ const (
 	grantInterval  = 15 * time.Second
 	pollWaitSecs   = 25
 	retryDelay     = 10 * time.Second
+
+	// A device renews once a third of its certificate's lifetime is left. At
+	// two years, that tolerates eight months switched off.
+	renewShare       = 3
+	maxRenewInterval = time.Hour
+	minRenewInterval = time.Second
 )
 
 // DefaultAllowedPaths is deliberately narrow: no location from which the
@@ -170,10 +176,16 @@ func fetch(ctx context.Context, client *http.Client, url string) ([]byte, error)
 // Agent is the running service.
 type Agent struct {
 	cfg      Config
+	dir      string
 	client   *http.Client
 	exec     *Executor
 	platform Platform
 	log      *slog.Logger
+
+	mu   sync.RWMutex
+	cert tls.Certificate
+	leaf *x509.Certificate
+	pool *x509.CertPool
 }
 
 // Load reads the enrolled state from dir.
@@ -202,17 +214,17 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, err
+	}
 	platform := Detect()
-	return &Agent{
-		cfg: cfg,
-		client: &http.Client{
-			Timeout: (pollWaitSecs + 15) * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{
-				RootCAs:      pool,
-				Certificates: []tls.Certificate{cert},
-				MinVersion:   tls.VersionTLS13,
-			}},
-		},
+	a := &Agent{
+		cfg:  cfg,
+		dir:  dir,
+		cert: cert,
+		leaf: leaf,
+		pool: pool,
 		exec: &Executor{
 			Root:         "/",
 			AllowedPaths: cfg.AllowedPaths,
@@ -223,7 +235,22 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 		},
 		platform: platform,
 		log:      log,
-	}, nil
+	}
+	a.client = &http.Client{
+		Timeout: (pollWaitSecs + 15) * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs:    pool,
+			MinVersion: tls.VersionTLS13,
+			// Asked on every handshake, so a renewed certificate takes effect
+			// without restarting the agent.
+			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				a.mu.RLock()
+				defer a.mu.RUnlock()
+				return &a.cert, nil
+			},
+		}},
+	}
+	return a, nil
 }
 
 // Run blocks until ctx ends.
@@ -232,7 +259,93 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.grantLoop(ctx) })
 	wg.Go(func() { a.reportLoop(ctx) })
 	wg.Go(func() { a.taskLoop(ctx) })
+	wg.Go(func() { a.renewLoop(ctx) })
 	wg.Wait()
+}
+
+func renewDue(leaf *x509.Certificate, now time.Time) bool {
+	lifetime := leaf.NotAfter.Sub(leaf.NotBefore)
+	return leaf.NotAfter.Sub(now) < lifetime/renewShare
+}
+
+func renewInterval(leaf *x509.Certificate) time.Duration {
+	return min(max(leaf.NotAfter.Sub(leaf.NotBefore)/20, minRenewInterval), maxRenewInterval)
+}
+
+func (a *Agent) renewLoop(ctx context.Context) {
+	for {
+		a.mu.RLock()
+		leaf := a.leaf
+		a.mu.RUnlock()
+		if renewDue(leaf, time.Now()) {
+			if err := a.renew(ctx); err != nil && ctx.Err() == nil {
+				a.log.Warn("certificate renewal failed, will retry", "err", err, "expires", leaf.NotAfter)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(renewInterval(leaf)):
+		}
+	}
+}
+
+// renew keeps the private key and replaces only the certificate. That is one
+// atomic rename, so a crash cannot leave a key and certificate that do not
+// belong together.
+func (a *Agent) renew(ctx context.Context) error {
+	a.mu.RLock()
+	current := a.cert
+	a.mu.RUnlock()
+
+	der, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{Subject: pkix.Name{CommonName: "hauswart-agent"}}, current.PrivateKey)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(api.RenewRequest{CSR: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.Server+"/agent/renew", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	var out api.RenewResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return err
+	}
+
+	leaf, err := pki.ParseCert([]byte(out.Cert))
+	if err != nil {
+		return err
+	}
+	opts := x509.VerifyOptions{Roots: a.pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
+	if _, err := leaf.Verify(opts); err != nil {
+		return fmt.Errorf("renewed certificate: %w", err)
+	}
+	if leaf.Subject.CommonName != a.cfg.DeviceID {
+		return fmt.Errorf("renewed certificate is for %q", leaf.Subject.CommonName)
+	}
+	if err := writeAtomic(filepath.Join(a.dir, certFile), []byte(out.Cert), 0o600); err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.cert = tls.Certificate{Certificate: [][]byte{leaf.Raw}, PrivateKey: current.PrivateKey}
+	a.leaf = leaf
+	a.mu.Unlock()
+	// Existing connections keep the old certificate until they are replaced.
+	a.client.CloseIdleConnections()
+	a.log.Info("certificate renewed", "expires", leaf.NotAfter)
+	return nil
 }
 
 func (a *Agent) grantLoop(ctx context.Context) {

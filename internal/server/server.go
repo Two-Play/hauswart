@@ -112,6 +112,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /agent/enroll", s.handleEnroll)
 	mux.Handle("POST /agent/report", s.agent(s.handleReport))
+	mux.Handle("POST /agent/renew", s.agent(s.handleRenew))
 	mux.Handle("GET /agent/tasks", s.agent(s.handlePoll))
 	mux.Handle("POST /agent/tasks/{id}/result", s.agent(s.handleResult))
 
@@ -362,6 +363,26 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- agent ---
+
+// handleRenew issues a new certificate to an authenticated device. Identity
+// comes from the current certificate, so a device can only renew itself.
+func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request, id string) {
+	var in api.RenewRequest
+	if !readJSON(w, r, &in) {
+		return
+	}
+	cert, serial, err := s.ca.SignDevice([]byte(in.CSR), id)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "invalid CSR")
+		return
+	}
+	if err := s.store.SetNextSerial(r.Context(), id, serial); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, "agent:"+id, "device.renewed", serial)
+	writeJSON(w, http.StatusOK, api.RenewResponse{Cert: string(cert)})
+}
 
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string) {
 	var rep api.Report

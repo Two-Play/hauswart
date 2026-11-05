@@ -17,6 +17,7 @@ test:
 
 e2e:
 	python3 test/e2e.py
+	python3 test/e2e.py renewal
 
 test-packages: packages
 	VERSION=$(VERSION) python3 test/packages.py

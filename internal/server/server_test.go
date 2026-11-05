@@ -384,6 +384,67 @@ func TestAgentRoutesNeedValidCertificate(t *testing.T) {
 	}
 }
 
+func TestRenewal(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	keyOf := agent.Transport.(*http.Transport).TLSClientConfig.Certificates[0]
+	key := keyOf.PrivateKey.(*ecdsa.PrivateKey)
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: "admin"}}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
+
+	code, data := e.do(agent, "POST", "/agent/renew", api.RenewRequest{CSR: string(csr)})
+	if code != http.StatusOK {
+		t.Fatalf("renew: %d %s", code, data)
+	}
+	var out api.RenewResponse
+	json.Unmarshal(data, &out)
+	renewed, err := pki.ParseCert([]byte(out.Cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed.Subject.CommonName != id {
+		t.Fatalf("identity changed to %q", renewed.Subject.CommonName)
+	}
+
+	// Pretend the response got lost: the old certificate keeps working.
+	agent.CloseIdleConnections()
+	if code, _ := e.do(agent, "GET", "/agent/tasks?wait=0", nil); code != http.StatusNoContent {
+		t.Fatalf("old certificate after renewal: %d", code)
+	}
+
+	pair := tls.Certificate{Certificate: [][]byte{renewed.Raw}, PrivateKey: key}
+	fresh := e.client(pair)
+	if code, _ := e.do(fresh, "GET", "/agent/tasks?wait=0", nil); code != http.StatusNoContent {
+		t.Fatalf("new certificate: %d", code)
+	}
+	agent.CloseIdleConnections()
+	if code, _ := e.do(agent, "GET", "/agent/tasks?wait=0", nil); code != http.StatusForbidden {
+		t.Fatalf("old certificate after the new one was used: %d", code)
+	}
+}
+
+func TestRenewalNeedsCertificate(t *testing.T) {
+	e := setup(t)
+	if code, _ := e.do(e.client(), "POST", "/agent/renew", api.RenewRequest{}); code != http.StatusUnauthorized {
+		t.Fatalf("got %d", code)
+	}
+}
+
+func TestRevokedDeviceCannotRenew(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	if code, _ := e.do(e.login("admin"), "POST", "/api/devices/"+id+"/revoke", nil); code != http.StatusNoContent {
+		t.Fatalf("revoke: %d", code)
+	}
+	agent.CloseIdleConnections()
+	if code, _ := e.do(agent, "POST", "/agent/renew", api.RenewRequest{}); code != http.StatusForbidden {
+		t.Fatalf("got %d", code)
+	}
+}
+
 func TestDeviceIdentityComesFromServer(t *testing.T) {
 	e := setup(t)
 	id, _ := e.enroll()

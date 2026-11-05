@@ -142,6 +142,22 @@ edit `allowed_paths` in `/var/lib/hauswart/agent.json` on that device and
 restart the agent. Think before widening it: a path from which the system
 executes files gives the server root on that device.
 
+## Certificates
+
+Device certificates last two years. Agents renew theirs on their own once a
+third of the lifetime is left, without a restart, and keep their private key.
+There is nothing to do as long as a device comes online at least once in those
+last eight months.
+
+A device that stays off for longer has an expired certificate and is refused.
+Its log shows `poll failed`. To bring it back, create a new command with
+**Add device** and run it on that device. It then appears as a new device, and
+you can revoke the old entry.
+
+The server's own certificate also lasts two years. It is replaced at a service
+start once less than 30 days are left, so restart the server at least once a
+year, which any system update with a reboot does. The CA lasts ten years.
+
 ## Back up
 
 ```bash

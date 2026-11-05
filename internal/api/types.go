@@ -103,6 +103,14 @@ type EnrollRequest struct {
 	Hostname string `json:"hostname"`
 }
 
+type RenewRequest struct {
+	CSR string `json:"csr"`
+}
+
+type RenewResponse struct {
+	Cert string `json:"cert"`
+}
+
 type EnrollResponse struct {
 	DeviceID string `json:"device_id"`
 	Cert     string `json:"cert"`

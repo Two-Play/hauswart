@@ -171,6 +171,68 @@ func TestDeviceAuthorized(t *testing.T) {
 	}
 }
 
+func TestRenewalKeepsOldSerialUntilNewOneIsUsed(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	if err := s.SetNextSerial(ctx, "a", "renewed"); err != nil {
+		t.Fatal(err)
+	}
+	// The response may have been lost, so the old certificate must still work.
+	if ok, _ := s.DeviceAuthorized(ctx, "a", "serial-a"); !ok {
+		t.Fatal("old serial refused before the new one was used")
+	}
+	if ok, _ := s.DeviceAuthorized(ctx, "a", "renewed"); !ok {
+		t.Fatal("new serial refused")
+	}
+	if ok, _ := s.DeviceAuthorized(ctx, "a", "serial-a"); ok {
+		t.Fatal("old serial still valid after the new one was used")
+	}
+	if ok, _ := s.DeviceAuthorized(ctx, "a", "renewed"); !ok {
+		t.Fatal("new serial not kept")
+	}
+}
+
+func TestRevokedDeviceCannotUseRenewedSerial(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	if err := s.SetNextSerial(ctx, "a", "renewed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeDevice(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.DeviceAuthorized(ctx, "a", "renewed"); ok {
+		t.Fatal("revoked device authorized")
+	}
+}
+
+func TestMigrationUpgradesOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Turn it back into a database from before the first migration.
+	device(t, s, "a")
+	for _, stmt := range []string{`ALTER TABLE devices DROP COLUMN next_serial`, `PRAGMA user_version = 0`} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+
+	for range 2 { // a second open must not run the migration again
+		s, err = Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := s.DeviceAuthorized(ctx, "a", "serial-a"); err != nil || !ok {
+			t.Fatalf("device lost: %v %v", ok, err)
+		}
+		s.Close()
+	}
+}
+
 func TestClaimTaskOrderAndIsolation(t *testing.T) {
 	s := open(t)
 	device(t, s, "a")
