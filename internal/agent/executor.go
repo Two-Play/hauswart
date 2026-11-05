@@ -233,7 +233,16 @@ func (e *Executor) caInstall(ctx context.Context, p api.CAInstallPayload) (strin
 		return "", err
 	}
 	argv := e.Platform.Trust.Update
-	return e.Run(ctx, argv[0], argv[1:]...)
+	out, err := e.Run(ctx, argv[0], argv[1:]...)
+	if err != nil {
+		return out, err
+	}
+	if e.Platform.Trust.Browsers {
+		if err := e.trustInBrowsers(p.Name, p.PEM); err != nil {
+			return out, fmt.Errorf("system store updated, browsers failed: %w", err)
+		}
+	}
+	return out, nil
 }
 
 func sudoersFile(user string) string { return "/etc/sudoers.d/hauswart-" + user }

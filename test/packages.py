@@ -115,6 +115,9 @@ def test(target):
         check(target, "agent enrolls", enrolled.returncode == 0, enrolled.stderr)
         trusted = inside(f"curl -s -o /dev/null {URL}/healthz")
         check(target, "enrollment adds the CA to the system store", trusted.returncode == 0, str(trusted.returncode))
+        if target != "rpm":
+            policies = inside("test -s /etc/firefox/policies/policies.json && test -s /etc/chromium/policies/managed/hauswart-server.json")
+            check(target, "browser policies written", policies.returncode == 0)
         enabled = inside("systemctl enable --now hauswart-agent")
         check(target, "agent enables", enabled.returncode == 0, enabled.stderr)
 

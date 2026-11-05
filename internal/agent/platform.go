@@ -29,6 +29,9 @@ type Backend struct {
 type Trust struct {
 	Dir    string
 	Update []string
+	// Browsers is set where measurements show that browsers ignore the system
+	// store, so they need a policy as well.
+	Browsers bool
 }
 
 type Platform struct {
@@ -108,7 +111,7 @@ func detectTrust(has func(string) bool, dirExists func(string) bool) *Trust {
 	case has("update-ca-certificates") && dirExists("/etc/pki/trust/anchors"):
 		return &Trust{Dir: "/etc/pki/trust/anchors", Update: []string{"update-ca-certificates"}}
 	case has("update-ca-certificates"):
-		return &Trust{Dir: "/usr/local/share/ca-certificates", Update: []string{"update-ca-certificates"}}
+		return &Trust{Dir: "/usr/local/share/ca-certificates", Update: []string{"update-ca-certificates"}, Browsers: true}
 	case has("trust"):
 		return &Trust{Dir: "/etc/ca-certificates/trust-source/anchors", Update: []string{"trust", "extract-compat"}}
 	}

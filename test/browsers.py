@@ -35,6 +35,14 @@ RUN apt-get update && apt-get install -y firefox-esr chromium python3 openssl ca
 RUN useradd -m anna
 """,
         "trust": "cp /srv/tls/ca.pem /usr/local/share/ca-certificates/hauswart-family.crt && update-ca-certificates",
+        # The system store is not enough here, so this is what the agent adds.
+        "policy": r"""
+mkdir -p /etc/firefox/policies /etc/chromium/policies/managed
+printf '{"policies":{"Certificates":{"Install":["/usr/local/share/ca-certificates/hauswart-family.crt"]}}}' >/etc/firefox/policies/policies.json
+b64=$(grep -v CERTIFICATE /srv/tls/ca.pem | tr -d '
+')
+printf '{"CACertificates":["%s"]}' "$b64" >/etc/chromium/policies/managed/hauswart.json
+""",
         "browsers": {
             "firefox": FIREFOX.format(binary="firefox-esr"),
             "chromium": CHROME.format(binary="chromium"),
@@ -73,9 +81,23 @@ def serve(port, cert):
     server.socket = context.wrap_socket(server.socket, server_side=True)
     server.serve_forever()
 threading.Thread(target=serve, args=(9444, "/srv/tls/foreign.pem"), daemon=True).start()
+# Plain HTTP as a positive control: it shows that a browser runs at all, so that
+# no request on the TLS ports really means a refused certificate.
+plain = http.server.ThreadingHTTPServer(("127.0.0.1", 9080), Handler)
+threading.Thread(target=plain.serve_forever, daemon=True).start()
 serve(9443, "/srv/tls/cert.pem")
 EOF
 """
+
+# Snaps read only certain paths, so everything goes below the policy directories.
+POLICY_UBUNTU = r"""
+mkdir -p /etc/firefox/policies /var/snap/chromium/current/policies/managed
+cp /srv/tls/ca.pem /etc/firefox/policies/hauswart.crt
+printf '{"policies":{"Certificates":{"Install":["/etc/firefox/policies/hauswart.crt"]}}}' >/etc/firefox/policies/policies.json
+b64=$(grep -v CERTIFICATE /srv/tls/ca.pem | tr -d '\n')
+printf '{"CACertificates":["%s"]}' "$b64" >/var/snap/chromium/current/policies/managed/hauswart.json
+"""
+
 
 def run(*argv, input=None, timeout=900):
     return subprocess.run(argv, input=input, capture_output=True, text=True, timeout=timeout)
@@ -112,9 +134,16 @@ def measure(name, target):
         if trusted.returncode != 0:
             sys.exit(trusted.stderr)
         after = {b: reached(c) for b, c in browsers.items()}
+        policy = {}
+        if "policy" in target:
+            setup_policy = inside(target["policy"])
+            if setup_policy.returncode != 0:
+                sys.exit(setup_policy.stderr)
+            policy = {b: reached(c) for b, c in browsers.items()}
+            after = policy
         foreign = {b: reached(c.replace("localhost:9443", "flathub.example:9444")) for b, c in browsers.items()}
         for browser in browsers:
-            print(f"{name}/{browser}: without CA reached={before[browser]}, with CA in system store reached={after[browser]}, "
+            print(f"{name}/{browser}: without CA reached={before[browser]}, with CA reached={after[browser]}, "
                   f"foreign name reached={foreign[browser]}", flush=True)
         return not any(before.values()) and all(after.values()) and not any(foreign.values())
     finally:

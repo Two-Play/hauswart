@@ -3,7 +3,7 @@
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic]
+directory. Usage: test/vm.py [flatpak atomic ubuntu]
 """
 import hashlib
 import json
@@ -18,6 +18,7 @@ import time
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import browsers  # noqa: E402
 import e2e  # noqa: E402
 
 PORT = 18450
@@ -83,6 +84,19 @@ def coreos_image():
             sys.exit("CoreOS image checksum mismatch")
         with lzma.open(packed) as src, open(path, "wb") as out:
             shutil.copyfileobj(src, out)
+    return path
+
+
+def ubuntu_image():
+    base = "https://cloud-images.ubuntu.com/releases/noble/release/"
+    name = "ubuntu-24.04-server-cloudimg-amd64.img"
+    path = f"{CACHE}/{name}"
+    fetch(base + name, path)
+    sums = urllib.request.urlopen(base + "SHA256SUMS").read().decode()
+    want = re.search(rf"(\w+) \*{re.escape(name)}", sums).group(1)
+    if sha256(path) != want:
+        os.remove(path)
+        sys.exit("Ubuntu image checksum mismatch")
     return path
 
 
@@ -179,6 +193,72 @@ def test_flatpak(admin, agent_bin, work, public_key):
         vm.stop()
 
 
+def test_ubuntu(admin, agent_bin, work, public_key):
+    """Measures browser trust on Ubuntu, where the browsers are snaps."""
+    group = "ubuntu"
+    print("\n== ubuntu (Ubuntu 24.04 VM, Firefox and Chromium as snaps)", flush=True)
+    seed = f"{work}/seed-ubuntu"
+    os.makedirs(seed)
+    with open(f"{seed}/user-data", "w") as f:
+        f.write(f"#cloud-config\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n"
+                f"    shell: /bin/bash\n    ssh_authorized_keys:\n      - {public_key}\n")
+    with open(f"{seed}/meta-data", "w") as f:
+        f.write("instance-id: hauswart-ubuntu\nlocal-hostname: ubuntu-vm\n")
+    subprocess.run(["xorrisofs", "-quiet", "-output", f"{work}/seed-ubuntu.iso", "-volid", "cidata", "-joliet", "-rock", seed], check=True)
+    vm = VM(work, "ubuntu", ubuntu_image(), "ubuntu", 2233,
+            ["-drive", f"file={work}/seed-ubuntu.iso,media=cdrom,readonly=on"])
+
+    as_user = "sudo -iu ubuntu env XDG_RUNTIME_DIR=/run/user/1000 "
+    commands = {
+        "firefox": as_user + "sh -c 'rm -rf ~/snap/firefox/common/p; mkdir -p ~/snap/firefox/common/p; timeout 120 "
+                   "firefox --headless --no-remote --profile ~/snap/firefox/common/p --screenshot ~/snap/firefox/common/s.png https://localhost:9443/'",
+        "chromium": as_user + "sh -c 'rm -rf ~/snap/chromium/common/p; timeout 120 chromium --headless --no-sandbox "
+                    "--disable-gpu --user-data-dir=$HOME/snap/chromium/common/p --dump-dom https://localhost:9443/'",
+    }
+
+    def reached(browser, url="https://localhost:9443/"):
+        vm.ssh(": >/tmp/server.log")
+        result = vm.ssh(commands[browser].replace("https://localhost:9443/", url), timeout=200)
+        hit = "REQUEST" in vm.ssh("cat /tmp/server.log").stdout
+        if not hit:
+            print(f"       {browser} {url}: rc={result.returncode} {(result.stdout + result.stderr)[-300:]!r}", flush=True)
+        return hit
+
+    try:
+        check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+        vm.ssh("cloud-init status --wait; loginctl enable-linger ubuntu")
+        print("       network:", vm.ssh("getent hosts api.snapcraft.io; curl -s -o /dev/null -m 20 -w '%{http_code} %{time_total}s' https://api.snapcraft.io/; echo").stdout.strip(), flush=True)
+        print("       seeded:", vm.ssh("timeout 120 snap wait system seed.loaded; echo rc=$?; snap changes | tail -4").stdout.strip(), flush=True)
+        # --no-wait and a limit, so that a stuck store shows why instead of hanging.
+        vm.ssh("snap install --no-wait firefox; snap install --no-wait chromium")
+        deadline = time.time() + 900
+        while time.time() < deadline:
+            changes = vm.ssh("snap changes").stdout
+            print("       " + " | ".join(line[:60] for line in changes.splitlines()[-2:]), flush=True)
+            if not re.search(r"\b(Doing|Do|Wait)\b", changes):
+                break
+            time.sleep(45)
+        installed = vm.ssh("snap list firefox chromium")
+        check(group, "snaps installed", installed.returncode == 0, installed.stdout + installed.stderr + vm.ssh("snap changes; snap tasks --last=install | tail -12").stdout)
+        setup = vm.ssh(browsers.SETUP)
+        check(group, "test server prepared", setup.returncode == 0, setup.stderr)
+        # systemd-run, because a background process would keep the SSH session open.
+        vm.ssh("systemd-run --unit=tls-test sh -c 'python3 -u /srv/tls/server.py >/tmp/server.log 2>&1'; sleep 2; chmod 666 /tmp/server.log")
+
+        for browser in commands:
+            check(group, f"{browser} runs (positive control)", reached(browser, "http://localhost:9080/"))
+        for browser in commands:
+            check(group, f"{browser} blocks without the CA", not reached(browser))
+        vm.ssh("cp /srv/tls/ca.pem /usr/local/share/ca-certificates/hauswart-family.crt && update-ca-certificates")
+        for browser in commands:
+            print(f"       {browser} with system store only: {reached(browser)}", flush=True)
+        vm.ssh(browsers.POLICY_UBUNTU)
+        for browser in commands:
+            check(group, f"{browser} trusts the CA through a policy", reached(browser))
+    finally:
+        vm.stop()
+
+
 def test_atomic(admin, agent_bin, work, public_key):
     group = "atomic"
     print("\n== atomic (Fedora CoreOS VM)", flush=True)
@@ -221,7 +301,7 @@ def test_atomic(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -246,7 +326,7 @@ def main():
         code, _ = admin.call("POST", "/api/login", {"username": "admin", "password": password})
         assert code == 200, code
         for name in names:
-            {"flatpak": test_flatpak, "atomic": test_atomic}[name](admin, f"{work}/agent", work, public_key)
+            {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu}[name](admin, f"{work}/agent", work, public_key)
     finally:
         server.terminate()
         server.wait()
