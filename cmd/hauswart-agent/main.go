@@ -58,6 +58,10 @@ func enroll(ctx context.Context, args []string) error {
 	if err := agent.Enroll(ctx, *dir, *server, *token, *fingerprint); err != nil {
 		return err
 	}
+	// Not fatal: the agent pins the CA itself and works without this.
+	if err := agent.TrustServerCA(ctx, *dir); err != nil {
+		fmt.Fprintln(os.Stderr, "Warning: could not add the server CA to the system store:", err)
+	}
 	fmt.Println("Enrolled. Start the service with: systemctl enable --now hauswart-agent")
 	return nil
 }

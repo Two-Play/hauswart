@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Measures whether browsers trust a CA from the system store.
+
+A browser that rejects the certificate aborts the TLS handshake and never sends
+an HTTP request, so the test server's log is an objective answer. Everything
+happens inside a throwaway container. Usage: test/browsers.py [fedora debian]
+"""
+import subprocess
+import sys
+
+CONTAINER = "hauswart-browsers"
+
+FIREFOX = ("rm -rf /tmp/ff && mkdir /tmp/ff && timeout 60 {binary} --headless --no-remote --profile /tmp/ff "
+           "--screenshot /tmp/shot.png https://localhost:9443/")
+CHROME = ("rm -rf /tmp/cr && timeout 60 {binary} --headless --no-sandbox --disable-gpu "
+          "--user-data-dir=/tmp/cr --dump-dom https://localhost:9443/")
+
+TARGETS = {
+    "fedora": {
+        "containerfile": """FROM registry.fedoraproject.org/fedora:44
+RUN dnf5 install -y firefox chromium python3 openssl shadow-utils ca-certificates \\
+    https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm && dnf5 clean all
+RUN useradd anna
+""",
+        "trust": "cp /srv/tls/ca.pem /etc/pki/ca-trust/source/anchors/hauswart-family.crt && update-ca-trust extract",
+        "browsers": {
+            "firefox": FIREFOX.format(binary="firefox"),
+            "chromium": CHROME.format(binary="chromium-browser"),
+            "chrome": CHROME.format(binary="google-chrome"),
+        },
+    },
+    "debian": {
+        "containerfile": """FROM docker.io/library/debian:stable
+RUN apt-get update && apt-get install -y firefox-esr chromium python3 openssl ca-certificates
+RUN useradd -m anna
+""",
+        "trust": "cp /srv/tls/ca.pem /usr/local/share/ca-certificates/hauswart-family.crt && update-ca-certificates",
+        "browsers": {
+            "firefox": FIREFOX.format(binary="firefox-esr"),
+            "chromium": CHROME.format(binary="chromium"),
+        },
+    },
+}
+
+# The CA and the certificate the same way Hauswart makes them: EC P-256.
+SETUP = r"""
+set -e
+mkdir -p /srv/tls && cd /srv/tls
+openssl ecparam -genkey -name prime256v1 -noout -out ca-key.pem
+openssl req -x509 -new -key ca-key.pem -subj "/O=Hauswart/CN=Hauswart Root CA" -days 3650 \
+    -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign -out ca.pem
+openssl ecparam -genkey -name prime256v1 -noout -out key.pem
+openssl req -new -key key.pem -subj "/CN=hauswart-server" -out req.pem
+printf 'subjectAltName=DNS:localhost\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature\n' >ext
+openssl x509 -req -in req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 700 -extfile ext -out cert.pem
+cat >server.py <<'EOF'
+import http.server, ssl
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        print("REQUEST", self.headers.get("User-Agent"), flush=True)
+        self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
+        self.wfile.write(b"<title>ok</title>trusted")
+    def log_message(self, *args): pass
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain("/srv/tls/cert.pem", "/srv/tls/key.pem")
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 9443), Handler)
+server.socket = context.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
+EOF
+"""
+
+def run(*argv, input=None, timeout=900):
+    return subprocess.run(argv, input=input, capture_output=True, text=True, timeout=timeout)
+
+
+def inside(cmd, user="root", timeout=120):
+    return run("podman", "exec", "-u", user, CONTAINER, "sh", "-c", cmd, timeout=timeout)
+
+
+def reached(command):
+    """Runs a browser as a normal user and reports whether a request arrived."""
+    inside(": >/tmp/server.log")
+    inside(command, user="anna")
+    return "REQUEST" in inside("cat /tmp/server.log").stdout
+
+
+def measure(name, target):
+    image = f"localhost/hauswart-browsers-{name}"
+    built = run("podman", "build", "-q", "-t", image, "-", input=target["containerfile"])
+    if built.returncode != 0:
+        sys.exit(built.stderr)
+    run("podman", "rm", "-f", CONTAINER)
+    run("podman", "run", "-d", "--name", CONTAINER, image, "sleep", "1200")
+    try:
+        setup = inside(SETUP)
+        if setup.returncode != 0:
+            sys.exit(setup.stderr)
+        run("podman", "exec", "-d", CONTAINER, "sh", "-c", "python3 -u /srv/tls/server.py >/tmp/server.log 2>&1")
+        inside("sleep 1; chmod 666 /tmp/server.log")
+
+        browsers = target["browsers"]
+        before = {b: reached(c) for b, c in browsers.items()}
+        trusted = inside(target["trust"])
+        if trusted.returncode != 0:
+            sys.exit(trusted.stderr)
+        after = {b: reached(c) for b, c in browsers.items()}
+        for browser in browsers:
+            print(f"{name}/{browser}: without CA reached={before[browser]}, with CA in system store reached={after[browser]}", flush=True)
+        return not any(before.values()) and all(after.values())
+    finally:
+        run("podman", "rm", "-f", CONTAINER)
+
+
+def main():
+    results = [measure(name, TARGETS[name]) for name in sys.argv[1:] or list(TARGETS)]
+    sys.exit(0 if all(results) else 1)
+
+
+if __name__ == "__main__":
+    main()

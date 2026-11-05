@@ -138,6 +138,19 @@ func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string) erro
 	return nil
 }
 
+// TrustServerCA adds the server's CA to the system store, so that browsers on
+// this device open the dashboard without a warning. This grants the server
+// nothing new, because it can deploy certificates with ca.install anyway.
+func TrustServerCA(ctx context.Context, dir string) error {
+	caPEM, err := os.ReadFile(filepath.Join(dir, caFile))
+	if err != nil {
+		return err
+	}
+	e := &Executor{Root: "/", Platform: Detect(), Run: RunCommand}
+	_, err = e.caInstall(ctx, api.CAInstallPayload{Name: "server", PEM: string(caPEM)})
+	return err
+}
+
 func fetch(ctx context.Context, client *http.Client, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

@@ -109,6 +109,34 @@ sudo systemctl enable --now hauswart-agent
 
 The agent only connects outwards, so a device needs no open port.
 
+Enrollment also adds the Hauswart CA to the system store of the device.
+
+## Browser trust
+
+Whether a browser honours the system store depends on the distribution. This is
+measured by `test/browsers.py`:
+
+| Distribution | Browser | CA from the system store |
+| --- | --- | --- |
+| Fedora 44 | Firefox (RPM) | trusted |
+| Fedora 44 | Chromium (RPM) | trusted |
+| Fedora 44 | Google Chrome | trusted |
+| Debian 13 | Firefox ESR | not trusted |
+| Debian 13 | Chromium | not trusted |
+
+Not measured: Flatpak browsers, Arch and openSUSE. Flatpak apps run in a sandbox
+and may not see the system store.
+
+Where the store is not used, and on computers that are not enrolled, import the
+CA by hand. Download it from `https://<server>:8443/ca.pem`. Accept the warning
+for this one download, and compare the SHA-256 fingerprint with the one in the
+server log before you trust the file.
+
+- **Firefox:** Settings, Privacy & Security, Certificates, View Certificates,
+  Authorities, Import. Tick "Trust this CA to identify websites".
+- **Chromium and Chrome:** Settings, Privacy and security, Security, Manage
+  certificates, Authorities or Local certificates, Import.
+
 Files can be deployed only below `/etc/hauswart.d` by default. To allow more,
 edit `allowed_paths` in `/var/lib/hauswart/agent.json` on that device and
 restart the agent. Think before widening it: a path from which the system

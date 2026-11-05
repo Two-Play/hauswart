@@ -113,6 +113,8 @@ def test(target):
         command = call("POST", "/api/enroll-tokens")["command"].replace("sudo ", "", 1)
         enrolled = inside(command)
         check(target, "agent enrolls", enrolled.returncode == 0, enrolled.stderr)
+        trusted = inside(f"curl -s -o /dev/null {URL}/healthz")
+        check(target, "enrollment adds the CA to the system store", trusted.returncode == 0, str(trusted.returncode))
         enabled = inside("systemctl enable --now hauswart-agent")
         check(target, "agent enables", enabled.returncode == 0, enabled.stderr)
 
