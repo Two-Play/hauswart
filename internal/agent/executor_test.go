@@ -1,0 +1,222 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/philippe/hauswart/internal/api"
+)
+
+type fakeRunner struct {
+	calls [][]string
+	err   error
+}
+
+func (f *fakeRunner) run(_ context.Context, name string, args ...string) (string, error) {
+	f.calls = append(f.calls, append([]string{name}, args...))
+	return "", f.err
+}
+
+func newExecutor(t *testing.T) (*Executor, *fakeRunner) {
+	t.Helper()
+	root := t.TempDir()
+	grants, err := OpenGrants(filepath.Join(t.TempDir(), "grants.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{}
+	return &Executor{
+		Root:         root,
+		AllowedPaths: DefaultAllowedPaths,
+		Grants:       grants,
+		Run:          runner.run,
+		Platform:     Platform{Backend: detectBackend(func(n string) bool { return n == "dnf5" }, false)},
+	}, runner
+}
+
+func task(t *testing.T, taskType string, payload any) api.Task {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api.Task{ID: "t", Type: taskType, Payload: raw}
+}
+
+func currentUser(t *testing.T) string {
+	t.Helper()
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !api.ValidUser(u.Username) {
+		t.Skip("test needs an ordinary account")
+	}
+	return u.Username
+}
+
+func TestFilePutOnlyInsideAllowedPaths(t *testing.T) {
+	e, _ := newExecutor(t)
+	ok := e.Execute(context.Background(), task(t, api.TaskFilePut, api.FilePutPayload{Path: "/etc/hauswart.d/app/a.conf", Content: "x"}))
+	if !ok.OK {
+		t.Fatalf("allowed path refused: %s", ok.Output)
+	}
+	for _, path := range []string{"/etc/sudoers.d/evil", "/etc/hauswart.dx/a", "/etc/shadow", "/usr/bin/sudo"} {
+		res := e.Execute(context.Background(), task(t, api.TaskFilePut, api.FilePutPayload{Path: path, Content: "x"}))
+		if res.OK {
+			t.Errorf("wrote outside allowed paths: %s", path)
+		}
+		if _, err := os.Stat(filepath.Join(e.Root, path)); err == nil {
+			t.Errorf("file exists: %s", path)
+		}
+	}
+}
+
+func TestFilePutDoesNotFollowSymlinks(t *testing.T) {
+	e, _ := newExecutor(t)
+	allowed := filepath.Join(e.Root, "etc/hauswart.d")
+	secret := filepath.Join(e.Root, "etc/sudoers.d")
+	for _, d := range []string{allowed, secret} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(secret, filepath.Join(allowed, "link")); err != nil {
+		t.Fatal(err)
+	}
+	res := e.Execute(context.Background(), task(t, api.TaskFilePut, api.FilePutPayload{Path: "/etc/hauswart.d/link/evil", Content: "x"}))
+	if res.OK {
+		t.Fatal("wrote through a directory symlink")
+	}
+	target := filepath.Join(e.Root, "victim")
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(allowed, "file")); err != nil {
+		t.Fatal(err)
+	}
+	res = e.Execute(context.Background(), task(t, api.TaskFilePut, api.FilePutPayload{Path: "/etc/hauswart.d/file", Content: "new"}))
+	if res.OK {
+		t.Fatal("wrote through a file symlink")
+	}
+	if data, _ := os.ReadFile(target); string(data) != "old" {
+		t.Fatal("symlink target was overwritten")
+	}
+}
+
+func TestSudoGrantLifecycle(t *testing.T) {
+	e, runner := newExecutor(t)
+	name := currentUser(t)
+	file := filepath.Join(e.Root, sudoersFile(name))
+
+	res := e.Execute(context.Background(), task(t, api.TaskSudoGrant, api.SudoGrantPayload{User: name, ExpiresAt: time.Now().Add(time.Hour)}))
+	if !res.OK {
+		t.Fatal(res.Output)
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), name+" ALL=(ALL:ALL) ALL") {
+		t.Fatalf("unexpected rule: %s", data)
+	}
+	if info, _ := os.Stat(file); info.Mode().Perm() != 0o440 {
+		t.Fatalf("mode %v", info.Mode())
+	}
+	if len(runner.calls) != 1 || runner.calls[0][0] != "visudo" {
+		t.Fatalf("visudo not run: %v", runner.calls)
+	}
+
+	if err := e.RevokeExpired(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal("unexpired grant was removed")
+	}
+
+	if err := e.Grants.Set(name, time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RevokeExpired(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("expired grant still in place")
+	}
+}
+
+func TestSudoGrantSurvivesRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grants.json")
+	g, err := OpenGrants(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Set("anna", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenGrants(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Expired(time.Now()); len(got) != 1 || got[0] != "anna" {
+		t.Fatalf("expiry lost across restart: %v", got)
+	}
+}
+
+func TestSudoGrantRejectedByVisudoLeavesNoRule(t *testing.T) {
+	e, runner := newExecutor(t)
+	name := currentUser(t)
+	runner.err = errors.New("syntax error")
+	res := e.Execute(context.Background(), task(t, api.TaskSudoGrant, api.SudoGrantPayload{User: name, ExpiresAt: time.Now().Add(time.Hour)}))
+	if res.OK {
+		t.Fatal("grant reported success")
+	}
+	entries, _ := os.ReadDir(filepath.Join(e.Root, "etc/sudoers.d"))
+	if len(entries) != 0 {
+		t.Fatalf("left files behind: %v", entries)
+	}
+}
+
+func TestExpiredGrantRefused(t *testing.T) {
+	e, _ := newExecutor(t)
+	res := e.Execute(context.Background(), task(t, api.TaskSudoGrant, api.SudoGrantPayload{User: currentUser(t), ExpiresAt: time.Now().Add(-time.Minute)}))
+	if res.OK {
+		t.Fatal("expired grant accepted")
+	}
+}
+
+func TestExecutorValidatesIndependently(t *testing.T) {
+	e, runner := newExecutor(t)
+	res := e.Execute(context.Background(), api.Task{Type: api.TaskPkgInstall, Payload: json.RawMessage(`{"packages":["--evil"]}`)})
+	if res.OK || len(runner.calls) != 0 {
+		t.Fatalf("malicious task reached the package manager: %v", runner.calls)
+	}
+	res = e.Execute(context.Background(), api.Task{Type: "shell.exec", Payload: json.RawMessage(`{"cmd":"id"}`)})
+	if res.OK {
+		t.Fatal("unknown task type accepted")
+	}
+}
+
+func TestDetectBackendPrefersRpmOstreeOnAtomic(t *testing.T) {
+	has := func(n string) bool { return n == "rpm-ostree" || n == "dnf5" }
+	if b := detectBackend(has, true); b.Name != "rpm-ostree" {
+		t.Fatalf("got %s", b.Name)
+	}
+	if b := detectBackend(has, false); b.Name != "dnf5" {
+		t.Fatalf("got %s", b.Name)
+	}
+}
+
+func TestParseMeminfo(t *testing.T) {
+	total, used := parseMeminfo([]byte("MemTotal: 1000 kB\nMemFree: 100 kB\nMemAvailable: 400 kB\n"))
+	if total != 1000*1024 || used != 600*1024 {
+		t.Fatalf("total %d used %d", total, used)
+	}
+}
