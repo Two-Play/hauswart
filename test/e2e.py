@@ -290,9 +290,8 @@ def main():
     try:
         password = None
         for _ in range(50):
-            match = re.search(r"with password (\w+)", open(log_path).read())
-            if match and "listening" in open(log_path).read():
-                password = match.group(1)
+            if "listening" in open(log_path).read():
+                password = open(f"{work}/data/initial-admin-password").read().strip()
                 break
             time.sleep(0.2)
         if not password:

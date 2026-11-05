@@ -1,0 +1,2 @@
+# The unprivileged account of the Hauswart server.
+u hauswart - "Hauswart server" /var/lib/hauswart-server

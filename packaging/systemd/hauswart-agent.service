@@ -1,0 +1,19 @@
+[Unit]
+Description=Hauswart management agent
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/hauswart/agent.json
+
+[Service]
+ExecStart=/usr/bin/hauswart-agent run
+Restart=always
+RestartSec=10
+
+# A system update can replace this package. Stopping the service must not
+# kill the package manager that is doing it, so only the agent itself stops.
+KillMode=process
+
+# No sandboxing beyond this: the agent exists to change the system as root.
+
+[Install]
+WantedBy=multi-user.target

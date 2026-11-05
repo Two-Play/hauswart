@@ -22,6 +22,8 @@ import (
 	"github.com/philippe/hauswart/internal/store"
 )
 
+const initialPasswordFile = "initial-admin-password"
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(log); err != nil {
@@ -58,7 +60,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := bootstrapAdmin(ctx, st); err != nil {
+	if err := bootstrapAdmin(ctx, st, *dataDir, log); err != nil {
 		return err
 	}
 	srv, err := server.New(st, ca, *publicURL, log)
@@ -124,9 +126,9 @@ func isLoopback(addr string) bool {
 	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
-// bootstrapAdmin creates the first account. The password is printed once and
-// never stored in clear text.
-func bootstrapAdmin(ctx context.Context, st *store.Store) error {
+// bootstrapAdmin creates the first account. The password goes to a file only
+// the service can read, because anything printed would stay in the journal.
+func bootstrapAdmin(ctx context.Context, st *store.Store, dataDir string, log *slog.Logger) error {
 	n, err := st.CountUsers(ctx)
 	if err != nil || n > 0 {
 		return err
@@ -139,6 +141,10 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 	if _, err := st.CreateUser(ctx, "admin", "admin", hash, "admin"); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "\nFirst start: created user \"admin\" with password %s\nThis is shown only once.\n\n", password)
+	path := filepath.Join(dataDir, initialPasswordFile)
+	if err := os.WriteFile(path, []byte(password+"\n"), 0o600); err != nil {
+		return err
+	}
+	log.Info("created user admin, change the password after the first login", "password_file", path)
 	return nil
 }

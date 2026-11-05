@@ -1,0 +1,10 @@
+#!/bin/sh
+# Does not start or restart the service: a running agent may be the very
+# process that is installing this update.
+if [ -f /usr/lib/sysusers.d/hauswart.conf ]; then
+	systemd-sysusers hauswart.conf || true
+fi
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+fi
+exit 0
