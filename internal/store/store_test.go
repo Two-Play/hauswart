@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -215,6 +216,14 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 	}
 	// Turn it back into a database from before the first migration.
 	device(t, s, "a")
+	member, err := s.CreateUser(ctx, "anna", "anna", "hash", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := s.CreateSession(ctx, member, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin"); err != nil {
 		t.Fatal(err)
 	}
@@ -224,6 +233,11 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		`DROP TABLE device_groups`,
 		`ALTER TABLE tasks DROP COLUMN data`,
 		`ALTER TABLE tasks DROP COLUMN signed`,
+		`DROP TABLE passkeys`,
+		`DROP TABLE device_members`,
+		`ALTER TABLE devices DROP COLUMN passkey_counter`,
+		`ALTER TABLE tasks DROP COLUMN passkey_envelope`,
+		`ALTER TABLE tasks DROP COLUMN passkey_counter`,
 		`PRAGMA user_version = 0`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -232,7 +246,7 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 	}
 	s.Close()
 
-	for range 2 { // a second open must not run the migration again
+	for i := range 2 { // a second open must not run the migration again
 		s, err = Open(path)
 		if err != nil {
 			t.Fatal(err)
@@ -242,6 +256,19 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		}
 		if tasks, err := s.ListTasks(ctx, 10); err != nil || len(tasks) != 1 {
 			t.Fatalf("tasks lost: %v %v", tasks, err)
+		}
+		// Changing the roles must not cascade into what depends on users.
+		if u, err := s.SessionUser(ctx, session); err != nil || u.Role != RoleMember {
+			t.Fatalf("session lost: %+v %v", u, err)
+		}
+		if devices, err := s.UserDevices(ctx, member); err != nil || len(devices) != 1 {
+			t.Fatalf("existing member lost the devices: %v %v", devices, err)
+		}
+		if _, err := s.CreateUser(ctx, fmt.Sprint("parent", i), "p", "hash", RoleParent); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.CreateUser(ctx, fmt.Sprint("nobody", i), "n", "hash", "owner"); err == nil {
+			t.Fatal("unknown role stored")
 		}
 		s.Close()
 	}

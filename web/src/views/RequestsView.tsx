@@ -1,7 +1,7 @@
 import { Button, Group, Paper, Select, SimpleGrid, Stack, TextInput, Title } from '@mantine/core';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, useResource, type AccessRequest, type Device, type User } from '../api';
+import { api, isApprover, useResource, type AccessRequest, type Device, type User } from '../api';
 import { DataTable, formatTime, Loaded, showError, StatusBadge } from '../ui';
 
 export function RequestsView({ user }: { user: User }) {
@@ -34,6 +34,11 @@ export function RequestsView({ user }: { user: User }) {
       showError(err);
     }
     requests.reload();
+  }
+
+  // Parents leave their own requests to someone else, as the server insists.
+  function canDecide(r: AccessRequest) {
+    return isApprover(user) && r.status === 'open' && (user.role === 'admin' || r.username !== user.username);
   }
 
   function describe(r: AccessRequest) {
@@ -109,7 +114,7 @@ export function RequestsView({ user }: { user: User }) {
                   describe(r),
                   r.reason,
                   <StatusBadge status={r.status} />,
-                  user.role === 'admin' && r.status === 'open' && (
+                  canDecide(r) && (
                     <Group gap="xs" wrap="nowrap">
                       <Button size="xs" onClick={() => decide(r.id, 'approve')}>
                         {t('requests.approve')}

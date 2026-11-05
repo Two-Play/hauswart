@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/store"
@@ -25,8 +26,16 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request, u store.U
 		s.internal(w, err)
 		return
 	}
-	if u.Role != "admin" {
-		// Members only need something to pick from when filing a request.
+	if u.Role == store.RoleMember {
+		assigned, err := s.store.UserDevices(r.Context(), u.ID)
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		devices = slices.DeleteFunc(devices, func(d store.Device) bool { return !slices.Contains(assigned, d.ID) })
+	}
+	if u.Role != store.RoleAdmin {
+		// They only need something to pick from when filing a request.
 		for i := range devices {
 			devices[i].Report = nil
 		}

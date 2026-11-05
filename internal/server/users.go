@@ -14,6 +14,9 @@ func init() {
 		mux.Handle("GET /api/users", s.admin(s.handleUsers))
 		mux.Handle("POST /api/users", s.admin(s.handleCreateUser))
 		mux.Handle("DELETE /api/users/{id}", s.admin(s.handleDeleteUser))
+		mux.Handle("PUT /api/users/{id}/role", s.admin(s.handleSetRole))
+		mux.Handle("GET /api/users/{id}/devices", s.admin(s.handleUserDevices))
+		mux.Handle("PUT /api/users/{id}/devices", s.admin(s.handleSetUserDevices))
 		mux.Handle("GET /api/audit", s.admin(s.handleAudit))
 	})
 }
@@ -46,7 +49,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, u stor
 		fail(w, http.StatusBadRequest, api.ErrInvalidUsername)
 		return
 	}
-	if in.Role != "admin" && in.Role != "member" {
+	if !store.ValidRole(in.Role) {
 		fail(w, http.StatusBadRequest, api.ErrInvalidRole)
 		return
 	}
@@ -84,6 +87,74 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, u stor
 		s.audit(r, u.Username, "user.deleted", r.PathValue("id"))
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (s *Server) handleSetRole(w http.ResponseWriter, r *http.Request, u store.User) {
+	var in struct {
+		Role string `json:"role"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if !store.ValidRole(in.Role) {
+		fail(w, http.StatusBadRequest, api.ErrInvalidRole)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
+		return
+	}
+	switch err := s.store.SetRole(r.Context(), id, in.Role); {
+	case errors.Is(err, store.ErrNotFound):
+		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
+	case errors.Is(err, store.ErrLastAdmin):
+		fail(w, http.StatusConflict, api.ErrLastAdmin)
+	case err != nil:
+		s.internal(w, err)
+	default:
+		s.audit(r, u.Username, "user.role", r.PathValue("id")+" "+in.Role)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *Server) handleUserDevices(w http.ResponseWriter, r *http.Request, _ store.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
+		return
+	}
+	devices, err := s.store.UserDevices(r.Context(), id)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, devices)
+}
+
+func (s *Server) handleSetUserDevices(w http.ResponseWriter, r *http.Request, u store.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
+		return
+	}
+	var in struct {
+		Devices []string `json:"devices"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	err = s.store.SetUserDevices(r.Context(), id, in.Devices)
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
+		return
+	}
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrNoSuchDevice)
+		return
+	}
+	s.audit(r, u.Username, "user.devices", r.PathValue("id"))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, _ store.User) {

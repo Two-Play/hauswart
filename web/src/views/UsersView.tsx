@@ -2,6 +2,7 @@ import {
   Button,
   Group,
   Modal,
+  MultiSelect,
   Paper,
   PasswordInput,
   Select,
@@ -13,12 +14,40 @@ import {
 } from '@mantine/core';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, useResource, type User } from '../api';
+import { api, useResource, type Device, type User } from '../api';
 import { DataTable, Loaded, showError } from '../ui';
+
+const ROLES = ['member', 'parent', 'admin'];
+
+/** The devices of a member. Everyone else is not limited to any. */
+function AssignedDevices({ target, devices }: { target: User; devices: Device[] }) {
+  const { t } = useTranslation();
+  const assigned = useResource<string[]>(`/api/users/${target.id}/devices`);
+
+  async function change(next: string[]) {
+    try {
+      await api('PUT', `/api/users/${target.id}/devices`, { devices: next });
+    } catch (err) {
+      showError(err);
+    }
+    assigned.reload();
+  }
+
+  return (
+    <MultiSelect
+      aria-label={t('users.devicesOf', { name: target.username })}
+      placeholder={assigned.data?.length ? undefined : t('users.noDevices')}
+      data={devices.map((d) => ({ value: d.id, label: d.hostname }))}
+      value={assigned.data ?? []}
+      onChange={change}
+    />
+  );
+}
 
 export function UsersView({ user }: { user: User }) {
   const { t } = useTranslation();
   const { data, error, reload } = useResource<User[]>('/api/users');
+  const devices = useResource<Device[]>('/api/devices');
   const [username, setUsername] = useState('');
   const [linuxUser, setLinuxUser] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +65,15 @@ export function UsersView({ user }: { user: User }) {
     } catch (err) {
       showError(err);
     }
+  }
+
+  async function changeRole(target: User, next: string) {
+    try {
+      await api('PUT', `/api/users/${target.id}/role`, { role: next });
+    } catch (err) {
+      showError(err);
+    }
+    reload();
   }
 
   async function remove(target: User) {
@@ -83,10 +121,7 @@ export function UsersView({ user }: { user: User }) {
                 allowDeselect={false}
                 value={role}
                 onChange={(next) => setRole(next ?? role)}
-                data={[
-                  { value: 'member', label: t('users.member') },
-                  { value: 'admin', label: t('users.admin') },
-                ]}
+                data={ROLES.map((r) => ({ value: r, label: t(`users.${r}`) }))}
               />
             </SimpleGrid>
             <Group>
@@ -101,13 +136,28 @@ export function UsersView({ user }: { user: User }) {
           {(users) => (
             <DataTable
               empty=""
-              headers={[t('users.username'), t('users.linuxUser'), t('users.role'), '']}
+              headers={[t('users.username'), t('users.linuxUser'), t('users.role'), t('users.devices'), '']}
               rows={users.map((u) => ({
                 key: String(u.id),
                 cells: [
                   u.username,
                   u.linux_user,
-                  t(`users.${u.role}`),
+                  u.id === user.id ? (
+                    t(`users.${u.role}`)
+                  ) : (
+                    <Select
+                      aria-label={t('users.roleOf', { name: u.username })}
+                      allowDeselect={false}
+                      value={u.role}
+                      onChange={(next) => next && changeRole(u, next)}
+                      data={ROLES.map((r) => ({ value: r, label: t(`users.${r}`) }))}
+                    />
+                  ),
+                  u.role === 'member' ? (
+                    <AssignedDevices target={u} devices={(devices.data ?? []).filter((d) => !d.revoked)} />
+                  ) : (
+                    t('users.allDevices')
+                  ),
                   u.id !== user.id && (
                     <Button size="xs" variant="subtle" color="red" onClick={() => setRemoving(u)}>
                       {t('users.remove')}

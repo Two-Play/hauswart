@@ -5,7 +5,7 @@ export interface User {
   id: number;
   username: string;
   linux_user: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'parent' | 'member';
 }
 
 export interface Report {
@@ -39,6 +39,18 @@ export interface Task {
   created_at: number;
 }
 
+export interface WaitingTask extends Task {
+  hostname: string;
+  payload: unknown;
+}
+
+export interface PasskeyEntry {
+  id: number;
+  username: string;
+  name: string;
+  created_at: number;
+}
+
 export interface AccessRequest {
   id: string;
   username: string;
@@ -61,9 +73,15 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
   ) {
     super(message);
   }
+}
+
+/** Whether someone may approve requests and tasks. */
+export function isApprover(user: User): boolean {
+  return user.role === 'admin' || user.role === 'parent';
 }
 
 let onUnauthorized = () => {};
@@ -84,9 +102,17 @@ export async function api<T = void>(method: string, path: string, body?: unknown
   }
   const text = await res.text();
   if (!res.ok) {
-    throw new ApiError(res.status, errorMessage(res.status, text));
+    throw new ApiError(res.status, errorMessage(res.status, text), errorCode(text));
   }
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+function errorCode(text: string): string | undefined {
+  try {
+    return (JSON.parse(text) as { code?: string }).code;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Prefers the translation of the error code over the server's English text. */

@@ -62,6 +62,17 @@ func (s *Server) admin(next userHandler) http.Handler {
 	})
 }
 
+// approver lets through those who may approve: admins and parents.
+func (s *Server) approver(next userHandler) http.Handler {
+	return s.user(func(w http.ResponseWriter, r *http.Request, u store.User) {
+		if u.Role != store.RoleAdmin && u.Role != store.RoleParent {
+			fail(w, http.StatusForbidden, api.ErrApproverOnly)
+			return
+		}
+		next(w, r, u)
+	})
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Username string `json:"username"`

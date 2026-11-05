@@ -60,6 +60,15 @@ const (
 	ErrGroupExists        = "group_exists"
 	ErrNoSuchGroup        = "no_such_group"
 	ErrNotForGroups       = "not_for_groups"
+	ErrApproverOnly       = "approver_only"
+	ErrOwnRequest         = "own_request"
+	ErrDeviceNotAssigned  = "device_not_assigned"
+	ErrNotForPasskey      = "not_for_passkey"
+	ErrInvalidPasskey     = "invalid_passkey"
+	ErrPasskeyRefused     = "passkey_refused"
+	ErrPasskeyRetry       = "passkey_retry"
+	ErrNoPasskeyHost      = "no_passkey_host"
+	ErrPasskeyNotPinned   = "passkey_not_pinned"
 )
 
 // Messages maps every code to its English text.
@@ -81,7 +90,7 @@ var Messages = map[string]string{
 	ErrUseStartPassword:   "use the start-password route",
 	ErrRequestDecided:     "request was already decided",
 	ErrInvalidUsername:    "invalid username",
-	ErrInvalidRole:        "role must be admin or member",
+	ErrInvalidRole:        "role must be admin, parent or member",
 	ErrPasswordTooShort:   "password needs at least %s characters",
 	ErrPasswordTooLong:    "password too long",
 	ErrUsernameTaken:      "username already exists",
@@ -115,6 +124,15 @@ var Messages = map[string]string{
 	ErrGroupExists:        "group already exists",
 	ErrNoSuchGroup:        "no such group",
 	ErrNotForGroups:       "%s cannot go to a whole group",
+	ErrApproverOnly:       "only admins and parents may do this",
+	ErrOwnRequest:         "someone else has to decide your own request",
+	ErrDeviceNotAssigned:  "this device is not assigned to you",
+	ErrNotForPasskey:      "%s cannot be approved with a passkey, use hauswart-admin",
+	ErrInvalidPasskey:     "invalid passkey",
+	ErrPasskeyRefused:     "the passkey approval was refused",
+	ErrPasskeyRetry:       "another approval went first, please approve again",
+	ErrNoPasskeyHost:      "passkeys need a DNS name in the server URL, not an IP address",
+	ErrPasskeyNotPinned:   "none of your passkeys is pinned on this device yet",
 }
 
 // Error is an API error. Value fills the message, for example a rejected name.

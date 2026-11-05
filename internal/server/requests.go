@@ -16,8 +16,8 @@ func init() {
 	addRoutes(func(s *Server, mux *http.ServeMux) {
 		mux.Handle("GET /api/requests", s.user(s.handleListRequests))
 		mux.Handle("POST /api/requests", s.user(s.handleCreateRequest))
-		mux.Handle("POST /api/requests/{id}/approve", s.admin(s.handleApprove))
-		mux.Handle("POST /api/requests/{id}/deny", s.admin(s.handleDeny))
+		mux.Handle("POST /api/requests/{id}/approve", s.approver(s.handleApprove))
+		mux.Handle("POST /api/requests/{id}/deny", s.approver(s.handleDeny))
 	})
 }
 
@@ -25,7 +25,7 @@ func init() {
 
 func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request, u store.User) {
 	var filter int64
-	if u.Role != "admin" {
+	if u.Role == store.RoleMember {
 		filter = u.ID
 	}
 	requests, err := s.store.ListRequests(r.Context(), filter)
@@ -50,6 +50,15 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 	// than for the admin approving it.
 	if _, _, err := requestTask(in.Kind, in.Detail, u.LinuxUser); err != nil {
 		failErr(w, http.StatusBadRequest, err)
+		return
+	}
+	allowed, err := s.store.DeviceAllowed(r.Context(), u.ID, in.DeviceID)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if !allowed {
+		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
 	id, err := s.store.CreateRequest(r.Context(), u.ID, in.DeviceID, in.Kind, in.Detail, in.Reason)
@@ -101,6 +110,23 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 	}
 	if err != nil {
 		s.internal(w, err)
+		return
+	}
+	// A sudo grant goes to the Linux user, and two accounts can share one, so the
+	// account alone is not enough. Otherwise a parent could give themselves root
+	// on an unprotected device, which is more than approving.
+	if u.Role != store.RoleAdmin && (req.UserID == u.ID || req.LinuxUser == u.LinuxUser) {
+		fail(w, http.StatusForbidden, api.ErrOwnRequest)
+		return
+	}
+	// The request may be older than the decision to take the device away.
+	allowed, err := s.store.DeviceAllowed(r.Context(), req.UserID, req.DeviceID)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if !allowed {
+		fail(w, http.StatusConflict, api.ErrDeviceNotAssigned)
 		return
 	}
 	taskType, payload, err := requestTask(req.Kind, req.Detail, req.LinuxUser)

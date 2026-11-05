@@ -1,0 +1,53 @@
+{
+  "nav": { "approvals": "Freigaben" },
+  "users": {
+    "parent": "Elternteil",
+    "devices": "Geräte",
+    "allDevices": "Alle Geräte",
+    "noDevices": "Kein Gerät zugewiesen",
+    "devicesOf": "Geräte von {{name}}",
+    "roleOf": "Rolle von {{name}}"
+  },
+  "approvals": {
+    "weaknessTitle": "Ein Passkey ist schwächer als hauswart-admin",
+    "weakness": "Diese Seite kommt vom Server. Ist der Server gehackt, kann er dir hier eine Aufgabe zeigen und deinen Passkey eine andere bestätigen lassen. Dein Gerät tut dann, was bestätigt wurde, nicht was du gesehen hast. Deshalb gilt ein Passkey nur für die Aufgabentypen, die ein Gerät erlaubt, etwa Pakete, und nie für sudo, Zertifikate, Passwörter oder Schlüssel. Trotzdem kann ein gehackter Server mit einer einzigen Berührung jedes Paket aus den Quellen des Geräts installieren oder entfernen. Berühre deinen Passkey nur für etwas, das du gerade hier angestoßen hast. Bittet dich die Seite ohne Grund, es noch einmal zu versuchen, brich ab.",
+    "unavailableTitle": "Passkeys funktionieren hier nicht",
+    "unavailable": "Passkeys brauchen diese Seite unter einem DNS-Namen über HTTPS, mit einem Zertifikat, dem der Browser vertraut. Eine reine VPN-Adresse reicht nicht, und ein Telefon braucht die Hauswart-CA.",
+    "queue": "Wartet auf Freigabe",
+    "empty": "Nichts wartet auf einen Passkey.",
+    "time": "Angefordert",
+    "device": "Gerät",
+    "task": "Aufgabe",
+    "from": "Von",
+    "approve": "Mit Passkey freigeben",
+    "reject": "Ablehnen",
+    "confirmTitle": "Diese Aufgabe bestätigen",
+    "confirm": "Mit Passkey bestätigen",
+    "validUntil": "Diese Freigabe gilt bis {{time}}.",
+    "approved": "Freigegeben. Das Gerät prüft die Freigabe selbst.",
+    "signing": "Nur mit hauswart-admin",
+    "signingHint": "Diese Aufgaben gehen über das hinaus, was ein Passkey freigeben darf. Signiere sie auf deinem Rechner mit hauswart-admin approve.",
+    "signingEmpty": "Nichts wartet auf eine Signatur.",
+    "passkeys": "Passkeys",
+    "passkeysHint": "Ein neuer Passkey bewirkt noch nichts. Ein Admin muss ihn mit hauswart-admin passkeys pin auf jedem Gerät hinterlegen. Löschen entfernt ihn hier, aber nicht von einem Gerät, dafür braucht es ebenfalls hauswart-admin.",
+    "noPasskeys": "Noch keine Passkeys.",
+    "passkeyName": "Name",
+    "passkeyNameHint": "Zum Beispiel: Telefon",
+    "owner": "Besitzer",
+    "added": "Hinzugefügt",
+    "register": "Passkey hinzufügen",
+    "registered": "Passkey hinzugefügt. Bitte jetzt einen Admin, ihn zu hinterlegen.",
+    "deletePasskey": "Löschen"
+  },
+  "errors": {
+    "approver_only": "Das dürfen nur Admins und Eltern.",
+    "own_request": "Über deine eigene Anfrage muss jemand anderes entscheiden.",
+    "device_not_assigned": "Dieses Gerät ist dir nicht zugewiesen.",
+    "not_for_passkey": "{{value}} lässt sich nicht mit einem Passkey freigeben. Nutze hauswart-admin.",
+    "invalid_passkey": "Der Passkey konnte nicht registriert werden.",
+    "passkey_refused": "Die Passkey-Freigabe wurde abgelehnt.",
+    "passkey_retry": "Eine andere Freigabe war schneller. Bitte gib diese Aufgabe noch einmal frei.",
+    "no_passkey_host": "Passkeys brauchen einen DNS-Namen in der Server-URL, keine IP-Adresse.",
+    "passkey_not_pinned": "Keiner deiner Passkeys ist auf diesem Gerät hinterlegt."
+  }
+}

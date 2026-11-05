@@ -49,6 +49,8 @@ type Server struct {
 	mu       sync.Mutex
 	waiters  map[string]chan struct{}
 	failures map[string]*loginFailure
+	// registrations holds the open passkey registration of each user.
+	registrations map[int64]registration
 
 	// dummyHash keeps login timing equal for unknown usernames.
 	dummyHash []byte
@@ -78,14 +80,15 @@ func New(st *store.Store, ca *pki.CA, publicURL string, log *slog.Logger) (*Serv
 		return nil, err
 	}
 	return &Server{
-		store:     st,
-		ca:        ca,
-		publicURL: strings.TrimRight(publicURL, "/"),
-		log:       log,
-		waiters:   map[string]chan struct{}{},
-		failures:  map[string]*loginFailure{},
-		dummyHash: dummy,
-		index:     index,
+		store:         st,
+		ca:            ca,
+		publicURL:     strings.TrimRight(publicURL, "/"),
+		log:           log,
+		waiters:       map[string]chan struct{}{},
+		failures:      map[string]*loginFailure{},
+		registrations: map[int64]registration{},
+		dummyHash:     dummy,
+		index:         index,
 	}, nil
 }
 

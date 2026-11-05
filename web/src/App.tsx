@@ -17,6 +17,7 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconClipboardList,
   IconDevicesPc,
+  IconFingerprint,
   IconFolders,
   IconHistory,
   IconKey,
@@ -28,8 +29,9 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, setUnauthorizedHandler, type User } from './api';
+import { api, isApprover, setUnauthorizedHandler, type User } from './api';
 import { LANGUAGES, setLanguage } from './i18n';
+import { ApprovalsView } from './views/ApprovalsView';
 import { AuditView } from './views/AuditView';
 import { DevicesView } from './views/DevicesView';
 import { GroupsView } from './views/GroupsView';
@@ -48,10 +50,12 @@ const VIEWS: {
   icon: typeof IconUsers;
   view: ComponentType<ViewProps>;
   adminOnly?: boolean;
+  approverOnly?: boolean;
 }[] = [
   { key: 'devices', icon: IconDevicesPc, view: DevicesView },
   { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
+  { key: 'approvals', icon: IconFingerprint, view: ApprovalsView, approverOnly: true },
   { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
   { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },
   { key: 'audit', icon: IconHistory, view: AuditView, adminOnly: true },
@@ -110,7 +114,9 @@ export function App() {
     return <LoginView onLogin={setUser} controls={<LanguageSwitch />} />;
   }
 
-  const views = VIEWS.filter((v) => !v.adminOnly || user.role === 'admin');
+  const views = VIEWS.filter(
+    (v) => (!v.adminOnly || user.role === 'admin') && (!v.approverOnly || isApprover(user)),
+  );
   const View = (views.find((v) => v.key === active) ?? views[0]).view;
 
   return (

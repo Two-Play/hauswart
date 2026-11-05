@@ -608,6 +608,7 @@ func TestTaskValidationAtServer(t *testing.T) {
 func TestRequestApprovalFlow(t *testing.T) {
 	e := setup(t)
 	id, agent := e.enroll()
+	e.assign("anna", id)
 	member, admin := e.login("anna"), e.login("admin")
 
 	code, data := e.do(member, "POST", "/api/requests", map[string]string{"device_id": id, "kind": "sudo", "detail": "30", "reason": "Treiber"})
@@ -643,6 +644,7 @@ func TestRequestApprovalFlow(t *testing.T) {
 func TestMemberRequestsAreInvalidatedAndPrivate(t *testing.T) {
 	e := setup(t)
 	id, _ := e.enroll()
+	e.assign("anna", id)
 	anna := e.login("anna")
 	if code, _ := e.do(anna, "POST", "/api/requests", map[string]string{"device_id": id, "kind": "software", "detail": "--evil"}); code != http.StatusBadRequest {
 		t.Fatalf("bad package: %d", code)

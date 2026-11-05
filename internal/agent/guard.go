@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -18,11 +20,28 @@ import (
 // could bring expired tasks back to life.
 const clockTolerance = 10 * time.Minute
 
+const (
+	// maxPasskeyLifetime limits how long a server can sit on an approval. The
+	// server picks the expiry of these envelopes, so the device has to.
+	maxPasskeyLifetime = 24 * time.Hour
+	// maxPasskeyJump stops a server from pushing the counter so far that no
+	// later approval fits above it.
+	maxPasskeyJump = 1 << 20
+	// A hacked dashboard can talk someone into touching their passkey again and
+	// again and collect an approval each time. This bounds what that yields.
+	maxPasskeyTasks   = 20
+	passkeyTaskWindow = 24 * time.Hour
+)
+
 // Guard decides whether a task may run on a device with pinned signing keys.
 // Everything it needs lives on the device, out of the server's reach.
 type Guard struct {
 	path string
 	keys []ssh.PublicKey
+
+	// passkeys and passkeyTypes stay empty until SetPasskeys.
+	passkeys     []sign.Passkey
+	passkeyTypes map[string]bool
 
 	mu    sync.Mutex
 	state guardState
@@ -33,6 +52,12 @@ type Guard struct {
 type guardState struct {
 	Counter  uint64    `json:"counter"`
 	LastSeen time.Time `json:"last_seen"`
+	// PasskeyCounter is apart from Counter, because the server chooses it.
+	// Sharing one would let a hacked server stop all signed tasks with a single
+	// approval, by setting a counter nothing can go above.
+	PasskeyCounter uint64    `json:"passkey_counter,omitempty"`
+	PasskeyWindow  time.Time `json:"passkey_window,omitzero"`
+	PasskeyTasks   int       `json:"passkey_tasks,omitempty"`
 }
 
 // CreateGuard writes the initial state when keys are first pinned.
@@ -75,6 +100,42 @@ func (g *Guard) SetKeys(keys []ssh.PublicKey) {
 	g.keys = keys
 }
 
+// PasskeyCounter is the highest accepted passkey counter, for the report.
+func (g *Guard) PasskeyCounter() uint64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.state.PasskeyCounter
+}
+
+// SetPasskeys replaces the pinned passkeys and the task types they may approve.
+// Types outside the ceiling in the api package stay refused, whatever the list
+// says.
+func (g *Guard) SetPasskeys(passkeys []sign.Passkey, types []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.passkeys = passkeys
+	g.passkeyTypes = map[string]bool{}
+	for _, taskType := range types {
+		if api.PasskeyEligible(taskType) {
+			g.passkeyTypes[taskType] = true
+		}
+	}
+}
+
+// Passkeys reports the credential IDs and types in force, for the report.
+func (g *Guard) Passkeys() (ids, types []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, p := range g.passkeys {
+		ids = append(ids, base64.RawURLEncoding.EncodeToString(p.CredentialID))
+	}
+	for taskType := range g.passkeyTypes {
+		types = append(types, taskType)
+	}
+	slices.Sort(types)
+	return ids, types
+}
+
 // Admit returns the task to execute. For a signed task, that is built from the
 // signed envelope alone, so nothing the server added can reach the system. The
 // counter is stored durably before the task runs: a crash then loses a task at
@@ -92,6 +153,9 @@ func (g *Guard) Admit(task api.Task, device string, now time.Time) (api.Task, er
 		}
 		return task, nil
 	}
+	if task.Signed.Passkey != nil {
+		return g.admitPasskey(task, device, now)
+	}
 	env, err := sign.Verify(*task.Signed, g.keys)
 	if err != nil {
 		return api.Task{}, err
@@ -105,12 +169,59 @@ func (g *Guard) Admit(task api.Task, device string, now time.Time) (api.Task, er
 	if env.Counter <= g.state.Counter {
 		return api.Task{}, fmt.Errorf("counter %d is not above %d", env.Counter, g.state.Counter)
 	}
-	next := guardState{Counter: env.Counter, LastSeen: laterOf(g.state.LastSeen, now)}
+	next := g.state
+	next.Counter = env.Counter
+	next.LastSeen = laterOf(g.state.LastSeen, now)
 	if err := writeDurable(g.path, next); err != nil {
 		return api.Task{}, err
 	}
 	g.state = next
 	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload}, nil
+}
+
+// admitPasskey is Admit for a task approved in a browser. The server may have
+// chosen every field of the envelope and shown the person something else, so
+// on top of the signature, this limits what such an approval can reach. The
+// caller holds the lock.
+func (g *Guard) admitPasskey(task api.Task, device string, now time.Time) (api.Task, error) {
+	env, passkey, err := sign.VerifyPasskey(*task.Signed, g.passkeys, now)
+	if err != nil {
+		return api.Task{}, err
+	}
+	if env.DeviceID != device {
+		return api.Task{}, fmt.Errorf("task was approved for device %s", env.DeviceID)
+	}
+	if !now.Before(env.NotAfter) {
+		return api.Task{}, errors.New("approved task has expired")
+	}
+	if env.NotAfter.After(now.Add(maxPasskeyLifetime)) {
+		return api.Task{}, errors.New("approval is valid for too long")
+	}
+	if !g.passkeyTypes[env.Type] {
+		return api.Task{}, fmt.Errorf("a passkey may not approve %s on this device", env.Type)
+	}
+	if env.Counter <= g.state.PasskeyCounter {
+		return api.Task{}, fmt.Errorf("counter %d is not above %d", env.Counter, g.state.PasskeyCounter)
+	}
+	if env.Counter-g.state.PasskeyCounter > maxPasskeyJump {
+		return api.Task{}, fmt.Errorf("counter %d is too far above %d", env.Counter, g.state.PasskeyCounter)
+	}
+	next := g.state
+	if !now.Before(next.PasskeyWindow.Add(passkeyTaskWindow)) {
+		next.PasskeyWindow = now
+		next.PasskeyTasks = 0
+	}
+	if next.PasskeyTasks >= maxPasskeyTasks {
+		return api.Task{}, fmt.Errorf("more than %d passkey approvals within a day", maxPasskeyTasks)
+	}
+	next.PasskeyTasks++
+	next.PasskeyCounter = env.Counter
+	next.LastSeen = laterOf(g.state.LastSeen, now)
+	if err := writeDurable(g.path, next); err != nil {
+		return api.Task{}, err
+	}
+	g.state = next
+	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload, Approver: passkey.Name}, nil
 }
 
 // Touch moves the last seen time forward, so that a later clock rollback shows.
@@ -120,7 +231,8 @@ func (g *Guard) Touch(now time.Time) error {
 	if !now.After(g.state.LastSeen) {
 		return nil
 	}
-	next := guardState{Counter: g.state.Counter, LastSeen: now}
+	next := g.state
+	next.LastSeen = now
 	if err := writeDurable(g.path, next); err != nil {
 		return err
 	}

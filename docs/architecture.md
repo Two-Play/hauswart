@@ -27,7 +27,7 @@ there.
 | `internal/pki` | Certificate authority |
 | `internal/agent` | Enrollment, connection, task execution |
 | `internal/backup` | Backup and restore |
-| `internal/sign` | Signatures for tasks |
+| `internal/sign` | Signatures and passkey assertions for tasks |
 | `cmd/hauswart-admin` | Signing tool for the admin's computer |
 | `web` | React and Mantine dashboard, embedded into the server binary |
 | `packaging` | systemd units, RPM spec, `.deb` build |
@@ -73,7 +73,7 @@ The agent runs only these task types:
 | `sudo.grant`, `sudo.revoke` | Temporary sudoers rule, 24 hours at most |
 | `user.create`, `user.lock`, `user.unlock` | Linux accounts |
 | `user.passwd` | Start password from a hash, to be changed at first login |
-| `keys.set` | Replaces the pinned signing keys, needs a signature |
+| `keys.set` | Replaces the pinned signing keys and passkeys, needs a signature |
 | `limit.set` | CPU and memory limits through a systemd slice drop-in |
 
 `api.Validate` checks every task on the server for early feedback, and again on
@@ -106,10 +106,56 @@ decodes and shows them, and signs its own encoding, never bytes from the server.
 Password hashes and key lists are made by the tool itself and refused from the
 queue.
 
+## Passkey approvals
+
+A passkey approves a task in the browser, without the signing tool. It is weaker,
+see [the security model](security.md), so it runs alongside signatures and shares
+only the envelope with them.
+
+1. A parent or admin registers a passkey in the dashboard. On the server, that is
+   only a candidate and means nothing to any device.
+2. `hauswart-admin passkeys pin` signs a `keys.set` holding the keys and the
+   passkeys with their RP ID, origin and expiry. The agent stores them in
+   `agent.json`. `keys.set` replaces both lists, and `admin.json` remembers what
+   was pinned. There is no other way onto a device.
+3. For a task in status `signing`, the server allocates a passkey counter and builds
+   the same envelope as for a signature. The dashboard decodes it, shows it, computes
+   the challenge itself, `SHA-256("hauswart-task-passkey@v1\0" || envelope)`, and
+   asks for the passkey.
+4. The server checks the assertion against the approver's own passkey, for early
+   feedback only, and releases the task.
+5. `internal/sign/passkey.go` checks the signature before parsing anything, then
+   type, challenge, origin, RP ID, and the flags for presence and verification. The
+   guard then checks device, expiry, the local list and the counter, and rebuilds
+   the task from the envelope.
+
+`guard.json` holds a separate counter for passkeys. The server picks this one, so
+sharing the signing counter would let one approval stop all signed tasks. A jump
+limit protects the passkey counter in the same way. Tasks with a passkey reach the
+device in counter order. If one overtakes another, the server asks for a new
+approval instead of sending a task the device would refuse.
+
+`passkey_types` in `agent.json` lists the task types a passkey may approve on this
+device. Missing means the default, an empty list means none. The agent reads it at
+start, no task changes it, and `keys.set` leaves it alone. It can only narrow
+`DefaultPasskeyTypes` in `internal/api/passkeys.go`, which is also the ceiling.
+
+## Roles
+
+| Role | May do |
+| --- | --- |
+| `admin` | Everything |
+| `parent` | Decide requests of others, approve listed tasks with a passkey |
+| `member` | File requests for the devices assigned to them |
+
+A member sees only assigned devices. A device enrolled later is assigned to nobody
+until an admin does it. The update to these roles assigns all existing devices to
+existing members, so nothing disappears for them.
+
 ## Requests
 
 A member files a request for software, a Flatpak or sudo. Nothing reaches the
-device until an admin approves it, which creates the task. A single conditional
+device until an admin or parent approves it, which creates the task. A single conditional
 update decides a request, so a double click cannot create two tasks. The expiry
 of a sudo grant counts from the approval.
 

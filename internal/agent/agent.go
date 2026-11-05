@@ -62,6 +62,22 @@ type Config struct {
 	// SigningKeys are the public keys tasks must be signed with. The server
 	// has no way to change them. Empty means this device is not protected.
 	SigningKeys []string `json:"signing_keys,omitempty"`
+	// Passkeys may approve tasks in a browser. Like the keys, they only arrive
+	// through a signed keys.set.
+	Passkeys []sign.Passkey `json:"passkeys,omitempty"`
+	// PasskeyTypes limits what a passkey may approve on this device. It is the
+	// device owner's: no task changes it, and the agent reads it at start. null
+	// means api.DefaultPasskeyTypes, an empty list means nothing at all, so this
+	// field must never get omitempty.
+	PasskeyTypes []string `json:"passkey_types"`
+}
+
+// passkeyTypes applies the default.
+func (c Config) passkeyTypes() []string {
+	if c.PasskeyTypes == nil {
+		return api.DefaultPasskeyTypes
+	}
+	return c.PasskeyTypes
 }
 
 // DeviceID reads the ID of an enrolled device.
@@ -211,6 +227,7 @@ func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string, sign
 		DeviceID:     out.DeviceID,
 		AllowedPaths: DefaultAllowedPaths,
 		SigningKeys:  signingKeys,
+		PasskeyTypes: api.DefaultPasskeyTypes,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -305,6 +322,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 		if guard, err = OpenGuard(filepath.Join(dir, guardFile), cfg.SigningKeys); err != nil {
 			return nil, err
 		}
+		guard.SetPasskeys(usablePasskeys(cfg.Passkeys, log), cfg.passkeyTypes())
 	}
 	platform := Detect()
 	a := &Agent{
@@ -340,6 +358,20 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 		}},
 	}
 	return a, nil
+}
+
+// usablePasskeys drops what does not parse. A bad entry costs that one passkey
+// and must never stop the agent, because then signed tasks would stop as well.
+func usablePasskeys(passkeys []sign.Passkey, log *slog.Logger) []sign.Passkey {
+	usable := make([]sign.Passkey, 0, len(passkeys))
+	for _, p := range passkeys {
+		if err := sign.ValidPasskey(p); err != nil {
+			log.Warn("ignoring pinned passkey", "name", p.Name, "err", err)
+			continue
+		}
+		usable = append(usable, p)
+	}
+	return usable
 }
 
 // Run blocks until ctx ends.
@@ -462,6 +494,8 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()
+			report.PasskeyCounter = a.guard.PasskeyCounter()
+			report.Passkeys, report.PasskeyTypes = a.guard.Passkeys()
 			if err := a.guard.Touch(time.Now()); err != nil {
 				a.log.Error("saving signing state failed", "err", err)
 			}
@@ -513,6 +547,12 @@ func (a *Agent) handle(ctx context.Context, task api.Task) api.TaskResult {
 		}
 		task = admitted
 	}
+	if task.Approver != "" {
+		// The server's audit log proves nothing, so this is the record that
+		// counts of what an approval in a browser really did.
+		a.log.Warn("running task approved by passkey", "id", task.ID, "type", task.Type,
+			"passkey", task.Approver, "payload", string(task.Payload))
+	}
 	a.log.Info("running task", "id", task.ID, "type", task.Type)
 	if task.Type == api.TaskKeysSet {
 		return a.setKeys(task)
@@ -541,18 +581,30 @@ func (a *Agent) setKeys(task api.Task) api.TaskResult {
 		}
 		keys = append(keys, key)
 	}
-	cfg := a.cfg
-	cfg.SigningKeys = p.Keys
-	raw, err := json.MarshalIndent(cfg, "", "  ")
+	// The file is read again, because the device owner may have edited it while
+	// the agent runs. Only the two pinned lists come from the task.
+	path := filepath.Join(a.dir, configFile)
+	var cfg Config
+	raw, err := os.ReadFile(path)
 	if err == nil {
-		err = writeAtomicSync(filepath.Join(a.dir, configFile), raw, 0o600)
+		err = json.Unmarshal(raw, &cfg)
+	}
+	if err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	cfg.SigningKeys = p.Keys
+	cfg.Passkeys = p.Passkeys
+	raw, err = json.MarshalIndent(cfg, "", "  ")
+	if err == nil {
+		err = writeAtomicSync(path, raw, 0o600)
 	}
 	if err != nil {
 		return api.TaskResult{OK: false, Output: err.Error()}
 	}
 	a.cfg = cfg
 	a.guard.SetKeys(keys)
-	return api.TaskResult{OK: true, Output: fmt.Sprintf("%d signing keys pinned", len(keys))}
+	a.guard.SetPasskeys(usablePasskeys(p.Passkeys, a.log), cfg.passkeyTypes())
+	return api.TaskResult{OK: true, Output: fmt.Sprintf("%d signing keys and %d passkeys pinned", len(keys), len(p.Passkeys))}
 }
 
 func (a *Agent) poll(ctx context.Context) (*api.Task, error) {

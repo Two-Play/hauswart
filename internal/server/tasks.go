@@ -19,7 +19,7 @@ func init() {
 		mux.Handle("POST /api/devices/{id}/signed-tasks", s.admin(s.handleCreateSignedTask))
 		mux.Handle("GET /api/signing", s.admin(s.handleSigningQueue))
 		mux.Handle("POST /api/tasks/{id}/signature", s.admin(s.handleSignature))
-		mux.Handle("POST /api/tasks/{id}/reject", s.admin(s.handleReject))
+		mux.Handle("POST /api/tasks/{id}/reject", s.approver(s.handleReject))
 		mux.Handle("GET /api/tasks", s.admin(s.handleTasks))
 	})
 }
@@ -149,6 +149,14 @@ func (s *Server) handleSignature(w http.ResponseWriter, r *http.Request, u store
 
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request, u store.User) {
 	id := r.PathValue("id")
+	if u.Role != store.RoleAdmin {
+		// Parents only ever see the types they can approve.
+		task, err := s.store.WaitingTask(r.Context(), id)
+		if err == nil && !api.PasskeyEligible(task.Type) {
+			fail(w, http.StatusForbidden, api.ErrAdminOnly)
+			return
+		}
+	}
 	err := s.store.RejectTask(r.Context(), id, u.Username)
 	if errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusConflict, api.ErrNotWaiting)

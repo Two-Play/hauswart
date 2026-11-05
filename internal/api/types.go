@@ -41,6 +41,9 @@ type Task struct {
 	// Signed is set on tasks an admin signed. On a device with pinned keys,
 	// it is the only part that counts.
 	Signed *sign.Signed `json:"signed,omitempty"`
+	// Approver names the passkey that approved a task, for the device's log.
+	// Only the guard sets it, so it never travels.
+	Approver string `json:"-"`
 }
 
 type TaskResult struct {
@@ -84,9 +87,11 @@ type PasswordPayload struct {
 	Hash string `json:"hash"`
 }
 
-// KeysPayload replaces the signing keys pinned on a device.
+// KeysPayload replaces the signing keys and passkeys pinned on a device. Leaving
+// out passkeys removes those that were pinned.
 type KeysPayload struct {
-	Keys []string `json:"keys"`
+	Keys     []string       `json:"keys"`
+	Passkeys []sign.Passkey `json:"passkeys,omitempty"`
 }
 
 type LimitPayload struct {
@@ -101,6 +106,11 @@ type Report struct {
 	// it got. Both are only hints for the admin tool, the device decides.
 	Protected bool   `json:"protected"`
 	Counter   uint64 `json:"counter"`
+	// The same goes for what it says about passkeys: which credentials it has
+	// pinned, which task types they may approve and how far their counter got.
+	Passkeys       []string `json:"passkeys,omitempty"`
+	PasskeyTypes   []string `json:"passkey_types,omitempty"`
+	PasskeyCounter uint64   `json:"passkey_counter,omitempty"`
 
 	Hostname     string   `json:"hostname"`
 	Distro       string   `json:"distro"`

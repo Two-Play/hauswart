@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/sign"
+	"github.com/philippe/hauswart/internal/sign/passkeytest"
 )
 
 const guardDevice = "this-device"
@@ -196,5 +198,392 @@ func TestGuardRejectsWithoutKeys(t *testing.T) {
 	task := signedTask(t, newKey(t), guardDevice, 1, time.Now().Add(time.Hour))
 	if _, err := g.Admit(task, guardDevice, time.Now()); err == nil {
 		t.Fatal("admitted without pinned keys")
+	}
+}
+
+const passkeyPayload = `{"packages":["vim"]}`
+
+func passkeyGuard(t *testing.T, a *passkeytest.Authenticator) *Guard {
+	t.Helper()
+	g := newGuard(t, newKey(t))
+	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	return g
+}
+
+func approved(t *testing.T, a *passkeytest.Authenticator, env sign.Envelope) api.Task {
+	t.Helper()
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api.Task{ID: "id", Type: env.Type, Signed: &sign.Signed{Envelope: raw, Passkey: a.Assert(t, raw)}}
+}
+
+func passkeyEnvelope(counter uint64) sign.Envelope {
+	return sign.Envelope{
+		Type:     api.TaskPkgInstall,
+		Payload:  json.RawMessage(passkeyPayload),
+		DeviceID: guardDevice,
+		Counter:  counter,
+		NotAfter: time.Now().Add(time.Hour),
+	}
+}
+
+func TestGuardAdmitsPasskeyTask(t *testing.T) {
+	a := passkeytest.New(t)
+	task := approved(t, a, passkeyEnvelope(1))
+	// Nothing the server put next to the envelope survives.
+	task.Type = api.TaskSudoGrant
+	task.Payload = json.RawMessage(`{"user":"evil"}`)
+	got, err := passkeyGuard(t, a).Admit(task, guardDevice, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != api.TaskPkgInstall || string(got.Payload) != passkeyPayload || got.Approver != "phone" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestGuardRejectsPasskeyTasks(t *testing.T) {
+	envelopeWith := func(change func(*sign.Envelope)) sign.Envelope {
+		env := passkeyEnvelope(1)
+		change(&env)
+		return env
+	}
+	cases := map[string]sign.Envelope{
+		"other device":   envelopeWith(func(e *sign.Envelope) { e.DeviceID = "other-device" }),
+		"expired":        envelopeWith(func(e *sign.Envelope) { e.NotAfter = time.Now().Add(-time.Second) }),
+		"far expiry":     envelopeWith(func(e *sign.Envelope) { e.NotAfter = time.Now().Add(25 * time.Hour) }),
+		"zero counter":   envelopeWith(func(e *sign.Envelope) { e.Counter = 0 }),
+		"huge counter":   envelopeWith(func(e *sign.Envelope) { e.Counter = 1<<64 - 1 }),
+		"sudo":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskSudoGrant }),
+		"keys":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskKeysSet }),
+		"ca":             envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskCAInstall }),
+		"password":       envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskUserPassword }),
+		"file":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskFilePut }),
+		"user":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskUserCreate }),
+		"limit":          envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskLimitSet }),
+		"unknown future": envelopeWith(func(e *sign.Envelope) { e.Type = "policy.set" }),
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			a := passkeytest.New(t)
+			if _, err := passkeyGuard(t, a).Admit(approved(t, a, env), guardDevice, time.Now()); err == nil {
+				t.Fatal("admitted")
+			}
+		})
+	}
+}
+
+func TestGuardRejectsPasskeyThatIsNotPinned(t *testing.T) {
+	a := passkeytest.New(t)
+	task := approved(t, passkeytest.New(t), passkeyEnvelope(1))
+	if _, err := passkeyGuard(t, a).Admit(task, guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted")
+	}
+}
+
+func TestGuardRejectsPasskeyWrongOrigin(t *testing.T) {
+	a := passkeytest.New(t)
+	g := passkeyGuard(t, a)
+	a.Origin = "https://evil.example"
+	if _, err := g.Admit(approved(t, a, passkeyEnvelope(1)), guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted")
+	}
+}
+
+func TestGuardRejectsPasskeyChangedEnvelope(t *testing.T) {
+	a := passkeytest.New(t)
+	task := approved(t, a, passkeyEnvelope(1))
+	changed := passkeyEnvelope(1)
+	changed.Payload = json.RawMessage(`{"packages":["nmap"]}`)
+	raw, err := json.Marshal(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Signed.Envelope = raw
+	if _, err := passkeyGuard(t, a).Admit(task, guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted")
+	}
+}
+
+func TestGuardRejectsPasskeyReplay(t *testing.T) {
+	a := passkeytest.New(t)
+	g := passkeyGuard(t, a)
+	task := approved(t, a, passkeyEnvelope(3))
+	if _, err := g.Admit(task, guardDevice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Admit(task, guardDevice, time.Now()); err == nil {
+		t.Fatal("replay admitted")
+	}
+	if _, err := g.Admit(approved(t, a, passkeyEnvelope(2)), guardDevice, time.Now()); err == nil {
+		t.Fatal("task below the high-water mark admitted")
+	}
+}
+
+// Touch runs with every report. If it forgot the passkey counter, the server
+// could replay any approval that has not expired yet.
+func TestGuardPasskeyCounterSurvivesTouchSignedTaskAndRestart(t *testing.T) {
+	a := passkeytest.New(t)
+	signer := newKey(t)
+	g := newGuard(t, signer)
+	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	task := approved(t, a, passkeyEnvelope(3))
+	if _, err := g.Admit(task, guardDevice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Touch(time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Admit(task, guardDevice, time.Now().Add(time.Minute)); err == nil {
+		t.Fatal("replay admitted after a report")
+	}
+	if _, err := g.Admit(signedTask(t, signer, guardDevice, 1, time.Now().Add(time.Hour)), guardDevice, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Admit(task, guardDevice, time.Now().Add(time.Minute)); err == nil {
+		t.Fatal("replay admitted after a signed task")
+	}
+	reopened, err := OpenGuard(g.path, []string{sign.FormatKey(signer.PublicKey())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	if _, err := reopened.Admit(task, guardDevice, time.Now().Add(time.Minute)); err == nil {
+		t.Fatal("replay admitted after a restart")
+	}
+}
+
+// The two counters must not touch each other: an approval with a huge counter
+// may not stop signed tasks, and signed tasks may not revive old approvals.
+func TestGuardKeepsCountersApart(t *testing.T) {
+	a := passkeytest.New(t)
+	signer := newKey(t)
+	g := newGuard(t, signer)
+	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, api.DefaultPasskeyTypes)
+	if _, err := g.Admit(approved(t, a, passkeyEnvelope(1000)), guardDevice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if g.Counter() != 0 {
+		t.Fatalf("signing counter moved to %d", g.Counter())
+	}
+	if _, err := g.Admit(signedTask(t, signer, guardDevice, 1, time.Now().Add(time.Hour)), guardDevice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if g.PasskeyCounter() != 1000 {
+		t.Fatalf("passkey counter is %d", g.PasskeyCounter())
+	}
+}
+
+func TestGuardLocalListNarrowsButNeverWidens(t *testing.T) {
+	a := passkeytest.New(t)
+	g := newGuard(t, newKey(t))
+	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, []string{api.TaskFlatpakInstall, api.TaskSudoGrant, api.TaskKeysSet})
+
+	refused := passkeyEnvelope(1) // pkg.install, a default that this list leaves out
+	if _, err := g.Admit(approved(t, a, refused), guardDevice, time.Now()); err == nil {
+		t.Fatal("unlisted type admitted")
+	}
+	sudo := passkeyEnvelope(2)
+	sudo.Type = api.TaskSudoGrant
+	if _, err := g.Admit(approved(t, a, sudo), guardDevice, time.Now()); err == nil {
+		t.Fatal("list widened beyond the ceiling")
+	}
+	allowed := passkeyEnvelope(3)
+	allowed.Type = api.TaskFlatpakInstall
+	if _, err := g.Admit(approved(t, a, allowed), guardDevice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	g.SetPasskeys([]sign.Passkey{a.Pin(t)}, []string{})
+	allowed.Counter = 4
+	if _, err := g.Admit(approved(t, a, allowed), guardDevice, time.Now()); err == nil {
+		t.Fatal("empty list admitted a task")
+	}
+}
+
+func TestGuardLimitsPasskeyTasksPerDay(t *testing.T) {
+	a := passkeytest.New(t)
+	g := passkeyGuard(t, a)
+	now := time.Now()
+	pin := a.Pin(t)
+	pin.NotAfter = now.Add(2 * passkeyTaskWindow)
+	g.SetPasskeys([]sign.Passkey{pin}, api.DefaultPasskeyTypes)
+	for i := range maxPasskeyTasks {
+		if _, err := g.Admit(approved(t, a, passkeyEnvelope(uint64(i+1))), guardDevice, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	over := passkeyEnvelope(maxPasskeyTasks + 1)
+	if _, err := g.Admit(approved(t, a, over), guardDevice, now); err == nil {
+		t.Fatal("limit ignored")
+	}
+	later := now.Add(passkeyTaskWindow)
+	over.NotAfter = later.Add(time.Hour)
+	if _, err := g.Admit(approved(t, a, over), guardDevice, later); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The signing path is the way to recover, so a refused approval must not use up
+// the limit or the counter.
+func TestGuardRefusedPasskeyTaskChangesNothing(t *testing.T) {
+	a := passkeytest.New(t)
+	g := passkeyGuard(t, a)
+	sudo := passkeyEnvelope(5)
+	sudo.Type = api.TaskSudoGrant
+	if _, err := g.Admit(approved(t, a, sudo), guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted")
+	}
+	if g.PasskeyCounter() != 0 {
+		t.Fatalf("counter moved to %d", g.PasskeyCounter())
+	}
+}
+
+func TestSignedKeysStayWithSignatures(t *testing.T) {
+	signer := newKey(t)
+	g := newGuard(t, signer)
+	unsigned := api.Task{Type: api.TaskKeysSet, Payload: json.RawMessage(`{"keys":["x"]}`)}
+	if _, err := g.Admit(unsigned, guardDevice, time.Now()); err == nil {
+		t.Fatal("keys.set without a signature admitted")
+	}
+}
+
+func testAgent(t *testing.T, cfg Config) *Agent {
+	t.Helper()
+	dir := t.TempDir()
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, configFile), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, guardFile)
+	if err := CreateGuard(path); err != nil {
+		t.Fatal(err)
+	}
+	g, err := OpenGuard(path, cfg.SigningKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Agent{cfg: cfg, dir: dir, guard: g, log: slog.New(slog.DiscardHandler)}
+}
+
+func keysTask(t *testing.T, keys []string, passkeys []sign.Passkey) api.Task {
+	t.Helper()
+	raw, err := json.Marshal(api.KeysPayload{Keys: keys, Passkeys: passkeys})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api.Task{Type: api.TaskKeysSet, Payload: raw}
+}
+
+func readConfig(t *testing.T, dir string) Config {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, configFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestSetKeysPinsPasskeysAndKeepsTheLocalList(t *testing.T) {
+	key := sign.FormatKey(newKey(t).PublicKey())
+	a := testAgent(t, Config{DeviceID: guardDevice, SigningKeys: []string{key}, PasskeyTypes: []string{}})
+	authenticator := passkeytest.New(t)
+
+	if result := a.setKeys(keysTask(t, []string{key}, []sign.Passkey{authenticator.Pin(t)})); !result.OK {
+		t.Fatal(result.Output)
+	}
+	cfg := readConfig(t, a.dir)
+	if len(cfg.Passkeys) != 1 {
+		t.Fatalf("passkeys: %+v", cfg.Passkeys)
+	}
+	// An empty list means no approvals. Turning it into null would mean the
+	// default list, and so widen it.
+	if cfg.PasskeyTypes == nil || len(cfg.PasskeyTypes) != 0 {
+		t.Fatalf("local list changed: %#v", cfg.PasskeyTypes)
+	}
+	if _, types := a.guard.Passkeys(); len(types) != 0 {
+		t.Fatalf("guard types: %v", types)
+	}
+
+	// Without passkeys in the task, the pin is gone, on disk and in memory.
+	if result := a.setKeys(keysTask(t, []string{key}, nil)); !result.OK {
+		t.Fatal(result.Output)
+	}
+	if cfg := readConfig(t, a.dir); len(cfg.Passkeys) != 0 {
+		t.Fatalf("passkey survived: %+v", cfg.Passkeys)
+	}
+	if ids, _ := a.guard.Passkeys(); len(ids) != 0 {
+		t.Fatalf("passkey survived in memory: %v", ids)
+	}
+}
+
+// The owner may narrow the list while the agent runs, and a keys.set must not
+// write the older copy from memory over that.
+func TestSetKeysKeepsLocalEdits(t *testing.T) {
+	key := sign.FormatKey(newKey(t).PublicKey())
+	a := testAgent(t, Config{DeviceID: guardDevice, SigningKeys: []string{key}})
+	edited := readConfig(t, a.dir)
+	edited.PasskeyTypes = []string{api.TaskPkgUpgrade}
+	raw, err := json.Marshal(edited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.dir, configFile), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if result := a.setKeys(keysTask(t, []string{key}, nil)); !result.OK {
+		t.Fatal(result.Output)
+	}
+	if got := readConfig(t, a.dir).PasskeyTypes; len(got) != 1 || got[0] != api.TaskPkgUpgrade {
+		t.Fatalf("local edit lost: %v", got)
+	}
+}
+
+func TestSetKeysRefusesInvalidPasskey(t *testing.T) {
+	key := sign.FormatKey(newKey(t).PublicKey())
+	a := testAgent(t, Config{DeviceID: guardDevice, SigningKeys: []string{key}})
+	pin := passkeytest.New(t).Pin(t)
+	pin.Origin = "https://10.8.0.1:8443"
+	if result := a.setKeys(keysTask(t, []string{key}, []sign.Passkey{pin})); result.OK {
+		t.Fatal("pinned an invalid passkey")
+	}
+	if got := readConfig(t, a.dir).Passkeys; len(got) != 0 {
+		t.Fatalf("written: %+v", got)
+	}
+}
+
+// A bad entry must cost that passkey only, never the agent.
+func TestUsablePasskeysDropsBadEntries(t *testing.T) {
+	good := passkeytest.New(t).Pin(t)
+	bad := good
+	bad.PublicKey = []byte("garbage")
+	got := usablePasskeys([]sign.Passkey{bad, good}, slog.New(slog.DiscardHandler))
+	if len(got) != 1 || string(got[0].PublicKey) != string(good.PublicKey) {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestMissingListMeansDefaults(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"device_id":"x"}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.passkeyTypes()) != len(api.DefaultPasskeyTypes) {
+		t.Fatalf("got %v", cfg.passkeyTypes())
+	}
+	if err := json.Unmarshal([]byte(`{"passkey_types":[]}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.passkeyTypes()) != 0 {
+		t.Fatalf("got %v", cfg.passkeyTypes())
 	}
 }

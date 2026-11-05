@@ -130,7 +130,9 @@ it, tasks need a signature made on your own computer. Do this on the computer
 you sign on first.
 
 The price: on a protected device, the dashboard only queues tasks. You confirm
-them with `hauswart-admin approve`, which does not work from a phone.
+them with `hauswart-admin approve`, which does not work from a phone. For a part of
+the tasks, [a passkey](#approve-with-a-passkey) can do that, at a lower level of
+security.
 
 Create two dedicated keys. Keep the second one offline, for example on a USB
 stick. It is your way back if you lose the first.
@@ -188,6 +190,106 @@ that stays off longer needs a new one.
 If you lose every key, or a device loses `/var/lib/hauswart/guard.json`, that
 device refuses work until you enroll it again. That is deliberate: a state that
 can be reset could be replayed.
+
+## Approve with a passkey
+
+`hauswart-admin approve` does not work from a phone. A passkey does, for tasks that
+stay within a list on each device. **It is weaker than signing:** read
+[what a hacked server can do with it](security.md#with-control-of-the-server-on-a-device-with-pinned-passkeys)
+before you pin one. Signing keeps working as before, and everything outside the
+list stays with `hauswart-admin`.
+
+### What it needs
+
+**A DNS name.** WebAuthn does not work with a bare IP address, so
+`-url https://10.8.0.1:8443` is not enough. Use a name that resolves to the VPN
+address on all your devices, for example `https://hauswart.home.arpa:8443` through
+the DNS server of your VPN, or the MagicDNS name of Tailscale.
+
+The name has to be within the scope of the CA, which cannot change later. It is
+when it is the host in `-url` or `-hosts` at the first start, or below a domain in
+`-ca-scope`. A server set up with addresses only needs a new CA, and every device
+has to be enrolled again.
+
+The passkey belongs to that exact name and port. If you change `-url` later, all
+passkeys have to be registered and pinned again.
+
+**A browser that trusts the CA.** WebAuthn refuses a page with a certificate
+warning, so accepting the warning does not help. On a computer, see
+[Browser trust](#browser-trust). A phone is not enrolled, so it needs the CA by hand.
+Download `https://<server>:8443/ca.pem` on the phone and compare the fingerprint
+with the one in the server log:
+
+- **Android:** Settings, Security and privacy, More security settings, Encryption
+  and credentials, Install a certificate, CA certificate. The wording differs
+  between makers.
+- **iPhone and iPad:** open the file and install the profile in Settings. Then
+  turn it on under General, About, Certificate Trust Settings. Without this second
+  step, it does not count.
+
+A CA on a phone can only ever vouch for the names in its scope, so a stolen CA key
+reaches no other websites from there.
+
+### Register and pin
+
+1. Sign in to the dashboard as a parent or admin, and open **Approvals**. Choose
+   **Add passkey** on the phone or computer that will approve. Do not do this while
+   you have any doubt about the server.
+2. On the computer you sign on, pin it on each device where it should work:
+
+   ```bash
+   hauswart-admin passkeys list
+   hauswart-admin passkeys pin --device ID --passkey N
+   ```
+
+   The tool shows the resulting list and asks before it signs. A passkey is refused
+   if it belongs to another server than the one you logged in to.
+
+Pins end after 180 days. `hauswart-admin passkeys renew --device ID` extends them
+from what this computer remembers, without asking the server. To remove a passkey
+that was lost, or all of them after trouble with the server:
+
+```bash
+hauswart-admin passkeys unpin --device ID --name phone
+hauswart-admin passkeys unpin --device ID
+```
+
+The device has to be online to receive the change. Check its journal before you
+rely on it, because a hacked server can withhold the task.
+
+### Limit what a passkey may approve
+
+Each device has its own list in `/var/lib/hauswart/agent.json`, which the server
+cannot change:
+
+```json
+"passkey_types": ["pkg.upgrade", "notify.send"]
+```
+
+Removing `pkg.remove` and `flatpak.install` is a sensible first step. An empty list
+turns passkeys off on that device. Restart the agent after a change. Types beyond
+the default stay refused, so the list can only get shorter. The default is
+`pkg.install`, `pkg.remove`, `pkg.upgrade`, `flatpak.install`, `power.reboot`,
+`power.shutdown`, `power.cancel` and `notify.send`.
+
+To see what passkeys approved on a device:
+
+```bash
+journalctl -u hauswart-agent --grep 'approved by passkey'
+```
+
+## Roles
+
+Under **Users**, every account has a role:
+
+| Role | For | May do |
+| --- | --- | --- |
+| Admin | You | Everything |
+| Parent | Someone who approves, but does not administer | See all devices and requests, decide requests of others, approve tasks with a passkey |
+| Member | Everyone else | File requests for the devices assigned to them |
+
+Assign devices to members in the same table. A new device is assigned to nobody at
+first, and a member without devices sees none.
 
 ## Browser trust
 
