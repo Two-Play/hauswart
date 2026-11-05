@@ -237,8 +237,12 @@ func (e *Executor) sudoGrant(ctx context.Context, p api.SudoGrantPayload) (strin
 	if !time.Now().Before(p.ExpiresAt) {
 		return "", errors.New("grant has already expired")
 	}
-	if _, err := e.lookupUser(p.User); err != nil {
+	u, err := e.lookupUser(p.User)
+	if err != nil {
 		return "", err
+	}
+	if uid, _ := strconv.Atoi(u.Uid); uid < minUserUID {
+		return "", fmt.Errorf("refusing to grant sudo to system account %s", p.User)
 	}
 	rule := "ALL"
 	if len(p.Commands) > 0 {

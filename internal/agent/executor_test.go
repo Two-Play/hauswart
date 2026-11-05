@@ -223,6 +223,17 @@ func TestUserPasswordRefusesSystemAccounts(t *testing.T) {
 	}
 }
 
+func TestSudoGrantRefusesSystemAccounts(t *testing.T) {
+	e, _ := newExecutor(t)
+	res := e.Execute(context.Background(), task(t, api.TaskSudoGrant, api.SudoGrantPayload{User: "daemon", ExpiresAt: time.Now().Add(time.Hour)}))
+	if res.OK {
+		t.Fatal("granted sudo to a system account")
+	}
+	if _, err := os.Stat(filepath.Join(e.Root, sudoersFile("daemon"))); err == nil {
+		t.Fatal("wrote a rule for a system account")
+	}
+}
+
 func TestExpiredGrantRefused(t *testing.T) {
 	e, _ := newExecutor(t)
 	res := e.Execute(context.Background(), task(t, api.TaskSudoGrant, api.SudoGrantPayload{User: currentUser(t), ExpiresAt: time.Now().Add(-time.Minute)}))

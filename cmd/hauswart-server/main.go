@@ -46,7 +46,7 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
-	addr := flag.String("addr", ":8443", "listen address")
+	addr := flag.String("addr", "127.0.0.1:8443", "listen address")
 	dataDir := flag.String("data", defaultDataDir, "data directory")
 	publicURL := flag.String("url", "https://localhost:8443", "URL under which agents reach this server")
 	extraHosts := flag.String("hosts", "", "additional comma-separated DNS names or IPs for the TLS certificate")
