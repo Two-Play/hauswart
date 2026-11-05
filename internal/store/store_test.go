@@ -220,6 +220,9 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 	}
 	for _, stmt := range []string{
 		`ALTER TABLE devices DROP COLUMN next_serial`,
+		`DROP TABLE group_devices`,
+		`DROP TABLE device_groups`,
+		`ALTER TABLE tasks DROP COLUMN data`,
 		`ALTER TABLE tasks DROP COLUMN signed`,
 		`PRAGMA user_version = 0`,
 	} {
@@ -359,6 +362,28 @@ func TestFinishTaskOnlyOnce(t *testing.T) {
 	}
 	if tasks[0].Status != "failed" || tasks[0].Output != "boom" {
 		t.Fatalf("got %+v", tasks[0])
+	}
+}
+
+func TestTaskResultKeepsStructuredData(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimTask(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: true, Data: json.RawMessage(`{"n":1}`)}); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.ListTasks(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(tasks[0].Data) != `{"n":1}` {
+		t.Fatalf("got %s", tasks[0].Data)
 	}
 }
 

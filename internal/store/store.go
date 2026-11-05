@@ -128,6 +128,16 @@ var migrations = []string{
 	DROP TABLE tasks;
 	ALTER TABLE tasks_new RENAME TO tasks;
 	CREATE INDEX tasks_device_status ON tasks(device_id, status);`,
+	`ALTER TABLE tasks ADD COLUMN data TEXT NOT NULL DEFAULT ''`,
+	`CREATE TABLE device_groups (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE
+	);
+	CREATE TABLE group_devices (
+		group_id INTEGER NOT NULL REFERENCES device_groups(id) ON DELETE CASCADE,
+		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		PRIMARY KEY (group_id, device_id)
+	);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -436,6 +446,7 @@ type TaskRow struct {
 	Payload    json.RawMessage `json:"payload"`
 	Status     string          `json:"status"`
 	Output     string          `json:"output"`
+	Data       json.RawMessage `json:"data,omitempty"`
 	CreatedBy  string          `json:"created_by"`
 	CreatedAt  int64           `json:"created_at"`
 	FinishedAt int64           `json:"finished_at"`
@@ -505,7 +516,7 @@ func (s *Store) RejectTask(ctx context.Context, taskID, by string) error {
 // SigningQueue lists the tasks waiting for a signature, oldest first.
 func (s *Store) SigningQueue(ctx context.Context) ([]TaskRow, error) {
 	return s.queryTasks(ctx, `
-		SELECT id, device_id, type, payload, status, output, created_by, created_at, finished_at
+		SELECT id, device_id, type, payload, status, output, data, created_by, created_at, finished_at
 		FROM tasks WHERE status = 'signing' ORDER BY created_at, rowid`)
 }
 
@@ -559,10 +570,10 @@ func (s *Store) FinishTask(ctx context.Context, deviceID, taskID string, r api.T
 		status = "done"
 	}
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = ?, output = ?, finished_at = ?, signed = '',
+		UPDATE tasks SET status = ?, output = ?, data = ?, finished_at = ?, signed = '',
 			payload = CASE WHEN type = ? THEN '{}' ELSE payload END
 		WHERE id = ? AND device_id = ? AND status = 'running'`,
-		status, r.Output, time.Now().Unix(), api.TaskUserPassword, taskID, deviceID)
+		status, r.Output, string(r.Data), time.Now().Unix(), api.TaskUserPassword, taskID, deviceID)
 	if err != nil {
 		return err
 	}
@@ -591,7 +602,7 @@ func (s *Store) Cleanup(ctx context.Context, staleAfter time.Duration) error {
 
 func (s *Store) ListTasks(ctx context.Context, limit int) ([]TaskRow, error) {
 	return s.queryTasks(ctx, `
-		SELECT id, device_id, type, payload, status, output, created_by, created_at, finished_at
+		SELECT id, device_id, type, payload, status, output, data, created_by, created_at, finished_at
 		FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?`, limit)
 }
 
@@ -604,11 +615,14 @@ func (s *Store) queryTasks(ctx context.Context, query string, args ...any) ([]Ta
 	tasks := []TaskRow{}
 	for rows.Next() {
 		var t TaskRow
-		var payload string
-		if err := rows.Scan(&t.ID, &t.DeviceID, &t.Type, &payload, &t.Status, &t.Output, &t.CreatedBy, &t.CreatedAt, &t.FinishedAt); err != nil {
+		var payload, data string
+		if err := rows.Scan(&t.ID, &t.DeviceID, &t.Type, &payload, &t.Status, &t.Output, &data, &t.CreatedBy, &t.CreatedAt, &t.FinishedAt); err != nil {
 			return nil, err
 		}
 		t.Payload = json.RawMessage(payload)
+		if data != "" {
+			t.Data = json.RawMessage(data)
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks, rows.Err()

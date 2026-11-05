@@ -56,6 +56,10 @@ const (
 	ErrInvalidKeys        = "invalid_keys"
 	ErrUseAdminTool       = "use_admin_tool"
 	ErrNotWaiting         = "not_waiting_for_signature"
+	ErrInvalidGroupName   = "invalid_group_name"
+	ErrGroupExists        = "group_exists"
+	ErrNoSuchGroup        = "no_such_group"
+	ErrNotForGroups       = "not_for_groups"
 )
 
 // Messages maps every code to its English text.
@@ -107,6 +111,10 @@ var Messages = map[string]string{
 	ErrInvalidKeys:        "invalid signing keys",
 	ErrUseAdminTool:       "this device is protected, use hauswart-admin",
 	ErrNotWaiting:         "task is not waiting for a signature",
+	ErrInvalidGroupName:   "invalid group name",
+	ErrGroupExists:        "group already exists",
+	ErrNoSuchGroup:        "no such group",
+	ErrNotForGroups:       "%s cannot go to a whole group",
 }
 
 // Error is an API error. Value fills the message, for example a rejected name.

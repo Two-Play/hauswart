@@ -1,9 +1,31 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import de from './locales/de.json';
-import en from './locales/en.json';
 
 const STORAGE_KEY = 'hauswart-language';
+
+type Messages = Record<string, unknown>;
+
+// Every feature has its own file per language, merged here by section.
+const files = import.meta.glob<Messages>('./locales/*/*.json', { eager: true, import: 'default' });
+
+function merge(target: Messages, source: Messages) {
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'object' && value !== null) {
+      target[key] = target[key] ?? {};
+      merge(target[key] as Messages, value as Messages);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+function load(language: string): Messages {
+  const messages: Messages = {};
+  for (const [path, content] of Object.entries(files)) {
+    if (path.includes(`/${language}/`)) merge(messages, content);
+  }
+  return messages;
+}
 
 export const LANGUAGES = ['en', 'de'] as const;
 
@@ -33,7 +55,7 @@ export function setLanguage(language: string) {
 }
 
 i18n.use(initReactI18next).init({
-  resources: { en: { translation: en }, de: { translation: de } },
+  resources: { en: { translation: load('en') }, de: { translation: load('de') } },
   lng: initialLanguage(),
   fallbackLng: 'en',
   interpolation: { escapeValue: false }, // React already escapes

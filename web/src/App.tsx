@@ -17,6 +17,7 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconClipboardList,
   IconDevicesPc,
+  IconFolders,
   IconHistory,
   IconKey,
   IconListCheck,
@@ -31,6 +32,7 @@ import { api, setUnauthorizedHandler, type User } from './api';
 import { LANGUAGES, setLanguage } from './i18n';
 import { AuditView } from './views/AuditView';
 import { DevicesView } from './views/DevicesView';
+import { GroupsView } from './views/GroupsView';
 import { LoginView } from './views/LoginView';
 import { PasswordModal } from './views/PasswordModal';
 import { RequestsView } from './views/RequestsView';
@@ -48,6 +50,7 @@ const VIEWS: {
   adminOnly?: boolean;
 }[] = [
   { key: 'devices', icon: IconDevicesPc, view: DevicesView },
+  { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
   { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
   { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },

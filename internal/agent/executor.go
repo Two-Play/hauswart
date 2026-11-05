@@ -46,79 +46,76 @@ func (e *Executor) Execute(ctx context.Context, t api.Task) api.TaskResult {
 	ctx, cancel := context.WithTimeout(ctx, taskTimeout)
 	defer cancel()
 
-	out, err := e.dispatch(ctx, t)
+	out, data, err := e.dispatch(ctx, t)
 	if len(out) > maxOutput {
 		out = out[len(out)-maxOutput:]
 	}
 	if err != nil {
 		return api.TaskResult{OK: false, Output: strings.TrimSpace(out + "\n" + err.Error())}
 	}
-	return api.TaskResult{OK: true, Output: out}
+	return api.TaskResult{OK: true, Output: out, Data: data}
 }
 
-func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, error) {
-	if err := api.Validate(t.Type, t.Payload); err != nil {
-		return "", err
+// handlers maps every task type to its implementation. Each feature registers
+// its types from its own file.
+var handlers = map[string]func(*Executor, context.Context, json.RawMessage) (string, json.RawMessage, error){}
+
+// handle registers a task type that reports only text.
+func handle[T any](taskType string, run func(*Executor, context.Context, T) (string, error)) {
+	handleData(taskType, func(e *Executor, ctx context.Context, p T) (string, json.RawMessage, error) {
+		out, err := run(e, ctx, p)
+		return out, nil, err
+	})
+}
+
+// handleData registers a task type that returns structured data.
+func handleData[T any](taskType string, run func(*Executor, context.Context, T) (string, json.RawMessage, error)) {
+	handlers[taskType] = func(e *Executor, ctx context.Context, raw json.RawMessage) (string, json.RawMessage, error) {
+		var payload T
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return "", nil, err
+		}
+		return run(e, ctx, payload)
 	}
-	switch t.Type {
-	case api.TaskPkgInstall, api.TaskPkgRemove, api.TaskFlatpakInstall:
-		var p api.PackagesPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.packages(ctx, t.Type, p.Packages)
-	case api.TaskPkgUpgrade:
-		return e.packages(ctx, t.Type, nil)
-	case api.TaskFilePut:
-		var p api.FilePutPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
+}
+
+func init() {
+	for _, taskType := range []string{api.TaskPkgInstall, api.TaskPkgRemove, api.TaskFlatpakInstall} {
+		handle(taskType, func(e *Executor, ctx context.Context, p api.PackagesPayload) (string, error) {
+			return e.packages(ctx, taskType, p.Packages)
+		})
+	}
+	handle(api.TaskPkgUpgrade, func(e *Executor, ctx context.Context, _ struct{}) (string, error) {
+		return e.packages(ctx, api.TaskPkgUpgrade, nil)
+	})
+	handle(api.TaskFilePut, func(e *Executor, _ context.Context, p api.FilePutPayload) (string, error) {
 		return e.filePut(p)
-	case api.TaskCAInstall:
-		var p api.CAInstallPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.caInstall(ctx, p)
-	case api.TaskSudoGrant:
-		var p api.SudoGrantPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.sudoGrant(ctx, p)
-	case api.TaskSudoRevoke:
-		var p api.UserPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
+	})
+	handle(api.TaskCAInstall, (*Executor).caInstall)
+	handle(api.TaskSudoGrant, (*Executor).sudoGrant)
+	handle(api.TaskSudoRevoke, func(e *Executor, _ context.Context, p api.UserPayload) (string, error) {
 		return e.sudoRevoke(p.User)
-	case api.TaskUserCreate:
-		var p api.UserPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.userCreate(ctx, p)
-	case api.TaskUserLock, api.TaskUserUnlock:
-		var p api.UserPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.userLock(ctx, p.User, t.Type == api.TaskUserLock)
-	case api.TaskUserPassword:
-		var p api.PasswordPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.userPassword(ctx, p)
-	case api.TaskLimitSet:
-		var p api.LimitPayload
-		if err := json.Unmarshal(t.Payload, &p); err != nil {
-			return "", err
-		}
-		return e.limitSet(ctx, p)
+	})
+	handle(api.TaskUserCreate, (*Executor).userCreate)
+	handle(api.TaskUserLock, func(e *Executor, ctx context.Context, p api.UserPayload) (string, error) {
+		return e.userLock(ctx, p.User, true)
+	})
+	handle(api.TaskUserUnlock, func(e *Executor, ctx context.Context, p api.UserPayload) (string, error) {
+		return e.userLock(ctx, p.User, false)
+	})
+	handle(api.TaskUserPassword, (*Executor).userPassword)
+	handle(api.TaskLimitSet, (*Executor).limitSet)
+}
+
+func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, json.RawMessage, error) {
+	if err := api.Validate(t.Type, t.Payload); err != nil {
+		return "", nil, err
 	}
-	return "", fmt.Errorf("task type %q not implemented", t.Type)
+	run, ok := handlers[t.Type]
+	if !ok {
+		return "", nil, fmt.Errorf("task type %q not implemented", t.Type)
+	}
+	return run(e, ctx, t.Payload)
 }
 
 func (e *Executor) packages(ctx context.Context, taskType string, names []string) (string, error) {

@@ -211,8 +211,8 @@ def test_ubuntu(admin, agent_bin, work, public_key):
     as_user = "sudo -iu ubuntu env XDG_RUNTIME_DIR=/run/user/1000 "
     commands = {
         "firefox": as_user + "sh -c 'rm -rf ~/snap/firefox/common/p; mkdir -p ~/snap/firefox/common/p; timeout 120 "
-                   "firefox --headless --no-remote --profile ~/snap/firefox/common/p --screenshot ~/snap/firefox/common/s.png https://localhost:9443/'",
-        "chromium": as_user + "sh -c 'rm -rf ~/snap/chromium/common/p; timeout 120 chromium --headless --no-sandbox "
+                   "/snap/bin/firefox --headless --no-remote --profile ~/snap/firefox/common/p --screenshot ~/snap/firefox/common/s.png https://localhost:9443/'",
+        "chromium": as_user + "sh -c 'rm -rf ~/snap/chromium/common/p; timeout 120 /snap/bin/chromium --headless --no-sandbox "
                     "--disable-gpu --user-data-dir=$HOME/snap/chromium/common/p --dump-dom https://localhost:9443/'",
     }
 
@@ -230,16 +230,17 @@ def test_ubuntu(admin, agent_bin, work, public_key):
         print("       network:", vm.ssh("getent hosts api.snapcraft.io; curl -s -o /dev/null -m 20 -w '%{http_code} %{time_total}s' https://api.snapcraft.io/; echo").stdout.strip(), flush=True)
         print("       seeded:", vm.ssh("timeout 120 snap wait system seed.loaded; echo rc=$?; snap changes | tail -4").stdout.strip(), flush=True)
         # --no-wait and a limit, so that a stuck store shows why instead of hanging.
-        vm.ssh("snap install --no-wait firefox; snap install --no-wait chromium")
-        deadline = time.time() + 900
-        while time.time() < deadline:
-            changes = vm.ssh("snap changes").stdout
-            print("       " + " | ".join(line[:60] for line in changes.splitlines()[-2:]), flush=True)
-            if not re.search(r"\b(Doing|Do|Wait)\b", changes):
-                break
-            time.sleep(45)
-        installed = vm.ssh("snap list firefox chromium")
-        check(group, "snaps installed", installed.returncode == 0, installed.stdout + installed.stderr + vm.ssh("snap changes; snap tasks --last=install | tail -12").stdout)
+        for snap in ("firefox", "chromium"):
+            vm.ssh(f"snap install --no-wait {snap}")
+            deadline = time.time() + 600
+            while time.time() < deadline and vm.ssh(f"snap list {snap}").returncode != 0:
+                if "Error" in vm.ssh("snap changes").stdout:
+                    break
+                time.sleep(15)
+            vm.ssh("snap watch --last=install")
+            listed = vm.ssh(f"snap list {snap}")
+            check(group, f"{snap} snap installed", listed.returncode == 0,
+                  listed.stderr + vm.ssh("snap changes; snap tasks --last=install | tail -12").stdout)
         setup = vm.ssh(browsers.SETUP)
         check(group, "test server prepared", setup.returncode == 0, setup.stderr)
         # systemd-run, because a background process would keep the SSH session open.

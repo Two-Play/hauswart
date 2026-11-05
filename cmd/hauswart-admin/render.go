@@ -33,94 +33,85 @@ func cleanLines(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// review turns a task from the server into what the admin sees and what gets
-// signed. Both come from the same typed value: the payload is decoded, shown
-// and encoded again, so bytes from the server are never signed as they came.
-func review(taskType string, raw json.RawMessage) (text string, payload []byte, err error) {
+// reviewers maps the task types this tool will sign to how it presents them.
+// Password hashes and keys are missing on purpose: those come from this tool,
+// never from the queue. Each feature registers its types from its own file.
+var reviewers = map[string]func(json.RawMessage) (string, []byte, error){}
+
+// reviewer registers a type. The payload is decoded into the typed value that
+// is both shown and encoded again, so what is signed is what was shown, and
+// bytes from the server are never signed as they came.
+func reviewer[T any](taskType string, show func(T) (string, error)) {
+	reviewers[taskType] = func(raw json.RawMessage) (string, []byte, error) {
+		var p T
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return "", nil, err
+		}
+		text, err := show(p)
+		if err != nil {
+			return "", nil, err
+		}
+		payload, err := json.Marshal(p)
+		return text, bytes.TrimSpace(payload), err
+	}
+}
+
+// review turns a task from the server into what the admin sees and signs.
+func review(taskType string, raw json.RawMessage) (string, []byte, error) {
 	if err := api.Validate(taskType, raw); err != nil {
 		return "", nil, err
 	}
-	switch taskType {
-	case api.TaskPkgInstall, api.TaskPkgRemove, api.TaskFlatpakInstall:
-		var p api.PackagesPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
+	show, ok := reviewers[taskType]
+	if !ok {
+		return "", nil, fmt.Errorf("refusing to sign task type %s from the server", clean(taskType))
+	}
+	return show(raw)
+}
+
+func init() {
+	packages := func(verb string) func(api.PackagesPayload) (string, error) {
+		return func(p api.PackagesPayload) (string, error) {
+			return fmt.Sprintf("%s: %s", verb, strings.Join(p.Packages, ", ")), nil
 		}
-		verb := map[string]string{
-			api.TaskPkgInstall:     "Install packages as root",
-			api.TaskPkgRemove:      "Remove packages",
-			api.TaskFlatpakInstall: "Install Flatpaks system-wide",
-		}[taskType]
-		text = fmt.Sprintf("%s: %s", verb, strings.Join(p.Packages, ", "))
-		payload, err = json.Marshal(p)
-	case api.TaskFilePut:
-		var p api.FilePutPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
+	}
+	reviewer(api.TaskPkgInstall, packages("Install packages as root"))
+	reviewer(api.TaskPkgRemove, packages("Remove packages"))
+	reviewer(api.TaskFlatpakInstall, packages("Install Flatpaks system-wide"))
+	reviewer(api.TaskFilePut, func(p api.FilePutPayload) (string, error) {
 		mode := p.Mode
 		if mode == "" {
 			mode = "0644"
 		}
 		sum := sha256.Sum256([]byte(p.Content))
-		text = fmt.Sprintf("Write file %s, mode %s, SHA-256 %x:\n%s", p.Path, mode, sum, cleanLines(p.Content))
-		payload, err = json.Marshal(p)
-	case api.TaskCAInstall:
-		var p api.CAInstallPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
+		return fmt.Sprintf("Write file %s, mode %s, SHA-256 %x:\n%s", p.Path, mode, sum, cleanLines(p.Content)), nil
+	})
+	reviewer(api.TaskCAInstall, func(p api.CAInstallPayload) (string, error) {
 		block, _ := pem.Decode([]byte(p.PEM))
 		sum := sha256.Sum256(block.Bytes)
-		text = fmt.Sprintf("TRUST A CERTIFICATE AUTHORITY on this device, which can then intercept TLS.\n"+
-			"  Name: %s\n  SHA-256: %x\n  Compare this with the certificate you meant to deploy.", p.Name, sum)
-		payload, err = json.Marshal(p)
-	case api.TaskSudoGrant:
-		var p api.SudoGrantPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
+		return fmt.Sprintf("TRUST A CERTIFICATE AUTHORITY on this device, which can then intercept TLS.\n"+
+			"  Name: %s\n  SHA-256: %x\n  Compare this with the certificate you meant to deploy.", p.Name, sum), nil
+	})
+	reviewer(api.TaskSudoGrant, func(p api.SudoGrantPayload) (string, error) {
 		if !time.Now().Before(p.ExpiresAt) {
-			return "", nil, fmt.Errorf("grant expired at %s", p.ExpiresAt.Format(time.RFC3339))
+			return "", fmt.Errorf("grant expired at %s", p.ExpiresAt.Format(time.RFC3339))
 		}
 		rights := "FULL ROOT, all commands"
 		if len(p.Commands) > 0 {
 			rights = "commands " + strings.Join(p.Commands, ", ")
 		}
-		text = fmt.Sprintf("Grant sudo to %s: %s\n  Ends %s (in %s)", p.User, rights,
-			p.ExpiresAt.Local().Format(time.RFC1123), time.Until(p.ExpiresAt).Round(time.Minute))
-		payload, err = json.Marshal(p)
-	case api.TaskUserCreate:
-		var p api.UserPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
-		text = fmt.Sprintf("Create Linux user %s, name %q, groups %q", p.User, clean(p.FullName), p.Groups)
-		payload, err = json.Marshal(p)
-	case api.TaskUserLock, api.TaskUserUnlock:
-		var p api.UserPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
-		verb := "Lock"
-		if taskType == api.TaskUserUnlock {
-			verb = "Unlock"
-		}
-		text = fmt.Sprintf("%s Linux user %s", verb, p.User)
-		payload, err = json.Marshal(p)
-	case api.TaskLimitSet:
-		var p api.LimitPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return "", nil, err
-		}
-		text = fmt.Sprintf("Limit Linux user %s: CPU %d%%, memory %d MB (0 means no limit)", p.User, p.CPUPercent, p.MemoryMB)
-		payload, err = json.Marshal(p)
-	default:
-		// Password hashes and keys come from this tool, never from the queue.
-		return "", nil, fmt.Errorf("refusing to sign task type %s from the server", clean(taskType))
-	}
-	if err != nil {
-		return "", nil, err
-	}
-	return text, bytes.TrimSpace(payload), nil
+		return fmt.Sprintf("Grant sudo to %s: %s\n  Ends %s (in %s)", p.User, rights,
+			p.ExpiresAt.Local().Format(time.RFC1123), time.Until(p.ExpiresAt).Round(time.Minute)), nil
+	})
+	reviewer(api.TaskUserCreate, func(p api.UserPayload) (string, error) {
+		return fmt.Sprintf("Create Linux user %s, name %q, groups %q", p.User, clean(p.FullName), p.Groups), nil
+	})
+	reviewer(api.TaskUserLock, func(p api.UserPayload) (string, error) {
+		return "Lock Linux user " + p.User, nil
+	})
+	reviewer(api.TaskUserUnlock, func(p api.UserPayload) (string, error) {
+		return "Unlock Linux user " + p.User, nil
+	})
+	reviewer(api.TaskLimitSet, func(p api.LimitPayload) (string, error) {
+		return fmt.Sprintf("Limit Linux user %s: CPU %d%%, memory %d MB (0 means no limit)", p.User, p.CPUPercent, p.MemoryMB), nil
+	})
 }

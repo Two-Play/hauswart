@@ -1,0 +1,18 @@
+{
+  "nav": { "groups": "Gruppen" },
+  "groups": {
+    "name": "Gruppenname",
+    "create": "Gruppe anlegen",
+    "delete": "Gruppe löschen",
+    "members": "Geräte",
+    "empty": "Noch keine Gruppen.",
+    "hint": "Software und Updates können an eine ganze Gruppe gehen. Rechte und Zertifikate werden pro Gerät entschieden.",
+    "queued": "An {{count}} Geräte gesendet. Offline-Geräte bekommen es, sobald sie zurück sind."
+  },
+  "errors": {
+    "invalid_group_name": "Der Gruppenname ist ungültig.",
+    "group_exists": "Diese Gruppe gibt es schon.",
+    "no_such_group": "Diese Gruppe gibt es nicht.",
+    "not_for_groups": "{{value}} kann nicht an eine ganze Gruppe gehen."
+  }
+}

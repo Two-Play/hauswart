@@ -1,0 +1,18 @@
+{
+  "nav": { "groups": "Groups" },
+  "groups": {
+    "name": "Group name",
+    "create": "Create group",
+    "delete": "Delete group",
+    "members": "Devices",
+    "empty": "No groups yet.",
+    "hint": "Software and updates can go to a whole group. Rights and certificates are decided device by device.",
+    "queued": "Sent to {{count}} devices. Offline devices get it when they return."
+  },
+  "errors": {
+    "invalid_group_name": "The group name is not valid.",
+    "group_exists": "This group already exists.",
+    "no_such_group": "This group does not exist.",
+    "not_for_groups": "{{value}} cannot go to a whole group."
+  }
+}

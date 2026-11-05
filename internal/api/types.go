@@ -34,13 +34,6 @@ const (
 	TaskKeysSet        = "keys.set"
 )
 
-// NeedsSignature says whether a task requires a signature on a protected
-// device. Revoking sudo only ever takes rights away, and updates come from the
-// device's own repositories: a signature would only delay security fixes.
-func NeedsSignature(taskType string) bool {
-	return taskType != TaskSudoRevoke && taskType != TaskPkgUpgrade
-}
-
 type Task struct {
 	ID      string          `json:"id"`
 	Type    string          `json:"type"`
@@ -53,6 +46,8 @@ type Task struct {
 type TaskResult struct {
 	OK     bool   `json:"ok"`
 	Output string `json:"output"`
+	// Data is the structured result of tasks that fetch something.
+	Data json.RawMessage `json:"data,omitempty"`
 }
 
 type PackagesPayload struct {
@@ -161,137 +156,13 @@ func ValidPackage(s string) bool { return pkgRe.MatchString(s) }
 // may ever target.
 func ValidUser(s string) bool { return userRe.MatchString(s) && s != "root" }
 
+// ValidGroupName accepts short printable names.
+func ValidGroupName(s string) bool {
+	return strings.TrimSpace(s) != "" && len(s) <= 64 && !hasControl(s)
+}
+
 // MaxGrant caps how long a single sudo grant can last.
 const MaxGrant = 24 * time.Hour
-
-// Validate checks a task payload without touching the system.
-func Validate(taskType string, payload json.RawMessage) error {
-	switch taskType {
-	case TaskPkgInstall, TaskPkgRemove, TaskFlatpakInstall:
-		var p PackagesPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if len(p.Packages) == 0 {
-			return Fail(ErrNoPackages)
-		}
-		for _, name := range p.Packages {
-			if !ValidPackage(name) {
-				return Fail(ErrInvalidPackage, name)
-			}
-		}
-	case TaskPkgUpgrade:
-		return nil
-	case TaskFilePut:
-		var p FilePutPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !strings.HasPrefix(p.Path, "/") || strings.Contains(p.Path, "..") || hasControl(p.Path) {
-			return Fail(ErrInvalidPath, p.Path)
-		}
-		if p.Mode != "" && !modeRe.MatchString(p.Mode) {
-			return Fail(ErrInvalidMode, p.Mode)
-		}
-	case TaskCAInstall:
-		var p CAInstallPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !caNameRe.MatchString(p.Name) {
-			return Fail(ErrInvalidCAName, p.Name)
-		}
-		if !singleCertificate(p.PEM) {
-			return Fail(ErrNotPEM)
-		}
-	case TaskSudoGrant:
-		var p SudoGrantPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !ValidUser(p.User) {
-			return Fail(ErrInvalidUser, p.User)
-		}
-		if p.ExpiresAt.IsZero() {
-			return Fail(ErrSudoNoExpiry)
-		}
-		if time.Until(p.ExpiresAt) > MaxGrant {
-			return Fail(ErrSudoTooLong, MaxGrant.String())
-		}
-		for _, c := range p.Commands {
-			if !commandRe.MatchString(c) || strings.Contains(c, "..") {
-				return Fail(ErrInvalidCommand, c)
-			}
-		}
-	case TaskSudoRevoke, TaskUserLock, TaskUserUnlock:
-		var p UserPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !ValidUser(p.User) {
-			return Fail(ErrInvalidUser, p.User)
-		}
-	case TaskUserPassword:
-		var p PasswordPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !ValidUser(p.User) {
-			return Fail(ErrInvalidUser, p.User)
-		}
-		if !hashRe.MatchString(p.Hash) {
-			return Fail(ErrInvalidHash)
-		}
-	case TaskUserCreate:
-		var p UserPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !ValidUser(p.User) {
-			return Fail(ErrInvalidUser, p.User)
-		}
-		if strings.Contains(p.FullName, ":") || hasControl(p.FullName) {
-			return Fail(ErrInvalidFullName)
-		}
-		for _, g := range p.Groups {
-			// Group membership in these equals root, so it must go through
-			// the time-limited sudo grant instead.
-			if !userRe.MatchString(g) || privilegedGroups[g] {
-				return Fail(ErrGroupNotAllowed, g)
-			}
-		}
-	case TaskKeysSet:
-		var p KeysPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if len(p.Keys) == 0 {
-			return Fail(ErrInvalidKeys)
-		}
-		for _, key := range p.Keys {
-			if _, err := sign.ParseKey(key); err != nil {
-				return Fail(ErrInvalidKeys)
-			}
-		}
-	case TaskLimitSet:
-		var p LimitPayload
-		if err := strictDecode(payload, &p); err != nil {
-			return err
-		}
-		if !ValidUser(p.User) {
-			return Fail(ErrInvalidUser, p.User)
-		}
-		if p.CPUPercent < 0 || p.MemoryMB < 0 {
-			return Fail(ErrNegativeLimit)
-		}
-		if p.CPUPercent == 0 && p.MemoryMB == 0 {
-			return Fail(ErrNoLimit)
-		}
-	default:
-		return Fail(ErrUnknownTaskType, taskType)
-	}
-	return nil
-}
 
 func hasControl(s string) bool { return strings.IndexFunc(s, unicode.IsControl) >= 0 }
 
