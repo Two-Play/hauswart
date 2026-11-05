@@ -14,6 +14,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VERSION = os.environ.get("VERSION", "0.1.0")
 URL = "https://localhost:8443"
+SUFFIX = os.environ.get("E2E_SUFFIX", "")  # to run next to another test run
 CA = "/var/lib/hauswart-server/pki/ca.pem"
 
 FEDORA = """FROM registry.fedoraproject.org/fedora:44
@@ -48,12 +49,12 @@ def run(*argv, input=None, timeout=600):
 def test(target):
     containerfile, install, remove = TARGETS[target]
     print(f"\n== {target}", flush=True)
-    image = f"localhost/hauswart-pkg-{target}"
+    image = f"localhost/hauswart-pkg-{target}{SUFFIX}"
     built = run("podman", "build", "-q", "-t", image, "-", input=containerfile)
     if built.returncode != 0:
         check(target, "image builds", False, built.stderr)
         return
-    container = f"hauswart-pkg-{target}"
+    container = f"hauswart-pkg-{target}{SUFFIX}"
     run("podman", "rm", "-f", container)
     # systemd needs these to set up the service sandbox. Rootless, they stay
     # inside the container's user namespace.
@@ -84,6 +85,8 @@ def test(target):
         check(target, "no service started by the package", inside("systemctl is-active hauswart-server").returncode != 0)
 
         check(target, "default config in place", inside("test -f /etc/hauswart/server.env").returncode == 0)
+        notify = inside("stat -c '%a %U' /etc/hauswart/notify.env").stdout.strip()
+        check(target, "notification credentials are private", notify == "600 hauswart", notify)
 
         enabled = inside("systemctl enable --now hauswart-server")
         check(target, "server enables", enabled.returncode == 0, enabled.stderr)
@@ -106,6 +109,7 @@ def test(target):
         mode = inside("stat -c %a /var/lib/hauswart-server/initial-admin-password").stdout.strip()
         check(target, "initial password file is private", mode == "600", mode)
         journal = inside("journalctl -u hauswart-server --no-pager").stdout
+        check(target, "notification file is accepted", "admin notifications are off" not in journal, journal[-400:])
         check(target, "password stays out of the journal", password and password not in journal)
 
         user = call("POST", "/api/login", {"username": "admin", "password": password})

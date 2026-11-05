@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/philippe/hauswart/internal/api"
+	"github.com/philippe/hauswart/internal/notify"
 	"github.com/philippe/hauswart/internal/pki"
 	"github.com/philippe/hauswart/internal/store"
 	"github.com/philippe/hauswart/web"
@@ -55,6 +56,11 @@ type Server struct {
 
 	// index is the dashboard entry page, nil if the dashboard was not built.
 	index []byte
+
+	// notifier tells admins about new requests, nil if nothing is configured.
+	notifier *notify.Notifier
+	// ownHosts are the names of this server, which no service may get.
+	ownHosts []string
 }
 
 type loginFailure struct {
@@ -92,6 +98,7 @@ func New(st *store.Store, ca *pki.CA, publicURL string, log *slog.Logger) (*Serv
 // TLSConfig accepts browsers without a client certificate and agents with
 // one. Agent routes reject requests that carry no verified certificate.
 func (s *Server) TLSConfig(hosts []string) (*tls.Config, error) {
+	s.ownHosts = hosts
 	cert, err := s.ca.ServerCert(hosts)
 	if err != nil {
 		return nil, err

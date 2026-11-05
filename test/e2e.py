@@ -2,7 +2,7 @@
 """End-to-end test: real server on the host, real agents as root in containers.
 
 Everything privileged happens inside throwaway containers; the host is never
-touched. Usage: test/e2e.py [fedora debian arch opensuse systemd]
+touched. Usage: test/e2e.py [fedora debian arch opensuse systemd signing notify]
 """
 import base64
 import http.cookiejar
@@ -20,7 +20,9 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-PORT = 18443
+# Both can be set to run next to another test run on the same machine.
+PORT = int(os.environ.get("E2E_PORT", "18443"))
+SUFFIX = os.environ.get("E2E_SUFFIX", "")
 URL = f"https://localhost:{PORT}"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -305,7 +307,7 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
     """A compromised server is simulated by writing to its database directly."""
     name = "signing"
     print(f"\n== {name} (real ssh-agent, tasks written straight into the database)", flush=True)
-    container = "hauswart-e2e-signing"
+    container = "hauswart-e2e-signing" + SUFFIX
     sh("podman", "rm", "-f", container, check_rc=False)
     sh("podman", "run", "-d", "--name", container, "--network", "host",
        "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "1500")
@@ -381,6 +383,24 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         check(name, "ATTACK unsigned key swap refused", task["status"] == "failed", task["output"])
         check(name, "pinned keys unchanged", open(f"{work}/next.pub").read().split()[1] not in inside("cat /var/lib/hauswart/agent.json").stdout)
 
+        # The new actions, each without a signature.
+        valid = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+        inside("groupadd media")
+        for task_type, payload in (
+            ("power.reboot", {"delay_minutes": 1, "expires_at": valid}),
+            ("power.shutdown", {"delay_minutes": 1, "expires_at": valid}),
+            ("notify.send", {"message": "Your password expired, call 555-1234", "expires_at": valid}),
+            ("group.add", {"user": "anna", "group": "media"}),
+            ("group.remove", {"user": "anna", "group": "media"}),
+        ):
+            task = attack(device, task_type, payload)
+            check(name, f"ATTACK unsigned {task_type} refused",
+                  task["status"] == "failed" and "signature" in task["output"], task["output"])
+        check(name, "no group change happened", "media" not in inside("id -nG anna").stdout)
+        task = attack(device, "group.add", {"user": "anna", "group": "wheel"})
+        check(name, "ATTACK unsigned wheel refused", task["status"] == "failed", task["output"])
+        check(name, "not in wheel", "wheel" not in inside("id -nG anna").stdout)
+
         # The normal way.
         code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "pkg.install", "payload": {"packages": ["tree"]}})
         _, tasks = admin.call("GET", "/api/tasks")
@@ -409,6 +429,35 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         task = attack(device, "pkg.install", {"packages": ["nmap"]}, json.dumps(envelope))
         check(name, "ATTACK changed envelope refused", task["status"] == "failed", task["output"])
         check(name, "nmap never arrived", inside("command -v nmap").returncode != 0)
+
+        # A real signature on one thing must not carry another.
+        task = attack(device, "power.reboot", {"delay_minutes": 1, "expires_at": valid}, captured)
+        check(name, "ATTACK signed package as a reboot refused", task["status"] == "failed", task["output"])
+
+        # Signed actions take the normal way, and the tool says what they do.
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.add", "payload": {"user": "anna", "group": "media"}})
+        shown = tool.run("approve", input="y\n")
+        check(name, "approve spells out the group", "ADD Linux user anna to group media" in shown.stdout, shown.stdout + shown.stderr)
+        task = wait_task(admin, out["id"], 45)
+        check(name, "signed group.add works", task["status"] == "done" and "media" in inside("id -nG anna").stdout, task["output"])
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.remove", "payload": {"user": "anna", "group": "media"}})
+        tool.run("approve", input="y\n")
+        task = wait_task(admin, out["id"], 45)
+        check(name, "signed group.remove works", task["status"] == "done" and "media" not in inside("id -nG anna").stdout, task["output"])
+        for group in ("wheel", "sudo", "docker"):
+            code, _ = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.add", "payload": {"user": "anna", "group": group}})
+            check(name, f"dashboard refuses {group}", code == 400, str(code))
+        inside("groupadd family; echo '%family ALL=(ALL) ALL' >/etc/sudoers.d/family; chmod 440 /etc/sudoers.d/family")
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.add", "payload": {"user": "anna", "group": "family"}})
+        tool.run("approve", input="y\n")
+        task = wait_task(admin, out["id"], 45)
+        check(name, "a group with sudo rights is refused, even signed", task["status"] == "failed" and "family" not in inside("id -nG anna").stdout, task["output"])
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "notify.send", "payload": {"message": "Essen ist fertig", "expires_at": valid}})
+        shown = tool.run("approve", input="n\n")
+        check(name, "approve shows the popup text", 'titled "Hauswart"' in shown.stdout and "Essen ist fertig" in shown.stdout, shown.stdout + shown.stderr)
+        tool.run("approve", input="r\n")
+        task = run_task(admin, device, "power.cancel", {}, wait=45)
+        check(name, "power.cancel needs no signature", task["status"] in ("done", "failed") and "signature" not in task["output"], task["output"])
 
         # Reject, and a task that needs no signature.
         code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "pkg.install", "payload": {"packages": ["nmap"]}})
@@ -462,6 +511,138 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
     finally:
         tool.close()
         sh("podman", "rm", "-f", container, check_rc=False)
+
+
+NTFY_IMAGE = "docker.io/binwiederhier/ntfy:latest"
+MAILPIT_IMAGE = "docker.io/axllent/mailpit:latest"
+NTFY_PORT, SMTP_PORT, MAILPIT_PORT = 18481, 18482, 18483
+SERVICE_IP = "127.0.0.2"  # the server's own names are refused for services
+
+
+def test_notify(admin, work, restart_server):
+    """Real ntfy and mail servers, on TLS with certificates from Hauswart."""
+    name = "notify"
+    print(f"\n== {name} (ntfy and Mailpit in containers, TLS from a service certificate)", flush=True)
+    containers = ("hauswart-e2e-ntfy" + SUFFIX, "hauswart-e2e-mail" + SUFFIX)
+    for container in containers:
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+    def fetch(url, token=None):
+        ctx = ssl.create_default_context(cafile=f"{work}/service/ca.pem")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"} if token else {})
+        with urllib.request.urlopen(req, context=ctx, timeout=20) as resp:
+            return resp.read().decode()
+
+    try:
+        # A service certificate, used by real TLS servers.
+        code, out = admin.call("POST", "/api/certificates", {"names": ["google.com"]})
+        check(name, "certificate outside the CA refused", code == 400 and out["code"] == "cert_outside_ca", str(out))
+        code, out = admin.call("POST", "/api/certificates", {"names": ["localhost"]})
+        check(name, "certificate for the server itself refused", code == 400 and out["code"] == "cert_server_name", str(out))
+        code, issued = admin.call("POST", "/api/certificates", {"names": [SERVICE_IP, "nas.home.test"], "days": 30})
+        check(name, "service certificate issued", code == 201, str(issued))
+        service = f"{work}/service"
+        os.makedirs(service, mode=0o755)
+        for file, field in (("cert.pem", "cert"), ("key.pem", "key"), ("ca.pem", "ca")):
+            with open(f"{service}/{file}", "w") as f:
+                f.write(issued[field])
+            os.chmod(f"{service}/{file}", 0o644)  # read by the container's user
+        _, listed = admin.call("GET", "/api/certificates")
+        check(name, "listed with its expiry", any(c["serial"] == issued["serial"] and c["not_after"] == issued["not_after"] for c in listed), str(listed))
+        check(name, "key is not in the list", issued["key"].split("\n")[1] not in json.dumps(listed))
+        _, audit = admin.call("GET", "/api/audit")
+        entry = next((e for e in audit if e["action"] == "certificate.issued"), None)
+        check(name, "in the audit log", entry and issued["serial"] in entry["detail"], str(entry))
+        check(name, "key is not in the audit log", issued["key"].split("\n")[1] not in json.dumps(audit))
+        stored = sh("sh", "-c", f"grep -rlF '{issued['key'].splitlines()[1]}' {work}/data", check_rc=False).stdout
+        check(name, "key is nowhere in the data directory", stored == "", stored)
+
+        with open(f"{service}/mail-users", "w") as f:
+            f.write("hauswart:mail-secret\n")
+        os.chmod(f"{service}/mail-users", 0o644)
+        sh("podman", "run", "-d", "--name", containers[0], "--network", "host", "-v", f"{service}:/tls:ro,Z",
+           "-e", "NTFY_BASE_URL=https://" + SERVICE_IP, "-e", f"NTFY_LISTEN_HTTP=-", "-e", f"NTFY_LISTEN_HTTPS={SERVICE_IP}:{NTFY_PORT}",
+           "-e", "NTFY_KEY_FILE=/tls/key.pem", "-e", "NTFY_CERT_FILE=/tls/cert.pem",
+           "-e", "NTFY_AUTH_FILE=/tmp/auth.db", "-e", "NTFY_AUTH_DEFAULT_ACCESS=deny-all",
+           "-e", "NTFY_CACHE_FILE=/tmp/cache.db", NTFY_IMAGE, "serve", timeout=300)
+        sh("podman", "run", "-d", "--name", containers[1], "--network", "host", "-v", f"{service}:/tls:ro,Z",
+           MAILPIT_IMAGE, "--smtp", f"{SERVICE_IP}:{SMTP_PORT}", "--listen", f"{SERVICE_IP}:{MAILPIT_PORT}",
+           "--smtp-tls-cert", "/tls/cert.pem", "--smtp-tls-key", "/tls/key.pem", "--smtp-require-starttls",
+           "--smtp-auth-file", "/tls/mail-users", timeout=300)
+        time.sleep(3)
+        made = sh("podman", "exec", "-e", "NTFY_PASSWORD=ntfy-secret-1", containers[0], "ntfy", "user", "add", "--role=admin", "hauswart", check_rc=False)
+        check(name, "ntfy user created", made.returncode == 0, made.stdout + made.stderr)
+        created = sh("podman", "exec", containers[0], "ntfy", "token", "add", "hauswart", check_rc=False)
+        token = re.search(r"tk_\w+", created.stdout + created.stderr)
+        check(name, "ntfy token created", token, created.stdout + created.stderr)
+        token = token.group(0)
+
+        env_path = f"{work}/notify.env"
+        topic = "hauswart-topic-" + os.urandom(8).hex()
+        with open(env_path, "w") as f:
+            f.write(f"NTFY_URL=https://{SERVICE_IP}:{NTFY_PORT}/{topic}\nNTFY_TOKEN={token}\n"
+                    f"SMTP_HOST={SERVICE_IP}\nSMTP_PORT={SMTP_PORT}\nSMTP_USER=hauswart\nSMTP_PASSWORD=mail-secret\n"
+                    "SMTP_FROM=Hauswart <hauswart@home.test>\nSMTP_TO=admin@home.test\n")
+        os.chmod(env_path, 0o600)
+        restart_server()
+
+        # A member files a request from a device with a hostile hostname.
+        device = "notify-device"
+        with sqlite3.connect(f"{work}/data/hauswart.db", timeout=10) as db:
+            db.execute("INSERT INTO devices (id, hostname, cert_serial, enrolled_at) VALUES (?,?,'x',?)",
+                       (device, "küche\nBcc: evil@example.org http://phish.example", int(time.time())))
+        code, _ = admin.call("POST", "/api/users", {"username": "mia", "password": "member password", "role": "member", "linux_user": "mia"})
+        check(name, "member created", code == 201, str(code))
+        member = Client(f"{work}/data/pki/ca.pem")
+        member.call("POST", "/api/login", {"username": "mia", "password": "member password"})
+        started = time.time()
+        code, out = member.call("POST", "/api/requests", {"device_id": device, "kind": "software", "detail": "secretpackage", "reason": "my password is hunter2"})
+        took = time.time() - started
+        check(name, "request filed", code == 201, str(out))
+        check(name, "the request does not wait for delivery", took < 1, f"{took:.2f}s")
+
+        message = ""
+        deadline = time.time() + 30
+        while time.time() < deadline and not message:
+            message = fetch(f"https://{SERVICE_IP}:{NTFY_PORT}/{topic}/json?poll=1", token)
+            time.sleep(1)
+        check(name, "ntfy got the message", "mia asks for software" in message, message)
+        mails = []
+        while time.time() < deadline and not mails:
+            mails = json.loads(fetch(f"http://{SERVICE_IP}:{MAILPIT_PORT}/api/v1/messages"))["messages"]
+            time.sleep(1)
+        check(name, "mail arrived over STARTTLS with a login", len(mails) == 1, str(mails))
+        mail = fetch(f"http://{SERVICE_IP}:{MAILPIT_PORT}/api/v1/message/{mails[0]['ID']}/raw") if mails else ""
+        check(name, "mail has the text and fixed subject", "mia asks for software" in mail and "Subject: New request in Hauswart" in mail, mail)
+        everything = message + mail
+        for leak in ("secretpackage", "hunter2", "ntfy-secret", "mail-secret", token):
+            check(name, f"no {leak[:8]}... in the messages", leak not in everything)
+        check(name, "hostile hostname adds no header or link", "Bcc" not in mail.split("\r\n\r\n")[0] and "http://phish" not in everything, mail)
+        server_log = open(f"{work}/server.log").read()
+        check(name, "no secret in the server log", not any(s in server_log for s in ("mail-secret", token, topic)))
+
+        # A dead channel must not slow anybody down.
+        for container in containers[:2]:
+            sh("podman", "rm", "-f", container, check_rc=False)
+        started = time.time()
+        code, _ = member.call("POST", "/api/requests", {"device_id": device, "kind": "flatpak", "detail": "org.gnome.Chess", "reason": ""})
+        took = time.time() - started
+        check(name, "a request still goes through quickly with both servers gone", code == 201 and took < 1, f"{code} {took:.2f}s")
+        time.sleep(2)
+        log = open(f"{work}/server.log").read()
+        check(name, "the failure is logged without the topic", "sending a notification failed" in log and topic not in log, log[-400:])
+
+        os.chmod(env_path, 0o644)
+        restart_server()
+        log = open(f"{work}/server.log").read()
+        check(name, "a file others can read is not used", "admin notifications are off" in log and "must be 0600" in log, log[-400:])
+    except Exception as err:
+        check(name, "no crash", False, repr(err))
+        for container in containers:
+            print(sh("podman", "logs", "--tail", "15", container, check_rc=False).stderr)
+    finally:
+        for container in containers:
+            sh("podman", "rm", "-f", container, check_rc=False)
 
 
 RENEWAL_VALIDITY = 90
@@ -550,6 +731,8 @@ def main():
     # Short lifetimes apply to the whole server, so this runs on its own.
     names = sys.argv[1:] or [*DISTROS, "systemd", "signing"]
     extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
+    if names == ["notify"]:  # the CA scope is fixed when the CA is made
+        extra_args = ["-ca-scope", "home.test,127.0.0.0/8"]
     work = tempfile.mkdtemp(prefix="hauswart-e2e-", dir=os.environ.get("E2E_TMP"))
     server_bin, agent_bin = f"{work}/server", f"{work}/agent"
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -559,10 +742,28 @@ def main():
     subprocess.run(["go", "build", "-o", admin_bin, "./cmd/hauswart-admin"], cwd=ROOT, env=env, check=True)
 
     log_path = f"{work}/server.log"
-    with open(log_path, "w") as log:
-        server = subprocess.Popen(
-            [server_bin, "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", URL, *extra_args],
-            stderr=log, stdout=log)
+
+    def start_server():
+        with open(log_path, "a") as log:
+            return subprocess.Popen(
+                [server_bin, "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", URL,
+                 "-notify-env", f"{work}/notify.env", *extra_args],
+                stderr=log, stdout=log)
+
+    server = start_server()
+
+    def restart_server():
+        nonlocal server
+        server.terminate()
+        server.wait()
+        before = open(log_path).read().count("listening")
+        server = start_server()
+        for _ in range(50):
+            if open(log_path).read().count("listening") > before:
+                return
+            time.sleep(0.2)
+        raise RuntimeError("server did not come back")
+
     try:
         password = None
         for _ in range(50):
@@ -583,6 +784,8 @@ def main():
                 test_systemd(admin, agent_bin)
             elif name == "renewal":
                 test_renewal(admin, agent_bin)
+            elif name == "notify":
+                test_notify(admin, work, restart_server)
             elif name == "signing":
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             else:

@@ -27,6 +27,7 @@ there.
 | `internal/pki` | Certificate authority |
 | `internal/agent` | Enrollment, connection, task execution |
 | `internal/backup` | Backup and restore |
+| `internal/notify` | Notifications to admins through ntfy and email |
 | `internal/sign` | Signatures for tasks |
 | `cmd/hauswart-admin` | Signing tool for the admin's computer |
 | `web` | React and Mantine dashboard, embedded into the server binary |
@@ -75,6 +76,10 @@ The agent runs only these task types:
 | `user.passwd` | Start password from a hash, to be changed at first login |
 | `keys.set` | Replaces the pinned signing keys, needs a signature |
 | `limit.set` | CPU and memory limits through a systemd slice drop-in |
+| `power.reboot`, `power.shutdown` | Scheduled through `shutdown`, at least one minute ahead |
+| `power.cancel` | Cancels a scheduled reboot or shutdown |
+| `notify.send` | Popup in running desktop sessions |
+| `group.add`, `group.remove` | Membership in ordinary Linux groups |
 
 `api.Validate` checks every task on the server for early feedback, and again on
 the agent, which is the actual enforcement boundary.
@@ -86,7 +91,7 @@ not retried, because whether it ran is unknown.
 ## Signed tasks
 
 A device with pinned keys runs a task only with a valid signature, except
-`sudo.revoke` and `pkg.upgrade`. The keys live in `agent.json` and the server has
+`sudo.revoke`, `pkg.upgrade` and `power.cancel`. The keys live in `agent.json` and the server has
 no way to change them: they come from the enroll command or `trust-key`, and
 later only from a signed `keys.set`.
 
@@ -106,12 +111,46 @@ decodes and shows them, and signs its own encoding, never bytes from the server.
 Password hashes and key lists are made by the tool itself and refused from the
 queue.
 
+## Power actions
+
+A reboot or shutdown goes through `shutdown`, so logind holds it, warns terminals
+and stops new logins for the last five minutes. Desktops see none of that, so the
+agent also shows a popup, which is best effort: the device goes down as ordered
+even if nobody is logged in. The delay is at least a minute, which also lets the
+agent report the result before it goes down.
+
+Power tasks and messages carry an expiry of at most 24 hours, and the dashboard
+sets one hour. The agent refuses them later, and a signature ends with them. This
+way nobody can hold back a signed reboot, and a device that was switched off does
+not restart right after it comes back. The counter of a signed task is stored
+before the task runs, so a reboot cannot repeat after the restart.
+
+## Desktop messages
+
+The agent asks logind for sessions of type `x11` or `wayland`, leaving out the
+login screen, remote sessions and system accounts. For each person, it calls the
+standard notification service on their session bus through `busctl`, which comes
+with systemd, running as that user.
+
+Title and app name are always `Hauswart`. The message is a single line, its
+markup is escaped, and control and invisible format characters are refused, so
+it cannot pose as the system or look different from what the admin signed. A
+task fails if nobody saw the message.
+
 ## Requests
 
 A member files a request for software, a Flatpak or sudo. Nothing reaches the
 device until an admin approves it, which creates the task. A single conditional
 update decides a request, so a double click cannot create two tasks. The expiry
 of a sudo grant counts from the approval.
+
+A new request notifies admins through ntfy, email or both, if
+`/etc/hauswart/notify.env` configures them. A queue and one background worker do
+the sending with three attempts, so a dead mail server never holds up a request.
+The queue lives in memory, and at most 30 messages go out per hour, because
+members can file requests at any rate. What is lost that way still shows in the
+dashboard. A message says who asked for which kind of thing on which device, and
+leaves out the details and the reason, which are free text.
 
 ## Temporary sudo
 
@@ -130,6 +169,12 @@ serial next to the current one and accepts both until the device uses the new
 certificate. A lost response therefore cannot lock a device out. The agent keeps
 its private key, so the swap is a single atomic rename, and it takes effect at
 the next TLS handshake without a restart.
+
+Service certificates for home services come from the same CA. The server makes
+the key, hands it out once and keeps only the serial, names and expiry, which the
+dashboard lists. A certificate is valid for 397 days at most, serves TLS only, and
+is issued only for names inside the CA's constraints. Wildcards and the server's
+own names are refused, and a CA without constraints issues none at all.
 
 ## Data
 

@@ -1,0 +1,396 @@
+// Package notify tells admins about events through ntfy and email. It sends in
+// the background, so a slow or dead mail server never holds up a request.
+package notify
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/mail"
+	"net/smtp"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	title         = "Hauswart"
+	subject       = "New request in Hauswart"
+	queueSize     = 64
+	maxPerHour    = 30
+	sendTimeout   = 30 * time.Second
+	sendAttempts  = 3
+	defaultSMTP   = "587"
+	tlsStart      = "starttls"
+	tlsImplicit   = "tls"
+	tlsNone       = "none"
+	privateBits   = fs.FileMode(0o077)
+	maxConfigSize = 64 << 10
+)
+
+// retryDelay is a variable so tests need not wait.
+var retryDelay = 10 * time.Second
+
+// Config holds the credentials from notify.env.
+type Config struct {
+	NtfyURL      string
+	NtfyToken    string
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPTo       []string
+	SMTPTLS      string
+}
+
+// Load reads the file. A missing file means nothing is configured. Anything
+// else that is wrong is an error, because a typo should not silently end
+// notifications, and neither should credentials be used from a file others can
+// read.
+func Load(path string) (Config, error) {
+	var cfg Config
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return cfg, nil
+	}
+	if err != nil {
+		return cfg, err
+	}
+	if info.Mode().Perm()&privateBits != 0 {
+		return cfg, fmt.Errorf("%s has mode %04o, it must be 0600", path, info.Mode().Perm())
+	}
+	if info.Size() > maxConfigSize {
+		return cfg, fmt.Errorf("%s is too large", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	for line := 1; scanner.Scan(); line++ {
+		text := strings.TrimSpace(scanner.Text())
+		if text == "" || strings.HasPrefix(text, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(text, "=")
+		if !ok {
+			return Config{}, fmt.Errorf("%s:%d: expected KEY=value", path, line)
+		}
+		// The value is left out of every error, because it may be a secret.
+		if !cfg.set(strings.TrimSpace(key), unquote(strings.TrimSpace(value))) {
+			return Config{}, fmt.Errorf("%s:%d: unknown setting %q", path, line, strings.TrimSpace(key))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.check(); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+func unquote(s string) string {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+func (c *Config) set(key, value string) bool {
+	switch key {
+	case "NTFY_URL":
+		c.NtfyURL = value
+	case "NTFY_TOKEN":
+		c.NtfyToken = value
+	case "SMTP_HOST":
+		c.SMTPHost = value
+	case "SMTP_PORT":
+		c.SMTPPort = value
+	case "SMTP_USER":
+		c.SMTPUser = value
+	case "SMTP_PASSWORD":
+		c.SMTPPassword = value
+	case "SMTP_FROM":
+		c.SMTPFrom = value
+	case "SMTP_TO":
+		c.SMTPTo = nil
+		for _, to := range strings.Split(value, ",") {
+			if to = strings.TrimSpace(to); to != "" {
+				c.SMTPTo = append(c.SMTPTo, to)
+			}
+		}
+	case "SMTP_TLS":
+		c.SMTPTLS = value
+	default:
+		return false
+	}
+	return true
+}
+
+func (c *Config) check() error {
+	if c.NtfyURL != "" {
+		u, err := url.Parse(c.NtfyURL)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return errors.New("NTFY_URL must be an http or https URL with the topic")
+		}
+		if c.NtfyToken != "" && u.Scheme != "https" && !loopback(u.Hostname()) {
+			return errors.New("NTFY_TOKEN needs https")
+		}
+	}
+	if c.SMTPHost == "" {
+		return nil
+	}
+	if c.SMTPPort == "" {
+		c.SMTPPort = defaultSMTP
+	}
+	if c.SMTPTLS == "" {
+		c.SMTPTLS = tlsStart
+	}
+	if c.SMTPTLS != tlsStart && c.SMTPTLS != tlsImplicit && c.SMTPTLS != tlsNone {
+		return errors.New("SMTP_TLS must be starttls, tls or none")
+	}
+	if c.SMTPTLS == tlsNone && c.SMTPPassword != "" && !loopback(c.SMTPHost) {
+		return errors.New("SMTP_PASSWORD needs SMTP_TLS starttls or tls")
+	}
+	if len(c.SMTPTo) == 0 {
+		return errors.New("SMTP_TO is missing")
+	}
+	for _, address := range append([]string{c.SMTPFrom}, c.SMTPTo...) {
+		if _, err := mail.ParseAddress(address); err != nil {
+			return errors.New("SMTP_FROM and SMTP_TO must be mail addresses")
+		}
+	}
+	return nil
+}
+
+func loopback(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
+}
+
+// Enabled says whether any channel is configured.
+func (c Config) Enabled() bool { return len(c.Channels()) > 0 }
+
+// Channels names the configured channels.
+func (c Config) Channels() []string {
+	var channels []string
+	if c.NtfyURL != "" {
+		channels = append(channels, "ntfy")
+	}
+	if c.SMTPHost != "" {
+		channels = append(channels, "email")
+	}
+	return channels
+}
+
+// Notifier delivers messages one after the other.
+type Notifier struct {
+	cfg    Config
+	log    *slog.Logger
+	roots  *x509.CertPool
+	client *http.Client
+	queue  chan string
+
+	mu          sync.Mutex
+	windowStart time.Time
+	sent        int
+}
+
+// New creates a Notifier that trusts roots for TLS.
+func New(cfg Config, roots *x509.CertPool, log *slog.Logger) *Notifier {
+	return &Notifier{
+		cfg:   cfg,
+		log:   log,
+		roots: roots,
+		queue: make(chan string, queueSize),
+		client: &http.Client{
+			Timeout:   sendTimeout,
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}},
+			// A token must not follow a redirect somewhere else.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
+}
+
+// Send queues a message and returns at once. A member can file requests at any
+// rate, so the number of messages is limited, and the dashboard still shows
+// everything that is dropped here.
+func (n *Notifier) Send(message string) {
+	if !n.allow(time.Now()) {
+		n.log.Warn("too many notifications this hour, dropping one")
+		return
+	}
+	select {
+	case n.queue <- message:
+	default:
+		n.log.Warn("notification queue is full, dropping one")
+	}
+}
+
+func (n *Notifier) allow(now time.Time) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if now.Sub(n.windowStart) >= time.Hour {
+		n.windowStart, n.sent = now, 0
+	}
+	if n.sent >= maxPerHour {
+		return false
+	}
+	n.sent++
+	return true
+}
+
+// Run delivers until ctx ends.
+func (n *Notifier) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case message := <-n.queue:
+			if n.cfg.NtfyURL != "" {
+				n.deliver(ctx, "ntfy", func(ctx context.Context) error { return n.sendNtfy(ctx, message) })
+			}
+			if n.cfg.SMTPHost != "" {
+				n.deliver(ctx, "email", func(ctx context.Context) error { return n.sendMail(ctx, message) })
+			}
+		}
+	}
+}
+
+func (n *Notifier) deliver(ctx context.Context, channel string, send func(context.Context) error) {
+	for attempt := 1; ; attempt++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, sendTimeout)
+		err := send(attemptCtx)
+		cancel()
+		if err == nil {
+			return
+		}
+		n.log.Warn("sending a notification failed", "channel", channel, "attempt", attempt, "err", loggable(err))
+		if attempt == sendAttempts {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(retryDelay):
+		}
+	}
+}
+
+// loggable drops the URL from HTTP errors, because an ntfy topic works like a
+// password: whoever knows it can read along.
+func loggable(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
+}
+
+func (n *Notifier) sendNtfy(ctx context.Context, message string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.cfg.NtfyURL, strings.NewReader(message))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Title", title)
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	if n.cfg.NtfyToken != "" {
+		req.Header.Set("Authorization", "Bearer "+n.cfg.NtfyToken)
+	}
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("ntfy answered with status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// sendMail refuses to go on without TLS when TLS was asked for: a server, or
+// someone in between, that leaves out STARTTLS must not get the password.
+func (n *Notifier) sendMail(ctx context.Context, message string) error {
+	dialer := net.Dialer{}
+	address := net.JoinHostPort(n.cfg.SMTPHost, n.cfg.SMTPPort)
+	conn, err := dialer.DialContext(ctx, "tcp", address)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+	tlsConfig := &tls.Config{ServerName: n.cfg.SMTPHost, RootCAs: n.roots, MinVersion: tls.VersionTLS12}
+	if n.cfg.SMTPTLS == tlsImplicit {
+		conn = tls.Client(conn, tlsConfig)
+	}
+	client, err := smtp.NewClient(conn, n.cfg.SMTPHost)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	if n.cfg.SMTPTLS == tlsStart {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("mail server offers no STARTTLS")
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return err
+		}
+	}
+	if n.cfg.SMTPUser != "" {
+		if err := client.Auth(smtp.PlainAuth("", n.cfg.SMTPUser, n.cfg.SMTPPassword, n.cfg.SMTPHost)); err != nil {
+			return err
+		}
+	}
+	from, err := mail.ParseAddress(n.cfg.SMTPFrom)
+	if err != nil {
+		return err
+	}
+	if err := client.Mail(from.Address); err != nil {
+		return err
+	}
+	for _, to := range n.cfg.SMTPTo {
+		parsed, err := mail.ParseAddress(to)
+		if err != nil {
+			return err
+		}
+		if err := client.Rcpt(parsed.Address); err != nil {
+			return err
+		}
+	}
+	body, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := body.Write(n.mailText(message)); err != nil {
+		return err
+	}
+	if err := body.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+// mailText has a fixed subject, so nothing from a request reaches a header.
+func (n *Notifier) mailText(message string) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n", n.cfg.SMTPFrom, strings.Join(n.cfg.SMTPTo, ", "),
+		subject, time.Now().Format(time.RFC1123Z))
+	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n")
+	b.WriteString(strings.ReplaceAll(message, "\n", "\r\n"))
+	b.WriteString("\r\n")
+	return b.Bytes()
+}

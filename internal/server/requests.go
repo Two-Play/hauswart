@@ -58,6 +58,7 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 		return
 	}
 	s.audit(r, u.Username, "request.created", in.Kind+" "+in.Detail)
+	s.notifyRequest(r.Context(), id)
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 

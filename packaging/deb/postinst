@@ -3,6 +3,7 @@
 # process that is installing this update.
 if [ -f /usr/lib/sysusers.d/hauswart.conf ]; then
 	systemd-sysusers hauswart.conf || true
+	chown hauswart:hauswart /etc/hauswart/notify.env || true
 fi
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true

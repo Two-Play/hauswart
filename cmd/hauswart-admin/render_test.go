@@ -84,3 +84,71 @@ func TestReviewShowsCertificateFingerprint(t *testing.T) {
 		t.Fatalf("got %q", text)
 	}
 }
+
+func TestReviewSpellsOutPowerActions(t *testing.T) {
+	soon := time.Now().Add(time.Hour)
+	text, signed, err := review(api.TaskPowerReboot, mustJSON(t, api.PowerPayload{DelayMinutes: 7, Message: "Kernel", ExpiresAt: soon}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"RESTART THIS DEVICE", "7 minute(s)", "Kernel", "gets it by"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no %q in %q", want, text)
+		}
+	}
+	until, ok := actionDeadline(api.TaskPowerReboot, signed)
+	if !ok || !until.Equal(soon) {
+		t.Fatalf("signature does not end with the task: %v", until)
+	}
+	if !signedUntil(api.TaskPowerReboot, signed).Equal(soon) {
+		t.Fatal("signature outlives the task")
+	}
+	if text, _, _ := review(api.TaskPowerShutdown, mustJSON(t, api.PowerPayload{DelayMinutes: 7, ExpiresAt: soon})); !strings.Contains(text, "SHUT DOWN THIS DEVICE") {
+		t.Fatalf("got %q", text)
+	}
+}
+
+func TestReviewRefusesExpiredActions(t *testing.T) {
+	past := time.Now().Add(-time.Minute)
+	if _, _, err := review(api.TaskPowerReboot, mustJSON(t, api.PowerPayload{DelayMinutes: 1, ExpiresAt: past})); err == nil {
+		t.Fatal("offered an expired reboot")
+	}
+	if _, _, err := review(api.TaskNotifySend, mustJSON(t, api.NotifyPayload{Message: "x", ExpiresAt: past})); err == nil {
+		t.Fatal("offered an expired message")
+	}
+}
+
+func TestReviewShowsTheMessageAndItsAudience(t *testing.T) {
+	soon := time.Now().Add(time.Hour)
+	text, _, err := review(api.TaskNotifySend, mustJSON(t, api.NotifyPayload{Message: "Essen!", ExpiresAt: soon}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, `titled "Hauswart"`) || !strings.Contains(text, "everyone") || !strings.Contains(text, "Essen!") {
+		t.Fatalf("got %q", text)
+	}
+	text, _, _ = review(api.TaskNotifySend, mustJSON(t, api.NotifyPayload{Message: "Essen!", User: "anna", ExpiresAt: soon}))
+	if !strings.Contains(text, "user anna") {
+		t.Fatalf("got %q", text)
+	}
+}
+
+func TestReviewOfGroups(t *testing.T) {
+	text, _, err := review(api.TaskGroupAdd, mustJSON(t, api.GroupPayload{User: "anna", Group: "video"}))
+	if err != nil || !strings.Contains(text, "ADD Linux user anna to group video") {
+		t.Fatalf("%q, %v", text, err)
+	}
+	text, _, err = review(api.TaskGroupRemove, mustJSON(t, api.GroupPayload{User: "anna", Group: "video"}))
+	if err != nil || !strings.Contains(text, "REMOVE Linux user anna from group video") {
+		t.Fatalf("%q, %v", text, err)
+	}
+	if _, _, err := review(api.TaskGroupAdd, mustJSON(t, api.GroupPayload{User: "anna", Group: "wheel"})); err == nil {
+		t.Fatal("offered wheel")
+	}
+}
+
+func TestCancelIsNotOffered(t *testing.T) {
+	if _, _, err := review(api.TaskPowerCancel, json.RawMessage(`{}`)); err == nil {
+		t.Fatal("a task without a signature ended up in the signing queue")
+	}
+}

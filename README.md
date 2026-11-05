@@ -16,9 +16,14 @@ in containers, not on physical machines or over a real VPN. See
 - Package install, removal and system update through dnf, apt, zypper, pacman
   and rpm-ostree, and Flatpak installs from Flathub
 - Deployment of configuration files and CA certificates
-- Linux users: create, lock, and set a start password that must be changed
+- Linux users: create, lock, set a start password that must be changed, and
+  change group memberships
+- Restart and shutdown with a warning and a way to cancel
+- Messages to family members as a popup on their desktop
 - CPU and memory limits per user
-- Built-in certificate authority with automatic certificate renewal
+- Built-in certificate authority with automatic certificate renewal, and
+  certificates for home services
+- Notifications to admins about new requests, through ntfy or email
 - Tasks signed on your own computer, so a hacked server alone cannot reach root
   on protected devices
 - Audit log of every action
@@ -64,9 +69,9 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | Command | Checks |
 | --- | --- |
 | `make test` | `go vet` and unit tests |
-| `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, resource limits under systemd, and certificate renewal |
+| `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, resource limits under systemd, certificate renewal, and real ntfy and mail servers |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
-| `make test-vm` | Flatpak and `rpm-ostree` in real virtual machines. Needs KVM and downloads about 1.5 GB of images |
+| `make test-vm` | Flatpak, `rpm-ostree`, real reboots and popups in a GNOME session, in real virtual machines. Needs KVM and downloads about 1.5 GB of images, plus GNOME inside a VM |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
 
 The privileged tests run inside throwaway containers and need Podman.
@@ -79,6 +84,8 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 ## Limitations
 
 - Not yet tried on real hardware or over a real VPN.
+- Popups are tested in GNOME on Wayland only. Other desktops should work, but
+  are not tested.
 - Atomic Fedora is tested on CoreOS, not on Silverblue or Kinoite, and Flatpak
   installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by

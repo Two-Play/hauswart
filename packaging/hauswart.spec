@@ -39,12 +39,14 @@ install -Dm755 %{hw_root}/dist/hauswart-admin %{buildroot}/usr/bin/hauswart-admi
 install -Dm644 %{hw_root}/packaging/systemd/hauswart-server.service %{buildroot}/usr/lib/systemd/system/hauswart-server.service
 install -Dm644 %{hw_root}/packaging/systemd/hauswart-agent.service %{buildroot}/usr/lib/systemd/system/hauswart-agent.service
 install -Dm644 %{hw_root}/packaging/server.env %{buildroot}/etc/hauswart/server.env
+install -Dm600 %{hw_root}/packaging/notify.env %{buildroot}/etc/hauswart/notify.env
 install -Dm644 %{hw_root}/packaging/hauswart.sysusers %{buildroot}/usr/lib/sysusers.d/hauswart.conf
 
 # Neither package restarts its service: a running agent may be the very
 # process that is installing this update.
 %post server
 systemd-sysusers hauswart.conf || :
+chown hauswart:hauswart /etc/hauswart/notify.env || :
 [ -d /run/systemd/system ] && systemctl daemon-reload || :
 
 %post agent
@@ -67,6 +69,7 @@ fi
 /usr/lib/sysusers.d/hauswart.conf
 %dir /etc/hauswart
 %config(noreplace) /etc/hauswart/server.env
+%attr(0600,root,root) %config(noreplace) %verify(not user group) /etc/hauswart/notify.env
 
 %files admin
 /usr/bin/hauswart-admin

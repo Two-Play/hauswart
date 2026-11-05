@@ -17,8 +17,9 @@ fi
 if [ "$component" = server ]; then
 	mkdir -p "$work/data/etc/hauswart" "$work/data/usr/lib/sysusers.d"
 	install -m644 packaging/server.env "$work/data/etc/hauswart/"
+	install -m600 packaging/notify.env "$work/data/etc/hauswart/"
 	install -m644 packaging/hauswart.sysusers "$work/data/usr/lib/sysusers.d/hauswart.conf"
-	echo /etc/hauswart/server.env >"$work/control/conffiles"
+	printf '%s\n' /etc/hauswart/server.env /etc/hauswart/notify.env >"$work/control/conffiles"
 fi
 
 cat >"$work/control/control" <<CONTROL
