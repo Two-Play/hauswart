@@ -8,7 +8,7 @@ Name:           hauswart
 Version:        %{hw_version}
 Release:        1
 Summary:        Linux management for families
-License:        MIT
+License:        AGPL-3.0-only
 ExclusiveArch:  x86_64
 
 %description

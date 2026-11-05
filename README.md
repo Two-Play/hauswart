@@ -67,6 +67,11 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 
 The privileged tests run inside throwaway containers and need Podman.
 
+## License
+
+GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
+[LICENSE](LICENSE).
+
 ## Limitations
 
 - Not yet tried on real hardware or over a real VPN.
