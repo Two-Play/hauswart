@@ -94,6 +94,10 @@ def test(target):
         check(target, "server is active", inside("systemctl is-active hauswart-server").returncode == 0,
               inside("journalctl -u hauswart-server --no-pager | tail -15").stdout)
 
+        # 0100007F:20FB is 127.0.0.1:8443 in /proc/net/tcp, state 0A is listening.
+        listeners = inside("awk '$4 == \"0A\" && $2 ~ /:20FB$/ {print $2}' /proc/net/tcp /proc/net/tcp6").stdout.split()
+        check(target, "default config listens on loopback only", listeners == ["0100007F:20FB"], str(listeners))
+
         owner = inside("stat -c %U /proc/$(systemctl show -p MainPID --value hauswart-server)").stdout.strip()
         check(target, "server does not run as root", owner not in ("", "root"), owner)
 
@@ -136,6 +140,32 @@ def test(target):
         restarted = inside("systemctl restart hauswart-server")
         time.sleep(2)
         check(target, "server survives a restart", restarted.returncode == 0 and inside("systemctl is-active hauswart-server").returncode == 0)
+
+        # Disaster recovery: lose everything except the backup.
+        made = inside("hauswart-server backup -out /root/backup.tar.gz")
+        check(target, "backup while the server runs", made.returncode == 0, made.stderr)
+        mode = inside("stat -c %a /root/backup.tar.gz").stdout.strip()
+        check(target, "backup is private", mode == "600", mode)
+        inside("systemctl stop hauswart-server hauswart-agent && rm -rf /var/lib/hauswart-server/*")
+        check(target, "data is gone", inside("test -e /var/lib/hauswart-server/hauswart.db").returncode != 0)
+        restored = inside("hauswart-server restore -in /root/backup.tar.gz && chown -R hauswart:hauswart /var/lib/hauswart-server/")
+        check(target, "restore", restored.returncode == 0, restored.stderr)
+        inside("systemctl start hauswart-server hauswart-agent")
+        for _ in range(30):
+            if inside(f"curl -s -o /dev/null --cacert {CA} {URL}/healthz").returncode == 0:
+                break
+            time.sleep(1)
+        user = call("POST", "/api/login", {"username": "admin", "password": password})
+        check(target, "login after restore", user and user.get("role") == "admin", str(user))
+        created = call("POST", f"/api/devices/{device['id']}/tasks", {"type": "pkg.remove", "payload": {"packages": ["tree"]}})
+        status = None
+        for _ in range(60):
+            tasks = call("GET", "/api/tasks")
+            status = next(t for t in tasks if t["id"] == created["id"])["status"]
+            if status in ("done", "failed"):
+                break
+            time.sleep(1)
+        check(target, "enrolled device keeps working after restore", status == "done", str(status))
 
         if remove:
             removed = inside(remove)

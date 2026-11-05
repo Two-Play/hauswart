@@ -17,16 +17,29 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/philippe/hauswart/internal/backup"
 	"github.com/philippe/hauswart/internal/pki"
 	"github.com/philippe/hauswart/internal/server"
 	"github.com/philippe/hauswart/internal/store"
 )
 
-const initialPasswordFile = "initial-admin-password"
+const (
+	initialPasswordFile = "initial-admin-password"
+	defaultDataDir      = "/var/lib/hauswart-server"
+)
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(log); err != nil {
+	command := run
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "backup":
+			command = runBackup
+		case "restore":
+			command = runRestore
+		}
+	}
+	if err := command(log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
@@ -34,7 +47,7 @@ func main() {
 
 func run(log *slog.Logger) error {
 	addr := flag.String("addr", ":8443", "listen address")
-	dataDir := flag.String("data", "/var/lib/hauswart-server", "data directory")
+	dataDir := flag.String("data", defaultDataDir, "data directory")
 	publicURL := flag.String("url", "https://localhost:8443", "URL under which agents reach this server")
 	extraHosts := flag.String("hosts", "", "additional comma-separated DNS names or IPs for the TLS certificate")
 	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
@@ -114,6 +127,43 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// runBackup writes the archive. It holds the CA key, so it is private.
+func runBackup(*slog.Logger) error {
+	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	dataDir := fs.String("data", defaultDataDir, "data directory")
+	out := fs.String("out", "", "archive to create")
+	fs.Parse(os.Args[2:])
+	if *out == "" {
+		return errors.New("-out is required")
+	}
+	f, err := os.OpenFile(*out, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := backup.Create(context.Background(), *dataDir, f); err != nil {
+		f.Close()
+		os.Remove(*out)
+		return err
+	}
+	return f.Close()
+}
+
+func runRestore(*slog.Logger) error {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	dataDir := fs.String("data", defaultDataDir, "data directory, must not hold a database")
+	in := fs.String("in", "", "archive to restore")
+	fs.Parse(os.Args[2:])
+	if *in == "" {
+		return errors.New("-in is required")
+	}
+	f, err := os.Open(*in)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return backup.Restore(*dataDir, f)
 }
 
 // isLoopback keeps the unencrypted development listener off the network.

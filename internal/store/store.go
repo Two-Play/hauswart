@@ -102,6 +102,13 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// Snapshot writes a consistent copy of the database to path, even while the
+// server is writing to it.
+func (s *Store) Snapshot(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path)
+	return err
+}
+
 // RandomToken returns a 256-bit hex token.
 func RandomToken() string {
 	b := make([]byte, 32)
