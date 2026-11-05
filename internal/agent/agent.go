@@ -38,6 +38,7 @@ const (
 	grantInterval  = 15 * time.Second
 	pollWaitSecs   = 25
 	retryDelay     = 10 * time.Second
+	maxResponse    = 8 << 20
 
 	// A device renews once a third of its certificate's lifetime is left. At
 	// two years, that tolerates eight months switched off.
@@ -115,7 +116,7 @@ func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string) erro
 		return err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	if err != nil {
 		return err
 	}
@@ -125,6 +126,15 @@ func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string) erro
 	var out api.EnrollResponse
 	if err := json.Unmarshal(data, &out); err != nil {
 		return err
+	}
+	// The ID belongs to this key. A server that hands out another one could
+	// reuse the identity of an earlier installation.
+	wantID, err := pki.DeviceID(&key.PublicKey)
+	if err != nil {
+		return err
+	}
+	if out.DeviceID != wantID {
+		return fmt.Errorf("server assigned device ID %q, expected %q", out.DeviceID, wantID)
 	}
 
 	keyDER, err := x509.MarshalECPrivateKey(key)
@@ -320,7 +330,7 @@ func (a *Agent) renew(ctx context.Context) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	var out api.RenewResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&out); err != nil {
 		return err
 	}
 
@@ -422,7 +432,7 @@ func (a *Agent) poll(ctx context.Context) (*api.Task, error) {
 		return nil, nil
 	case http.StatusOK:
 		var t api.Task
-		if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&t); err != nil {
 			return nil, err
 		}
 		return &t, nil

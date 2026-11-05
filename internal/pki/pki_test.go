@@ -61,7 +61,7 @@ func TestSignDeviceSetsIdentityItself(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certPEM, serial, err := ca.SignDevice(newCSR(t, "someone-else"), "device-1")
+	certPEM, id, serial, err := ca.SignDevice(newCSR(t, "someone-else"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,8 +69,11 @@ func TestSignDeviceSetsIdentityItself(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cert.Subject.CommonName != "device-1" {
-		t.Fatalf("CN %q taken from the CSR", cert.Subject.CommonName)
+	if cert.Subject.CommonName != id || len(id) != 32 {
+		t.Fatalf("CN %q, id %q", cert.Subject.CommonName, id)
+	}
+	if want, _ := DeviceID(cert.PublicKey); want != id {
+		t.Fatalf("id %q does not come from the key", id)
 	}
 	if cert.SerialNumber.Text(16) != serial {
 		t.Fatal("returned serial does not match the certificate")
@@ -94,7 +97,7 @@ func TestDeviceValidityOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	ca.DeviceValidity = 80 * time.Second
-	certPEM, _, err := ca.SignDevice(newCSR(t, "x"), "d")
+	certPEM, _, _, err := ca.SignDevice(newCSR(t, "x"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,13 +115,13 @@ func TestSignDeviceRejectsBadCSR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := ca.SignDevice([]byte("not pem"), "d"); err == nil {
+	if _, _, _, err := ca.SignDevice([]byte("not pem")); err == nil {
 		t.Fatal("accepted garbage")
 	}
 	csr := newCSR(t, "x")
 	block, _ := pem.Decode(csr)
 	block.Bytes[len(block.Bytes)-1] ^= 0xff
-	if _, _, err := ca.SignDevice(pem.EncodeToMemory(block), "d"); err == nil {
+	if _, _, _, err := ca.SignDevice(pem.EncodeToMemory(block)); err == nil {
 		t.Fatal("accepted a CSR with a broken signature")
 	}
 }
@@ -180,5 +183,58 @@ func TestServerCertSurvivesRestart(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("server key mode %v", info.Mode().Perm())
+	}
+}
+
+func TestNameConstraints(t *testing.T) {
+	ca, err := LoadOrCreate(t.TempDir(), "hauswart.home", "10.8.0.0/24", "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range []string{"hauswart.home", "nas.hauswart.home", "10.8.0.7", "127.0.0.1"} {
+		if _, err := ca.issueServerCert([]string{host}); err != nil {
+			t.Errorf("%s refused: %v", host, err)
+		}
+	}
+	for _, host := range []string{"dl.flathub.org", "hauswart.home.evil.example", "10.9.0.1", "1.1.1.1"} {
+		if _, err := ca.issueServerCert([]string{host}); err == nil {
+			t.Errorf("%s accepted", host)
+		}
+	}
+}
+
+func TestOnlyIPsStillConstrainNames(t *testing.T) {
+	ca, err := LoadOrCreate(t.TempDir(), "10.8.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ca.issueServerCert([]string{"dl.flathub.org"}); err == nil {
+		t.Fatal("DNS names stayed unconstrained")
+	}
+	ca, err = LoadOrCreate(t.TempDir(), "hauswart.home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ca.issueServerCert([]string{"1.1.1.1"}); err == nil {
+		t.Fatal("IPs stayed unconstrained")
+	}
+}
+
+func TestDeviceCertificateValidUnderConstrainedCA(t *testing.T) {
+	ca, err := LoadOrCreate(t.TempDir(), "hauswart.home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM, _, _, err := ca.SignDevice(newCSR(t, "x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := ParseCert(certPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := x509.VerifyOptions{Roots: ca.Pool(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
+	if _, err := cert.Verify(opts); err != nil {
+		t.Fatal(err)
 	}
 }

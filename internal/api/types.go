@@ -4,10 +4,13 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/pem"
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Task types. The agent executes only these; there is deliberately no
@@ -117,7 +120,9 @@ type EnrollResponse struct {
 var (
 	// No leading dash, slash or URL: package managers would otherwise read the
 	// value as an option, or as a local file or remote URL to install.
-	pkgRe     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$`)
+	// A trailing "-" would make apt remove the package instead. A trailing "+"
+	// only means "install" and is part of real names such as g++.
+	pkgRe     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._+:-]{0,126}[A-Za-z0-9._+:])?$`)
 	userRe    = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	caNameRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 	commandRe = regexp.MustCompile(`^/[A-Za-z0-9._/+-]{1,255}$`)
@@ -159,7 +164,7 @@ func Validate(taskType string, payload json.RawMessage) error {
 		if err := strictDecode(payload, &p); err != nil {
 			return err
 		}
-		if !strings.HasPrefix(p.Path, "/") || strings.Contains(p.Path, "..") {
+		if !strings.HasPrefix(p.Path, "/") || strings.Contains(p.Path, "..") || hasControl(p.Path) {
 			return Fail(ErrInvalidPath, p.Path)
 		}
 		if p.Mode != "" && !modeRe.MatchString(p.Mode) {
@@ -173,7 +178,7 @@ func Validate(taskType string, payload json.RawMessage) error {
 		if !caNameRe.MatchString(p.Name) {
 			return Fail(ErrInvalidCAName, p.Name)
 		}
-		if !strings.Contains(p.PEM, "BEGIN CERTIFICATE") {
+		if !singleCertificate(p.PEM) {
 			return Fail(ErrNotPEM)
 		}
 	case TaskSudoGrant:
@@ -222,7 +227,7 @@ func Validate(taskType string, payload json.RawMessage) error {
 		if !ValidUser(p.User) {
 			return Fail(ErrInvalidUser, p.User)
 		}
-		if strings.ContainsAny(p.FullName, ":\n\r") {
+		if strings.Contains(p.FullName, ":") || hasControl(p.FullName) {
 			return Fail(ErrInvalidFullName)
 		}
 		for _, g := range p.Groups {
@@ -250,6 +255,16 @@ func Validate(taskType string, payload json.RawMessage) error {
 		return Fail(ErrUnknownTaskType, taskType)
 	}
 	return nil
+}
+
+func hasControl(s string) bool { return strings.IndexFunc(s, unicode.IsControl) >= 0 }
+
+// singleCertificate accepts exactly one PEM certificate. A second block would
+// otherwise go into the trust store unnoticed, because whoever reviews a task
+// sees only the first.
+func singleCertificate(s string) bool {
+	block, rest := pem.Decode([]byte(s))
+	return block != nil && block.Type == "CERTIFICATE" && len(bytes.TrimSpace(rest)) == 0
 }
 
 var privilegedGroups = map[string]bool{

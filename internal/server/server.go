@@ -344,8 +344,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, api.ErrEnrollTokenInvalid)
 		return
 	}
-	id := store.RandomToken()[:32]
-	cert, serial, err := s.ca.SignDevice([]byte(in.CSR), id)
+	cert, id, serial, err := s.ca.SignDevice([]byte(in.CSR))
 	if err != nil {
 		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
 		return
@@ -371,8 +370,9 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request, id string) 
 	if !readJSON(w, r, &in) {
 		return
 	}
-	cert, serial, err := s.ca.SignDevice([]byte(in.CSR), id)
-	if err != nil {
+	cert, csrID, serial, err := s.ca.SignDevice([]byte(in.CSR))
+	if err != nil || csrID != id {
+		// Identity is the key, so a renewal must keep it.
 		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
 		return
 	}

@@ -43,14 +43,16 @@ type CA struct {
 	DeviceValidity time.Duration
 }
 
-// LoadOrCreate reads the CA from dir, creating it on first start.
-func LoadOrCreate(dir string) (*CA, error) {
+// LoadOrCreate reads the CA from dir, creating it on first start. A new CA is
+// limited to the permitted DNS names, IPs and CIDR ranges. These cannot change
+// later, because they are part of the certificate every device trusts.
+func LoadOrCreate(dir string, permitted ...string) (*CA, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	certPEM, err := os.ReadFile(filepath.Join(dir, caCertFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return create(dir)
+		return create(dir, permitted)
 	}
 	if err != nil {
 		return nil, err
@@ -74,7 +76,38 @@ func LoadOrCreate(dir string) (*CA, error) {
 	return &CA{Cert: cert, CertPEM: certPEM, key: key, dir: dir}, nil
 }
 
-func create(dir string) (*CA, error) {
+// constrain limits the CA so that a stolen key cannot impersonate arbitrary
+// websites to the devices that trust it. A name type without any entry would
+// stay unconstrained, so both are always set: names that match nothing fill
+// an empty list.
+func constrain(tmpl *x509.Certificate, permitted []string) error {
+	if len(permitted) == 0 {
+		return nil
+	}
+	tmpl.PermittedDNSDomainsCritical = true
+	for _, entry := range permitted {
+		if _, ipNet, err := net.ParseCIDR(entry); err == nil {
+			tmpl.PermittedIPRanges = append(tmpl.PermittedIPRanges, ipNet)
+		} else if ip := net.ParseIP(entry); ip != nil {
+			bits := 8 * len(ip)
+			if v4 := ip.To4(); v4 != nil {
+				ip, bits = v4, 32
+			}
+			tmpl.PermittedIPRanges = append(tmpl.PermittedIPRanges, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+		} else if entry != "" {
+			tmpl.PermittedDNSDomains = append(tmpl.PermittedDNSDomains, entry)
+		}
+	}
+	if len(tmpl.PermittedDNSDomains) == 0 {
+		tmpl.PermittedDNSDomains = []string{"invalid"}
+	}
+	if len(tmpl.PermittedIPRanges) == 0 {
+		tmpl.PermittedIPRanges = []*net.IPNet{{IP: net.IPv4(192, 0, 2, 0).To4(), Mask: net.CIDRMask(32, 32)}}
+	}
+	return nil
+}
+
+func create(dir string, permitted []string) (*CA, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -89,6 +122,9 @@ func create(dir string) (*CA, error) {
 		BasicConstraintsValid: true,
 		MaxPathLenZero:        true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	if err := constrain(tmpl, permitted); err != nil {
+		return nil, err
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
@@ -168,6 +204,14 @@ func (c *CA) issueServerCert(hosts []string) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	opts := x509.VerifyOptions{Roots: c.Pool(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	if _, err := leaf.Verify(opts); err != nil {
+		return tls.Certificate{}, fmt.Errorf("server certificate outside the CA's permitted names: %w", err)
+	}
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -183,20 +227,36 @@ func (c *CA) issueServerCert(hosts []string) (tls.Certificate, error) {
 	return tls.Certificate{Certificate: [][]byte{der, c.Cert.Raw}, PrivateKey: key}, nil
 }
 
+// DeviceID derives a device's identity from its public key. Neither side can
+// choose it: a reinstalled device gets a new key and with it a new ID, so
+// signed tasks for the old installation can never apply to the new one.
+func DeviceID(publicKey any) (string, error) {
+	der, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(der)
+	return hex.EncodeToString(sum[:16]), nil
+}
+
 // SignDevice turns a CSR into a client certificate whose CN is the device ID.
 // Only the public key is taken from the CSR; the subject is set here, so an
 // agent cannot choose its own identity.
-func (c *CA) SignDevice(csrPEM []byte, deviceID string) (certPEM []byte, serial string, err error) {
+func (c *CA) SignDevice(csrPEM []byte) (certPEM []byte, deviceID, serial string, err error) {
 	block, _ := pem.Decode(csrPEM)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		return nil, "", errors.New("CSR is not PEM")
+		return nil, "", "", errors.New("CSR is not PEM")
 	}
 	csr, err := x509.ParseCertificateRequest(block.Bytes)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if err := csr.CheckSignature(); err != nil {
-		return nil, "", fmt.Errorf("CSR signature: %w", err)
+		return nil, "", "", fmt.Errorf("CSR signature: %w", err)
+	}
+	deviceID, err = DeviceID(csr.PublicKey)
+	if err != nil {
+		return nil, "", "", err
 	}
 	validity := leafValidity
 	if c.DeviceValidity > 0 {
@@ -213,9 +273,9 @@ func (c *CA) SignDevice(csrPEM []byte, deviceID string) (certPEM []byte, serial 
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Cert, csr.PublicKey, c.key)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), tmpl.SerialNumber.Text(16), nil
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), deviceID, tmpl.SerialNumber.Text(16), nil
 }
 
 // Fingerprint is the hex SHA-256 of the CA certificate. Agents pin it during

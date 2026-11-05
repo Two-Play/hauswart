@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,7 @@ func run(log *slog.Logger) error {
 	publicURL := flag.String("url", "https://localhost:8443", "URL under which agents reach this server")
 	extraHosts := flag.String("hosts", "", "additional comma-separated DNS names or IPs for the TLS certificate")
 	deviceValidity := flag.Duration("device-cert-validity", 0, "testing only: lifetime of device certificates")
+	caScope := flag.String("ca-scope", "", "comma-separated domains and CIDR ranges a new CA may issue for, in addition to the server's own addresses; cannot be changed later")
 	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
 	flag.Parse()
 
@@ -61,7 +63,19 @@ func run(log *slog.Logger) error {
 	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
 		return err
 	}
-	ca, err := pki.LoadOrCreate(filepath.Join(*dataDir, "pki"))
+	u, err := url.Parse(*publicURL)
+	if err != nil {
+		return fmt.Errorf("-url: %w", err)
+	}
+	hosts := []string{"localhost", "127.0.0.1", "::1", u.Hostname()}
+	if *extraHosts != "" {
+		hosts = append(hosts, strings.Split(*extraHosts, ",")...)
+	}
+	permitted := hosts
+	if *caScope != "" {
+		permitted = append(slices.Clone(hosts), strings.Split(*caScope, ",")...)
+	}
+	ca, err := pki.LoadOrCreate(filepath.Join(*dataDir, "pki"), permitted...)
 	if err != nil {
 		return fmt.Errorf("CA: %w", err)
 	}
@@ -81,14 +95,6 @@ func run(log *slog.Logger) error {
 	srv, err := server.New(st, ca, *publicURL, log)
 	if err != nil {
 		return err
-	}
-	u, err := url.Parse(*publicURL)
-	if err != nil {
-		return fmt.Errorf("-url: %w", err)
-	}
-	hosts := []string{"localhost", "127.0.0.1", "::1", u.Hostname()}
-	if *extraHosts != "" {
-		hosts = append(hosts, strings.Split(*extraHosts, ",")...)
 	}
 	tlsConfig, err := srv.TLSConfig(hosts)
 	if err != nil {

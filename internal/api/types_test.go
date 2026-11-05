@@ -2,9 +2,25 @@ package api
 
 import (
 	"encoding/json"
+	"encoding/pem"
 	"strings"
 	"testing"
 	"time"
+)
+
+func caPayload(blocks ...string) string {
+	var body strings.Builder
+	for _, kind := range blocks {
+		body.WriteString(string(pem.EncodeToMemory(&pem.Block{Type: kind, Bytes: []byte("data")})))
+	}
+	raw, _ := json.Marshal(CAInstallPayload{Name: "a", PEM: body.String()})
+	return string(raw)
+}
+
+var (
+	testOneCert  = caPayload("CERTIFICATE")
+	testTwoCerts = caPayload("CERTIFICATE", "CERTIFICATE")
+	testKeyBlock = caPayload("PRIVATE KEY")
 )
 
 func TestValidateRejectsDangerousInput(t *testing.T) {
@@ -41,6 +57,12 @@ func TestValidateRejectsDangerousInput(t *testing.T) {
 		{"chpasswd line injection", TaskUserPassword, `{"user":"anna","hash":"$6$a$` + strings.Repeat("a", 86) + `\nroot:x"}`},
 		{"password for root", TaskUserPassword, `{"user":"root","hash":"$6$a$` + strings.Repeat("a", 86) + `"}`},
 		{"ca name traversal", TaskCAInstall, `{"name":"../x","pem":"-----BEGIN CERTIFICATE-----"}`},
+		{"apt removal suffix", TaskPkgInstall, `{"packages":["openssh-server-"]}`},
+		{"terminal escape in name", TaskUserCreate, `{"user":"anna","full_name":"a\u001b[2Jb"}`},
+		{"control character in path", TaskFilePut, `{"path":"/etc/hauswart.d/a\u001bb","content":""}`},
+		{"no certificate", TaskCAInstall, `{"name":"a","pem":"-----BEGIN CERTIFICATE-----"}`},
+		{"second certificate hidden", TaskCAInstall, testTwoCerts},
+		{"key instead of certificate", TaskCAInstall, testKeyBlock},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -62,6 +84,8 @@ func TestValidateAcceptsNormalInput(t *testing.T) {
 		{TaskSudoGrant, `{"user":"anna","expires_at":"` + soon + `","commands":["/usr/bin/dnf"]}`},
 		{TaskUserCreate, `{"user":"anna","full_name":"Anna B","groups":["video"]}`},
 		{TaskLimitSet, `{"user":"anna","cpu_percent":200,"memory_mb":4096}`},
+		{TaskPkgInstall, `{"packages":["g++","a"]}`},
+		{TaskCAInstall, testOneCert},
 		{TaskUserPassword, `{"user":"anna","hash":"$6$salt$` + strings.Repeat("a", 86) + `"}`},
 		{TaskUserPassword, `{"user":"anna","hash":"$6$rounds=5000$salt$` + strings.Repeat("a", 86) + `"}`},
 	}

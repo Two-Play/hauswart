@@ -48,24 +48,32 @@ set -e
 mkdir -p /srv/tls && cd /srv/tls
 openssl ecparam -genkey -name prime256v1 -noout -out ca-key.pem
 openssl req -x509 -new -key ca-key.pem -subj "/O=Hauswart/CN=Hauswart Root CA" -days 3650 \
-    -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign -out ca.pem
+    -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign \
+    -addext "nameConstraints=critical,permitted;DNS:localhost,permitted;IP:127.0.0.1/255.255.255.255" -out ca.pem
 openssl ecparam -genkey -name prime256v1 -noout -out key.pem
 openssl req -new -key key.pem -subj "/CN=hauswart-server" -out req.pem
 printf 'subjectAltName=DNS:localhost\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature\n' >ext
 openssl x509 -req -in req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 700 -extfile ext -out cert.pem
+# What an attacker with the CA key would do: a certificate for a foreign name.
+sed 's/DNS:localhost/DNS:flathub.example/' ext >ext-foreign
+openssl x509 -req -in req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 700 -extfile ext-foreign -out foreign.pem
+echo '127.0.0.1 flathub.example' >>/etc/hosts
 cat >server.py <<'EOF'
-import http.server, ssl
+import http.server, ssl, threading
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         print("REQUEST", self.headers.get("User-Agent"), flush=True)
         self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
         self.wfile.write(b"<title>ok</title>trusted")
     def log_message(self, *args): pass
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain("/srv/tls/cert.pem", "/srv/tls/key.pem")
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 9443), Handler)
-server.socket = context.wrap_socket(server.socket, server_side=True)
-server.serve_forever()
+def serve(port, cert):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, "/srv/tls/key.pem")
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    server.serve_forever()
+threading.Thread(target=serve, args=(9444, "/srv/tls/foreign.pem"), daemon=True).start()
+serve(9443, "/srv/tls/cert.pem")
 EOF
 """
 
@@ -104,9 +112,11 @@ def measure(name, target):
         if trusted.returncode != 0:
             sys.exit(trusted.stderr)
         after = {b: reached(c) for b, c in browsers.items()}
+        foreign = {b: reached(c.replace("localhost:9443", "flathub.example:9444")) for b, c in browsers.items()}
         for browser in browsers:
-            print(f"{name}/{browser}: without CA reached={before[browser]}, with CA in system store reached={after[browser]}", flush=True)
-        return not any(before.values()) and all(after.values())
+            print(f"{name}/{browser}: without CA reached={before[browser]}, with CA in system store reached={after[browser]}, "
+                  f"foreign name reached={foreign[browser]}", flush=True)
+        return not any(before.values()) and all(after.values()) and not any(foreign.values())
     finally:
         run("podman", "rm", "-f", CONTAINER)
 

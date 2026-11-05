@@ -38,6 +38,13 @@ HAUSWART_ARGS=-addr 10.8.0.1:8443 -url https://10.8.0.1:8443
 - `-url` is what devices connect to. Its host name goes into the TLS
   certificate, and the certificate is reissued when that changes.
 - `-hosts` adds more names or addresses to the certificate.
+- `-ca-scope` lists domains and CIDR ranges the CA may ever issue for, for
+  example `-ca-scope home.arpa,10.8.0.0/24`.
+
+**Decide on the scope before the first start.** The CA is limited to these names
+and to the server's own addresses, so a stolen CA key cannot impersonate other
+websites to your devices. The limit is part of the CA and cannot change later. A
+new scope means a new CA, and every device has to be enrolled again.
 
 After a change, run `sudo systemctl restart hauswart-server`.
 
