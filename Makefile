@@ -7,6 +7,7 @@ build: web
 	mkdir -p dist
 	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o dist/hauswart-server ./cmd/hauswart-server
 	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o dist/hauswart-agent ./cmd/hauswart-agent
+	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o dist/hauswart-admin ./cmd/hauswart-admin
 
 web:
 	cd web && npm ci --no-audit --no-fund && npm run build
@@ -35,9 +36,10 @@ packages: build
 	rm -rf dist/rpmbuild
 	packaging/build-deb.sh server $(VERSION)
 	packaging/build-deb.sh agent $(VERSION)
+	packaging/build-deb.sh admin $(VERSION)
 	rm -rf dist/hauswart-$(VERSION)
 	mkdir -p dist/hauswart-$(VERSION)
-	cp dist/hauswart-server dist/hauswart-agent LICENSE packaging/install.sh packaging/server.env packaging/hauswart.sysusers packaging/systemd/*.service dist/hauswart-$(VERSION)/
+	cp dist/hauswart-server dist/hauswart-agent dist/hauswart-admin LICENSE packaging/install.sh packaging/server.env packaging/hauswart.sysusers packaging/systemd/*.service dist/hauswart-$(VERSION)/
 	tar -czf dist/hauswart-$(VERSION)-linux-amd64.tar.gz -C dist hauswart-$(VERSION)
 	rm -rf dist/hauswart-$(VERSION)
 

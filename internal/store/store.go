@@ -15,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/philippe/hauswart/internal/api"
+	"github.com/philippe/hauswart/internal/sign"
 )
 
 var (
@@ -108,6 +109,25 @@ func Open(path string) (*Store, error) {
 // an existing database or a restored backup may be at any earlier version.
 var migrations = []string{
 	`ALTER TABLE devices ADD COLUMN next_serial TEXT NOT NULL DEFAULT ''`,
+	// SQLite cannot change a CHECK constraint, so the table is rebuilt.
+	`CREATE TABLE tasks_new (
+		id TEXT PRIMARY KEY,
+		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		type TEXT NOT NULL,
+		payload TEXT NOT NULL,
+		status TEXT NOT NULL CHECK (status IN ('signing','pending','running','done','failed')),
+		output TEXT NOT NULL DEFAULT '',
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		claimed_at INTEGER NOT NULL DEFAULT 0,
+		finished_at INTEGER NOT NULL DEFAULT 0,
+		signed TEXT NOT NULL DEFAULT ''
+	);
+	INSERT INTO tasks_new (id, device_id, type, payload, status, output, created_by, created_at, claimed_at, finished_at)
+		SELECT id, device_id, type, payload, status, output, created_by, created_at, claimed_at, finished_at FROM tasks;
+	DROP TABLE tasks;
+	ALTER TABLE tasks_new RENAME TO tasks;
+	CREATE INDEX tasks_device_status ON tasks(device_id, status);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -429,14 +449,92 @@ func (s *Store) CreateTask(ctx context.Context, deviceID, taskType string, paylo
 	return id, err
 }
 
+// CreateSigningTask queues a task that waits for an admin's signature.
+func (s *Store) CreateSigningTask(ctx context.Context, deviceID, taskType string, payload []byte, createdBy string) (string, error) {
+	id := RandomToken()[:32]
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO tasks (id, device_id, type, payload, status, created_by, created_at)
+		VALUES (?,?,?,?,'signing',?,?)`, id, deviceID, taskType, string(payload), createdBy, time.Now().Unix())
+	return id, err
+}
+
+// CreateSignedTask stores a task the admin tool signed on its own. Its content
+// is only in the envelope, because it may hold a password hash.
+func (s *Store) CreateSignedTask(ctx context.Context, deviceID, taskType string, signed sign.Signed, createdBy string) (string, error) {
+	raw, err := json.Marshal(signed)
+	if err != nil {
+		return "", err
+	}
+	id := RandomToken()[:32]
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO tasks (id, device_id, type, payload, status, signed, created_by, created_at)
+		VALUES (?,?,?,'{}','pending',?,?,?)`, id, deviceID, taskType, string(raw), createdBy, time.Now().Unix())
+	return id, err
+}
+
+// AttachSignature releases a queued task to its device and returns the device.
+func (s *Store) AttachSignature(ctx context.Context, taskID string, signed sign.Signed) (string, error) {
+	raw, err := json.Marshal(signed)
+	if err != nil {
+		return "", err
+	}
+	var device string
+	err = s.db.QueryRowContext(ctx, `
+		UPDATE tasks SET status = 'pending', signed = ? WHERE id = ? AND status = 'signing'
+		RETURNING device_id`, string(raw), taskID).Scan(&device)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return device, err
+}
+
+// RejectTask closes a queued task an admin refused to sign.
+func (s *Store) RejectTask(ctx context.Context, taskID, by string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE tasks SET status = 'failed', output = ?, finished_at = ?
+		WHERE id = ? AND status = 'signing'`, "rejected by "+by, time.Now().Unix(), taskID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SigningQueue lists the tasks waiting for a signature, oldest first.
+func (s *Store) SigningQueue(ctx context.Context) ([]TaskRow, error) {
+	return s.queryTasks(ctx, `
+		SELECT id, device_id, type, payload, status, output, created_by, created_at, finished_at
+		FROM tasks WHERE status = 'signing' ORDER BY created_at, rowid`)
+}
+
+// DeviceProtected reports whether a device says it requires signatures. A
+// device that lies only makes its own tasks fail: it decides by itself.
+func (s *Store) DeviceProtected(ctx context.Context, id string) (bool, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT report FROM devices WHERE id = ?`, id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	var report api.Report
+	if err := json.Unmarshal([]byte(raw), &report); err != nil {
+		return false, err
+	}
+	return report.Protected, nil
+}
+
 // ClaimTask atomically moves the oldest pending task to running.
 func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, error) {
 	var t api.Task
-	var payload string
+	var payload, signed string
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET status = 'running', claimed_at = ?
 		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY created_at, rowid LIMIT 1)
-		RETURNING id, type, payload`, time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload)
+		RETURNING id, type, payload, signed`, time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -444,6 +542,12 @@ func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, erro
 		return nil, err
 	}
 	t.Payload = json.RawMessage(payload)
+	if signed != "" {
+		t.Signed = &sign.Signed{}
+		if err := json.Unmarshal([]byte(signed), t.Signed); err != nil {
+			return nil, err
+		}
+	}
 	return &t, nil
 }
 
@@ -455,7 +559,7 @@ func (s *Store) FinishTask(ctx context.Context, deviceID, taskID string, r api.T
 		status = "done"
 	}
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = ?, output = ?, finished_at = ?,
+		UPDATE tasks SET status = ?, output = ?, finished_at = ?, signed = '',
 			payload = CASE WHEN type = ? THEN '{}' ELSE payload END
 		WHERE id = ? AND device_id = ? AND status = 'running'`,
 		status, r.Output, time.Now().Unix(), api.TaskUserPassword, taskID, deviceID)
@@ -479,16 +583,20 @@ func (s *Store) Cleanup(ctx context.Context, staleAfter time.Duration) error {
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = 'failed', output = 'no result from agent', finished_at = ?,
+		UPDATE tasks SET status = 'failed', output = 'no result from agent', finished_at = ?, signed = '',
 			payload = CASE WHEN type = ? THEN '{}' ELSE payload END
 		WHERE status = 'running' AND claimed_at < ?`, now.Unix(), api.TaskUserPassword, now.Add(-staleAfter).Unix())
 	return err
 }
 
 func (s *Store) ListTasks(ctx context.Context, limit int) ([]TaskRow, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.queryTasks(ctx, `
 		SELECT id, device_id, type, payload, status, output, created_by, created_at, finished_at
 		FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?`, limit)
+}
+
+func (s *Store) queryTasks(ctx context.Context, query string, args ...any) ([]TaskRow, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

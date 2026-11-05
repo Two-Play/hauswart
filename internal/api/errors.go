@@ -53,6 +53,9 @@ const (
 	ErrInvalidPayload     = "invalid_payload"
 	ErrInvalidDuration    = "invalid_duration"
 	ErrUnknownRequestKind = "unknown_request_kind"
+	ErrInvalidKeys        = "invalid_keys"
+	ErrUseAdminTool       = "use_admin_tool"
+	ErrNotWaiting         = "not_waiting_for_signature"
 )
 
 // Messages maps every code to its English text.
@@ -101,6 +104,9 @@ var Messages = map[string]string{
 	ErrInvalidPayload:     "invalid payload: %s",
 	ErrInvalidDuration:    "duration must be 1 to %s minutes",
 	ErrUnknownRequestKind: "unknown request kind %s",
+	ErrInvalidKeys:        "invalid signing keys",
+	ErrUseAdminTool:       "this device is protected, use hauswart-admin",
+	ErrNotWaiting:         "task is not waiting for a signature",
 }
 
 // Error is an API error. Value fills the message, for example a rejected name.

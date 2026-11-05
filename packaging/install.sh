@@ -1,13 +1,19 @@
 #!/bin/sh
 # Installs Hauswart from the tarball on systems without rpm or dpkg packages.
-# Usage: sudo ./install.sh agent|server
+# Usage: sudo ./install.sh agent|server|admin
 set -eu
 
 component=${1:-}
 case "$component" in
 	agent | server) ;;
+	admin)
+		cd "$(dirname "$0")"
+		install -Dm755 hauswart-admin /usr/bin/hauswart-admin
+		echo "Installed hauswart-admin."
+		exit 0
+		;;
 	*)
-		echo "usage: $0 agent|server" >&2
+		echo "usage: $0 agent|server|admin" >&2
 		exit 2
 		;;
 esac

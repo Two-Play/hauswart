@@ -9,6 +9,7 @@ export interface User {
 }
 
 export interface Report {
+  protected?: boolean;
   distro?: string;
   kernel?: string;
   backends?: string[];
@@ -32,7 +33,7 @@ export interface Task {
   id: string;
   device_id: string;
   type: string;
-  status: 'pending' | 'running' | 'done' | 'failed';
+  status: 'signing' | 'pending' | 'running' | 'done' | 'failed';
   output: string;
   created_by: string;
   created_at: number;

@@ -123,6 +123,72 @@ On atomic systems such as Silverblue, Kinoite and CoreOS, Hauswart uses
 system updates take effect after the next reboot, and Hauswart does not reboot a
 device by itself.
 
+## Protect devices with signatures
+
+Without this, whoever controls the server can reach root on your devices. With
+it, tasks need a signature made on your own computer. Do this on the computer
+you sign on first.
+
+The price: on a protected device, the dashboard only queues tasks. You confirm
+them with `hauswart-admin approve`, which does not work from a phone.
+
+Create two dedicated keys. Keep the second one offline, for example on a USB
+stick. It is your way back if you lose the first.
+
+```bash
+sudo dnf install ./dist/hauswart-admin-0.1.0-1.x86_64.rpm
+ssh-keygen -t ed25519-sk -f ~/.ssh/hauswart
+ssh-keygen -t ed25519 -f /run/media/usb/hauswart-offline
+ssh-add -c ~/.ssh/hauswart
+```
+
+Without a FIDO key, use `-t ed25519` for the first key as well.
+
+Log in with the fingerprint from the server log, and pin both keys:
+
+```bash
+hauswart-admin login --server https://10.8.0.1:8443 --ca-fingerprint <fingerprint>
+hauswart-admin keys add ~/.ssh/hauswart.pub /run/media/usb/hauswart-offline.pub
+```
+
+For a new device, use the command from this tool instead of the dashboard, so
+that the server has no say in what you paste as root:
+
+```bash
+hauswart-admin enroll-command
+```
+
+To protect a device that is already enrolled, run the output of
+`hauswart-admin trust-command` on it and restart the agent.
+
+Enrollment prints the device ID. Compare it, then name the device. The tool
+refuses to sign for a device without a name, because the names the server shows
+are not trustworthy.
+
+```bash
+hauswart-admin devices
+hauswart-admin name <device-id> laptop-anna
+```
+
+Daily use:
+
+```bash
+hauswart-admin approve
+hauswart-admin start-password --device <device-id> --user anna
+```
+
+`approve` shows each task in full. Read it, especially what it says about root.
+Start passwords can only come from this tool on a protected device.
+
+To replace a key, add the new one with `keys add`, remove the old one from the
+`keys` list in the tool's `admin.json`, and run `rotate-keys` for each device
+while you still hold a working key. Signed tasks expire after 30 days, so a device
+that stays off longer needs a new one.
+
+If you lose every key, or a device loses `/var/lib/hauswart/guard.json`, that
+device refuses work until you enroll it again. That is deliberate: a state that
+can be reset could be replayed.
+
 ## Browser trust
 
 Whether a browser honours the system store depends on the distribution. This is

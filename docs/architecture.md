@@ -27,6 +27,8 @@ there.
 | `internal/pki` | Certificate authority |
 | `internal/agent` | Enrollment, connection, task execution |
 | `internal/backup` | Backup and restore |
+| `internal/sign` | Signatures for tasks |
+| `cmd/hauswart-admin` | Signing tool for the admin's computer |
 | `web` | React and Mantine dashboard, embedded into the server binary |
 | `packaging` | systemd units, RPM spec, `.deb` build |
 | `test` | End-to-end, package and browser tests |
@@ -39,8 +41,8 @@ there.
    if the fingerprint matches. From here on, it pins that CA.
 3. The agent creates its key, which never leaves the device, and sends a CSR
    with the token.
-4. The server consumes the token and signs a certificate. The common name is a
-   random device ID chosen by the server, whatever the CSR asks for.
+4. The server consumes the token and signs a certificate. The common name is the
+   device ID, a hash of the public key, which the agent checks.
 5. The agent adds the CA to the system store, so browsers on the device trust
    the dashboard where the distribution allows it.
 
@@ -71,6 +73,7 @@ The agent runs only these task types:
 | `sudo.grant`, `sudo.revoke` | Temporary sudoers rule, 24 hours at most |
 | `user.create`, `user.lock`, `user.unlock` | Linux accounts |
 | `user.passwd` | Start password from a hash, to be changed at first login |
+| `keys.set` | Replaces the pinned signing keys, needs a signature |
 | `limit.set` | CPU and memory limits through a systemd slice drop-in |
 
 `api.Validate` checks every task on the server for early feedback, and again on
@@ -79,6 +82,29 @@ the agent, which is the actual enforcement boundary.
 A task goes from `pending` to `running` when an agent claims it, then to `done`
 or `failed`. A task without a result after 45 minutes becomes `failed`. It is
 not retried, because whether it ran is unknown.
+
+## Signed tasks
+
+A device with pinned keys runs a task only with a valid signature, except
+`sudo.revoke` and `pkg.upgrade`. The keys live in `agent.json` and the server has
+no way to change them: they come from the enroll command or `trust-key`, and
+later only from a signed `keys.set`.
+
+`hauswart-admin` signs through the ssh-agent, using the SSHSIG layout with a
+namespace and SHA-512. Only Ed25519 keys are accepted, as software or FIDO keys.
+
+The signed envelope holds the type, payload, device ID, a counter and an expiry.
+`internal/agent/guard.go` verifies the signature before parsing anything, then
+checks the device, the expiry and that the counter is above the highest one seen.
+It stores the counter durably before the task runs, and rebuilds the task from
+the envelope, so nothing the server added survives. A clock far behind the last
+seen time is refused, because it could revive expired tasks. If the state file is
+gone, the agent does not start.
+
+Tasks for a protected device wait in status `signing`. The tool fetches them,
+decodes and shows them, and signs its own encoding, never bytes from the server.
+Password hashes and key lists are made by the tool itself and refused from the
+queue.
 
 ## Requests
 

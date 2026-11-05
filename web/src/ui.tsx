@@ -30,6 +30,7 @@ export function showError(err: unknown) {
 
 const STATUS_COLOR: Record<string, string> = {
   open: 'yellow',
+  signing: 'grape',
   pending: 'yellow',
   running: 'blue',
   approved: 'teal',

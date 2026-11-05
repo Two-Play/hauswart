@@ -26,9 +26,16 @@ Summary:        Hauswart management agent
 %description agent
 Agent that runs on every managed device.
 
+%package admin
+Summary:        Hauswart admin tool for signing tasks
+
+%description admin
+Runs on the admin's own computer and signs tasks for protected devices.
+
 %install
 install -Dm755 %{hw_root}/dist/hauswart-server %{buildroot}/usr/bin/hauswart-server
 install -Dm755 %{hw_root}/dist/hauswart-agent %{buildroot}/usr/bin/hauswart-agent
+install -Dm755 %{hw_root}/dist/hauswart-admin %{buildroot}/usr/bin/hauswart-admin
 install -Dm644 %{hw_root}/packaging/systemd/hauswart-server.service %{buildroot}/usr/lib/systemd/system/hauswart-server.service
 install -Dm644 %{hw_root}/packaging/systemd/hauswart-agent.service %{buildroot}/usr/lib/systemd/system/hauswart-agent.service
 install -Dm644 %{hw_root}/packaging/server.env %{buildroot}/etc/hauswart/server.env
@@ -60,6 +67,9 @@ fi
 /usr/lib/sysusers.d/hauswart.conf
 %dir /etc/hauswart
 %config(noreplace) /etc/hauswart/server.env
+
+%files admin
+/usr/bin/hauswart-admin
 
 %files agent
 /usr/bin/hauswart-agent

@@ -221,7 +221,14 @@ export function DevicesView({ user }: { user: User }) {
                       <Text fw={600} truncate>
                         {d.hostname}
                       </Text>
-                      <DeviceState device={d} />
+                      <Group gap={4} wrap="nowrap">
+                        {d.report?.protected && (
+                          <Badge color="grape" variant="light">
+                            {t('devices.protected')}
+                          </Badge>
+                        )}
+                        <DeviceState device={d} />
+                      </Group>
                     </Group>
                     {d.report && (
                       <>

@@ -23,6 +23,7 @@ import (
 
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/pki"
+	"github.com/philippe/hauswart/internal/sign"
 	"github.com/philippe/hauswart/internal/store"
 	"github.com/philippe/hauswart/web"
 )
@@ -130,6 +131,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/devices/{id}/revoke", s.admin(s.handleRevoke))
 	mux.Handle("POST /api/devices/{id}/tasks", s.admin(s.handleCreateTask))
 	mux.Handle("POST /api/devices/{id}/start-password", s.admin(s.handleStartPassword))
+	mux.Handle("POST /api/devices/{id}/signed-tasks", s.admin(s.handleCreateSignedTask))
+	mux.Handle("GET /api/signing", s.admin(s.handleSigningQueue))
+	mux.Handle("POST /api/tasks/{id}/signature", s.admin(s.handleSignature))
+	mux.Handle("POST /api/tasks/{id}/reject", s.admin(s.handleReject))
 	mux.Handle("GET /api/tasks", s.admin(s.handleTasks))
 	mux.Handle("GET /api/users", s.admin(s.handleUsers))
 	mux.Handle("POST /api/users", s.admin(s.handleCreateUser))
@@ -507,6 +512,7 @@ func (s *Server) handleEnrollToken(w http.ResponseWriter, r *http.Request, u sto
 	}
 	s.audit(r, u.Username, "enroll_token.created", "")
 	writeJSON(w, http.StatusCreated, map[string]string{
+		"token": token,
 		"command": fmt.Sprintf("sudo hauswart-agent enroll --server %s --token %s --ca-fingerprint %s",
 			s.publicURL, token, s.ca.Fingerprint()),
 	})
@@ -538,9 +544,9 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request, u stor
 	if len(in.Payload) == 0 {
 		in.Payload = json.RawMessage(`{}`)
 	}
-	if in.Type == api.TaskUserPassword {
-		// Only the start-password route may create these, because it keeps
-		// the hash out of the audit log.
+	if in.Type == api.TaskUserPassword || in.Type == api.TaskKeysSet {
+		// Only their own routes may create these: the start-password route
+		// keeps the hash out of the audit log, and keys need a signature.
 		fail(w, http.StatusBadRequest, api.ErrUseStartPassword)
 		return
 	}
@@ -565,6 +571,17 @@ func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u s
 	if !readJSON(w, r, &in) {
 		return
 	}
+	deviceID := r.PathValue("id")
+	protected, err := s.store.DeviceProtected(r.Context(), deviceID)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if protected {
+		// A server-made hash would defeat the point of the signature.
+		fail(w, http.StatusConflict, api.ErrUseAdminTool)
+		return
+	}
 	password := store.RandomToken()[:startPasswordLen]
 	hash, err := sha512_crypt.New().Generate([]byte(password), nil)
 	if err != nil {
@@ -580,7 +597,6 @@ func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u s
 		failErr(w, http.StatusBadRequest, err)
 		return
 	}
-	deviceID := r.PathValue("id")
 	id, err := s.store.CreateTask(r.Context(), deviceID, api.TaskUserPassword, payload, u.Username)
 	if err != nil {
 		s.internal(w, err)
@@ -591,14 +607,90 @@ func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u s
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "password": password})
 }
 
+// enqueue hands a task to its device, or queues it for a signature if the
+// device demands one. The server cannot skip that: the device would refuse.
 func (s *Server) enqueue(r *http.Request, deviceID, taskType string, payload []byte, actor string) (string, error) {
-	id, err := s.store.CreateTask(r.Context(), deviceID, taskType, payload, actor)
+	protected, err := s.store.DeviceProtected(r.Context(), deviceID)
+	if err != nil {
+		return "", err
+	}
+	create := s.store.CreateTask
+	if protected && api.NeedsSignature(taskType) {
+		create = s.store.CreateSigningTask
+	}
+	id, err := create(r.Context(), deviceID, taskType, payload, actor)
 	if err != nil {
 		return "", err
 	}
 	s.audit(r, actor, "task."+taskType, deviceID+" "+string(payload))
 	s.wake(deviceID)
 	return id, nil
+}
+
+func (s *Server) handleSigningQueue(w http.ResponseWriter, r *http.Request, _ store.User) {
+	tasks, err := s.store.SigningQueue(r.Context())
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
+func (s *Server) handleSignature(w http.ResponseWriter, r *http.Request, u store.User) {
+	var in sign.Signed
+	if !readJSON(w, r, &in) {
+		return
+	}
+	id := r.PathValue("id")
+	device, err := s.store.AttachSignature(r.Context(), id, in)
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusConflict, api.ErrNotWaiting)
+		return
+	}
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, u.Username, "task.signed", id)
+	s.wake(device)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleReject(w http.ResponseWriter, r *http.Request, u store.User) {
+	id := r.PathValue("id")
+	err := s.store.RejectTask(r.Context(), id, u.Username)
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusConflict, api.ErrNotWaiting)
+		return
+	}
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, u.Username, "task.rejected", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleCreateSignedTask takes tasks the admin tool made and signed by itself,
+// such as start passwords. Only the type goes into the audit log, because the
+// envelope may hold a password hash.
+func (s *Server) handleCreateSignedTask(w http.ResponseWriter, r *http.Request, u store.User) {
+	var in struct {
+		Type   string      `json:"type"`
+		Signed sign.Signed `json:"signed"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	device := r.PathValue("id")
+	id, err := s.store.CreateSignedTask(r.Context(), device, in.Type, in.Signed, u.Username)
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrNoSuchDevice)
+		return
+	}
+	s.audit(r, u.Username, "task."+in.Type, device)
+	s.wake(device)
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, _ store.User) {

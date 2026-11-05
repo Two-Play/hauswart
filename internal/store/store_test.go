@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/philippe/hauswart/internal/api"
+	"github.com/philippe/hauswart/internal/sign"
 )
 
 var ctx = context.Background()
@@ -214,7 +215,14 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 	}
 	// Turn it back into a database from before the first migration.
 	device(t, s, "a")
-	for _, stmt := range []string{`ALTER TABLE devices DROP COLUMN next_serial`, `PRAGMA user_version = 0`} {
+	if _, err := s.CreateTask(ctx, "a", api.TaskPkgUpgrade, []byte(`{}`), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE devices DROP COLUMN next_serial`,
+		`ALTER TABLE tasks DROP COLUMN signed`,
+		`PRAGMA user_version = 0`,
+	} {
 		if _, err := s.db.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}
@@ -229,7 +237,74 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		if ok, err := s.DeviceAuthorized(ctx, "a", "serial-a"); err != nil || !ok {
 			t.Fatalf("device lost: %v %v", ok, err)
 		}
+		if tasks, err := s.ListTasks(ctx, 10); err != nil || len(tasks) != 1 {
+			t.Fatalf("tasks lost: %v %v", tasks, err)
+		}
 		s.Close()
+	}
+}
+
+func TestSigningQueue(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateSigningTask(ctx, "a", api.TaskPkgInstall, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task, err := s.ClaimTask(ctx, "a"); err != nil || task != nil {
+		t.Fatalf("unsigned task reached the device: %+v %v", task, err)
+	}
+	queue, err := s.SigningQueue(ctx)
+	if err != nil || len(queue) != 1 {
+		t.Fatalf("queue: %v %v", queue, err)
+	}
+	signed := sign.Signed{Envelope: []byte("e"), Signature: []byte("s")}
+	if got, err := s.AttachSignature(ctx, id, signed); err != nil || got != "a" {
+		t.Fatalf("attach: %q %v", got, err)
+	}
+	if _, err := s.AttachSignature(ctx, id, signed); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second signature: %v", err)
+	}
+	task, err := s.ClaimTask(ctx, "a")
+	if err != nil || task == nil || task.Signed == nil || string(task.Signed.Envelope) != "e" {
+		t.Fatalf("claim: %+v %v", task, err)
+	}
+}
+
+func TestRejectTask(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, _ := s.CreateSigningTask(ctx, "a", api.TaskPkgInstall, []byte(`{}`), "admin")
+	if err := s.RejectTask(ctx, id, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RejectTask(ctx, id, "admin"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second reject: %v", err)
+	}
+	if task, _ := s.ClaimTask(ctx, "a"); task != nil {
+		t.Fatal("rejected task reached the device")
+	}
+}
+
+func TestSignedEnvelopeIsDroppedAfterFinish(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateSignedTask(ctx, "a", api.TaskUserPassword, sign.Signed{Envelope: []byte("hash")}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimTask(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	var signed string
+	if err := s.db.QueryRow(`SELECT signed FROM tasks WHERE id = ?`, id).Scan(&signed); err != nil {
+		t.Fatal(err)
+	}
+	if signed != "" {
+		t.Fatalf("envelope kept: %q", signed)
 	}
 }
 

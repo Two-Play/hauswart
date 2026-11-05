@@ -5,33 +5,65 @@ document says what that means, what is defended, and where the limits are.
 
 ## The most important point
 
-**The server is as sensitive as root on every device.** Fixed task types are a
-real barrier against mistakes and simple attacks, but they do not contain a
-determined attacker who controls the server. Run it behind a VPN, keep it
-patched, and protect its backups.
+**Without signing keys, the server is as sensitive as root on every device.**
+Protect your devices by pinning signing keys, as described in
+[Operating Hauswart](operations.md). Everything below distinguishes between
+protected devices and the others.
 
 ## What an attacker can do
 
-### With control of the server
+### With control of the server, on a protected device
 
-Or with an admin account, which amounts to the same thing:
+The attacker controls the binary, the database, the CA key and the dashboard
+code, and can still:
 
-- **Reach root on any device.** There is no task that runs a command, but the
-  path exists: set a start password for an account, grant it sudo, log in.
+- **Withhold tasks**, and show false results or a fake dashboard. A task marked
+  done in the dashboard is only a claim of the server.
+- **Trigger `pkg.upgrade`**, which installs what the device's own repositories
+  offer, and `sudo.revoke`, which only takes rights away.
+- **Refuse or delay** anything, including signed tasks.
+- **Read** device reports and the audit log, and change the log.
+- **Trick the admin.** `hauswart-admin approve` shows what it signs, but a task
+  can look legitimate. Read before you sign.
+
+The attacker **cannot** grant sudo, install packages, deploy files or CAs, change
+passwords or change the pinned keys. The agent refuses these without a valid
+signature, and `test/e2e.py signing` proves it by writing such tasks straight
+into the database.
+
+### With control of the server, on an unprotected device
+
+- **Reach root.** There is no task that runs a command, but the path exists: set
+  a start password for an account, grant it sudo, log in.
 - Install, remove and update packages from the repositories a device has
   configured. Packages run their install scripts as root.
-- Add a CA to the system store of any device, and so intercept TLS traffic.
+- Add a CA to the system store, and so intercept TLS traffic.
 - Lock accounts and set resource limits.
-- Read all device reports and the audit log, and change the log, which is not
-  tamper-proof.
-- With the CA key, issue certificates that devices and browsers trust.
 
-The attacker **cannot** directly run an arbitrary command through the agent,
-write files outside the allowed paths, target `root` or other system accounts
-below UID 1000 with user tasks, or widen the allowed paths from the server.
+Even here, the attacker cannot directly run an arbitrary command through the
+agent, write files outside the allowed paths, or target `root` and other system
+accounts below UID 1000.
 
-Signed tasks are planned to reduce this, so that a compromised server alone is
-not enough (`HAUS-25`).
+### With the signing key
+
+**A signing key is root on every protected device.** Keep it apart from
+everything else:
+
+- Use a dedicated key, not the one you log in with. Prefer FIDO
+  (`ed25519-sk`), which needs a touch for every signature, or add it with
+  `ssh-add -c`, which asks each time.
+- Never forward the ssh-agent to another machine.
+- Protect the computer you sign on first, because an unprotected laptop gives a
+  hacked server root there, and with it the key.
+- Keep the second key offline.
+
+### With the CA key
+
+New CAs are limited by name constraints to the addresses of your home network.
+With the key, an attacker can impersonate the Hauswart server and your home
+services, but not other websites: real browsers refuse such certificates, which
+`test/browsers.py` proves. Impersonating the server to an agent gains nothing
+beyond control of the server itself.
 
 ### With control of a device
 
@@ -62,9 +94,12 @@ Many commands also allow escaping to a shell.
 
 | Area | Measure |
 | --- | --- |
+| Protected devices | Tasks signed by a pinned Ed25519 key, bound to the device, with a counter against replay and an expiry |
+| Signing tool | Decodes, shows and re-encodes tasks itself, strips control characters, makes passwords and enroll commands locally |
+| CA | Name constrained to the home network |
 | Agent authentication | mTLS with a client certificate per device, serial checked on every request |
 | First contact | One-time token, CA pinned by fingerprint |
-| Device identity | Chosen by the server, not by the CSR |
+| Device identity | Derived from the device's public key, checked by the agent |
 | Input to root | Validated on the agent: strict names, no options, paths or URLs as package names |
 | Privileged groups | `wheel`, `sudo`, `docker` and similar are refused in `user.create` |
 | File deployment | Allowed paths are set on the device, symlinks are not followed |
@@ -80,15 +115,20 @@ Many commands also allow escaping to a shell.
 ## Known weaknesses
 
 - **The CA key is an unencrypted file** in the server's data directory and in
-  every backup. Anyone with it can impersonate the server to devices. Protect
-  backups accordingly.
+  every backup. Protect backups accordingly.
+- **Enrollment trusts the command you paste.** Build it with
+  `hauswart-admin enroll-command`, not from the dashboard, for a protected device.
+- **The dashboard is not protected by signatures.** A hacked server can show
+  anything there and capture dashboard passwords.
+- **Lost signing state stops the agent on purpose.** Enroll the device again.
 - **The enrollment command contains a token.** It may land in the shell history.
   It works once and for one hour, so the exposure is small.
 - **The first admin password** sits in a file until you delete it. It stops
   mattering once you change it.
 - **A pending start password** exists as a hash in the database until the device
   picks up the task. SHA-512 crypt is much weaker against guessing than bcrypt,
-  but the password is random with 80 bits of entropy.
+  but the password is random with 80 bits of entropy. A signed one also sits in
+  the task's envelope until then.
 - **The login lockout is per address** and held in memory, so a restart clears
   it. There is no two-factor login.
 - **The audit log** lives in the same database an attacker on the server controls.

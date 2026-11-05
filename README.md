@@ -19,6 +19,8 @@ in containers, not on physical machines or over a real VPN. See
 - Linux users: create, lock, and set a start password that must be changed
 - CPU and memory limits per user
 - Built-in certificate authority with automatic certificate renewal
+- Tasks signed on your own computer, so a hacked server alone cannot reach root
+  on protected devices
 - Audit log of every action
 - Backup and restore
 
@@ -81,6 +83,6 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
   installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by
   hand. Flatpak browsers are not measured.
-- A compromised server can reach root on the devices. See
-  [the security model](docs/security.md).
+- Only devices with pinned signing keys are protected against a compromised
+  server. See [the security model](docs/security.md).
 - Only `amd64` packages are built.

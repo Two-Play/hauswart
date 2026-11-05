@@ -25,7 +25,7 @@
   },
   "devices": {
     "add": "Add device",
-    "addHint": "Run this on the new device. It works once and for one hour.",
+    "addHint": "Run this on the new device. It works once and for one hour. For a device protected by signatures, use hauswart-admin enroll-command instead.",
     "empty": "No devices enrolled yet.",
     "online": "Online",
     "offline": "Offline",
@@ -41,7 +41,8 @@
     "revoke": "Revoke",
     "revokeTitle": "Revoke {{name}}?",
     "revokeText": "The device loses access at once and has to be enrolled again.",
-    "revokeConfirm": "Revoke device"
+    "revokeConfirm": "Revoke device",
+    "protected": "Protected"
   },
   "actions": {
     "title": "Action for {{name}}",
@@ -65,7 +66,8 @@
     "user_lock": "Lock Linux user",
     "user_unlock": "Unlock Linux user",
     "limit_set": "Limit resources",
-    "user_passwd": "Set Linux start password"
+    "user_passwd": "Set Linux start password",
+    "keys_set": "Replace signing keys"
   },
   "fields": {
     "packages": "Packages, separated by spaces",
@@ -110,7 +112,8 @@
     "pending": "Waiting",
     "running": "Running",
     "done": "Done",
-    "failed": "Failed"
+    "failed": "Failed",
+    "signing": "Awaiting signature"
   },
   "tasks": {
     "empty": "No tasks yet.",
@@ -197,6 +200,9 @@
     "unknown_task_type": "Unknown task type {{value}}.",
     "invalid_payload": "The input is not valid.",
     "invalid_duration": "Duration must be 1 to {{value}} minutes.",
-    "unknown_request_kind": "Unknown request kind {{value}}."
+    "unknown_request_kind": "Unknown request kind {{value}}.",
+    "invalid_keys": "The signing keys are not valid.",
+    "use_admin_tool": "This device is protected. Use hauswart-admin on your computer.",
+    "not_waiting_for_signature": "This task is not waiting for a signature."
   }
 }

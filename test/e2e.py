@@ -4,11 +4,13 @@
 Everything privileged happens inside throwaway containers; the host is never
 touched. Usage: test/e2e.py [fedora debian arch opensuse systemd]
 """
+import base64
 import http.cookiejar
 import json
 import os
 import re
 import shutil
+import sqlite3
 import ssl
 import subprocess
 import sys
@@ -271,6 +273,197 @@ def test_systemd(admin, agent_bin):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+class Admin:
+    """The hauswart-admin tool with a real ssh-agent."""
+
+    def __init__(self, work, binary):
+        self.binary = binary
+        # Unix sockets allow only short paths, which the work directory may not be.
+        self.socket_dir = tempfile.mkdtemp(prefix="hw-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+        socket = f"{self.socket_dir}/agent"
+        self.env = {**os.environ, "HAUSWART_ADMIN_DIR": f"{work}/admin", "SSH_AUTH_SOCK": socket}
+        self.keys = []
+        self.ssh_agent = subprocess.Popen(["ssh-agent", "-D", "-a", socket], stdout=subprocess.DEVNULL)
+        for key in ("primary", "offline", "next"):
+            sh("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", f"{work}/{key}")
+            self.keys.append(f"{work}/{key}")
+        for _ in range(50):
+            if os.path.exists(socket):
+                break
+            time.sleep(0.1)
+        subprocess.run(["ssh-add", "-q", f"{work}/primary"], env=self.env, check=True)
+
+    def run(self, *args, input=None):
+        return subprocess.run([self.binary, *args], input=input, env=self.env, capture_output=True, text=True, timeout=120)
+
+    def close(self):
+        self.ssh_agent.terminate()
+        shutil.rmtree(self.socket_dir, ignore_errors=True)
+
+
+def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
+    """A compromised server is simulated by writing to its database directly."""
+    name = "signing"
+    print(f"\n== {name} (real ssh-agent, tasks written straight into the database)", flush=True)
+    container = "hauswart-e2e-signing"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "1500")
+    tool = Admin(work, admin_bin)
+    db_path = f"{work}/data/hauswart.db"
+
+    def inside(cmd):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=300)
+
+    def start_agent():
+        sh("podman", "exec", "-d", container, "sh", "-c",
+           "echo $$ >/run/agent.pid; exec hauswart-agent run >>/var/log/agent.log 2>&1")
+
+    def attack(device, task_type, payload, signed=""):
+        """What an attacker with full control of the server can do."""
+        task_id = f"attack-{time.time_ns()}"
+        with sqlite3.connect(db_path, timeout=10) as db:
+            db.execute("INSERT INTO tasks (id, device_id, type, payload, status, signed, created_by, created_at) "
+                       "VALUES (?,?,?,?,'pending',?,'attacker',?)",
+                       (task_id, device, task_type, json.dumps(payload), signed, int(time.time())))
+        return wait_task(admin, task_id, 45)
+
+    def captured_signature(device, payload):
+        """Pauses the agent to read a signed task the way the server sees it."""
+        inside("kill -STOP $(cat /run/agent.pid)")
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "pkg.install", "payload": payload})
+        assert code == 201, out
+        tool.run("approve", input="y\n")
+        with sqlite3.connect(db_path, timeout=10) as db:
+            signed = db.execute("SELECT signed FROM tasks WHERE id = ?", (out["id"],)).fetchone()[0]
+        inside("kill -CONT $(cat /run/agent.pid)")
+        wait_task(admin, out["id"], 120)
+        return signed
+
+    try:
+        inside("dnf5 install -y sudo shadow-utils procps-ng && useradd anna")
+        fingerprint = re.search(r"--ca-fingerprint (\w+)", admin.call("POST", "/api/enroll-tokens")[1]["command"]).group(1)
+        done = tool.run("login", "--server", URL, "--ca-fingerprint", "0" * 64, "--user", "admin", input=password + "\n")
+        check(name, "login refuses a wrong CA", done.returncode != 0)
+        done = tool.run("login", "--server", URL, "--ca-fingerprint", fingerprint, "--user", "admin", input=password + "\n")
+        check(name, "login", done.returncode == 0, done.stderr)
+
+        tool.run("keys", "add", f"{work}/primary.pub")
+        check(name, "one key is not enough", tool.run("enroll-command").returncode != 0)
+        tool.run("keys", "add", f"{work}/offline.pub")
+        command = tool.run("enroll-command").stdout.strip()
+        check(name, "enroll command pins both keys", command.count("--signing-key") == 2, command)
+        enrolled = inside(command.replace("sudo ", "", 1))
+        check(name, "enrollment", enrolled.returncode == 0, enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        start_agent()
+        deadline = time.time() + 20
+        report = {}
+        while time.time() < deadline and not report.get("protected"):
+            _, devices = admin.call("GET", "/api/devices")
+            report = next((d["report"] for d in devices if d["id"] == device), {})
+            time.sleep(1)
+        check(name, "device reports protection", report.get("protected"), str(report))
+
+        # A hacked server trying the ways to root.
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        task = attack(device, "sudo.grant", {"user": "anna", "expires_at": expires})
+        check(name, "ATTACK unsigned sudo refused", task["status"] == "failed" and "signature" in task["output"], task["output"])
+        check(name, "no sudo rule appeared", inside("test -e /etc/sudoers.d/hauswart-anna").returncode != 0)
+        hash_ = sh("openssl", "passwd", "-6", "attacker").stdout.strip()
+        task = attack(device, "user.passwd", {"user": "anna", "hash": hash_})
+        check(name, "ATTACK unsigned password refused", task["status"] == "failed", task["output"])
+        task = attack(device, "pkg.install", {"packages": ["nmap"]})
+        check(name, "ATTACK unsigned package refused", task["status"] == "failed" and inside("command -v nmap").returncode != 0, task["output"])
+        task = attack(device, "ca.install", {"name": "evil", "pem": ca_pem})
+        check(name, "ATTACK unsigned CA refused", task["status"] == "failed", task["output"])
+        task = attack(device, "keys.set", {"keys": [open(f"{work}/next.pub").read().strip()]})
+        check(name, "ATTACK unsigned key swap refused", task["status"] == "failed", task["output"])
+        check(name, "pinned keys unchanged", open(f"{work}/next.pub").read().split()[1] not in inside("cat /var/lib/hauswart/agent.json").stdout)
+
+        # The normal way.
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "pkg.install", "payload": {"packages": ["tree"]}})
+        _, tasks = admin.call("GET", "/api/tasks")
+        status = next(t for t in tasks if t["id"] == out["id"])["status"]
+        check(name, "dashboard task waits for a signature", status == "signing", status)
+        skipped = tool.run("approve", input="y\n")
+        check(name, "an unnamed device cannot be signed for", "no name here" in skipped.stdout, skipped.stdout + skipped.stderr)
+        tool.run("name", device, "test-laptop")
+        shown = tool.run("approve", input="n\n")
+        check(name, "approve shows device and packages",
+              "Install packages as root: tree" in shown.stdout and "test-laptop" in shown.stdout, shown.stdout + shown.stderr)
+        check(name, "saying no leaves it queued", next(t for t in admin.call("GET", "/api/tasks")[1] if t["id"] == out["id"])["status"] == "signing")
+        signed = tool.run("approve", input="y\n")
+        check(name, "approve signs", "Signed." in signed.stdout, signed.stdout + signed.stderr)
+        task = wait_task(admin, out["id"], 120)
+        check(name, "signed task runs", task["status"] == "done" and inside("command -v tree").returncode == 0, task["output"])
+
+        # Attacks with a real signature.
+        captured = captured_signature(device, {"packages": ["vim-minimal"]})
+        check(name, "signature captured", captured != "")
+        task = attack(device, "pkg.install", {"packages": ["nmap"]}, captured)
+        check(name, "ATTACK replay refused", task["status"] == "failed" and "counter" in task["output"], task["output"])
+        envelope = json.loads(captured)
+        raw = base64.b64decode(envelope["envelope"]).replace(b"vim-minimal", b"nmap")
+        envelope["envelope"] = base64.b64encode(raw).decode()
+        task = attack(device, "pkg.install", {"packages": ["nmap"]}, json.dumps(envelope))
+        check(name, "ATTACK changed envelope refused", task["status"] == "failed", task["output"])
+        check(name, "nmap never arrived", inside("command -v nmap").returncode != 0)
+
+        # Reject, and a task that needs no signature.
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "pkg.install", "payload": {"packages": ["nmap"]}})
+        tool.run("approve", input="r\n")
+        check(name, "rejecting closes the task", next(t for t in admin.call("GET", "/api/tasks")[1] if t["id"] == out["id"])["status"] == "failed")
+        task = run_task(admin, device, "sudo.revoke", {"user": "anna"}, wait=45)
+        check(name, "sudo.revoke needs no signature", task["status"] == "done", task["output"])
+
+        # Sudo and the start password.
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "sudo.grant", "payload": {"user": "anna", "expires_at": expires}})
+        shown = tool.run("approve", input="y\n")
+        check(name, "full root is spelled out", "FULL ROOT" in shown.stdout, shown.stdout)
+        wait_task(admin, out["id"], 45)
+        check(name, "signed sudo works", "(ALL : ALL) ALL" in inside("sudo -l -U anna").stdout)
+        code, _ = admin.call("POST", f"/api/devices/{device}/start-password", {"user": "anna"})
+        check(name, "server cannot make a password here", code == 409, str(code))
+        made = tool.run("start-password", "--device", device, "--user", "anna")
+        check(name, "admin tool sets a start password", made.returncode == 0, made.stderr)
+        secret = re.search(r"for anna: (\w+)", made.stdout).group(1)
+        time.sleep(8)
+        shadow = inside("getent shadow anna").stdout.strip().split(":")
+        fields = shadow[1].split("$")
+        expected = sh("openssl", "passwd", "-6", "-salt", fields[-2], secret).stdout.strip()
+        check(name, "password in shadow matches", expected.split("$")[-1] == fields[-1], shadow[1])
+        _, tasks = admin.call("GET", "/api/tasks")
+        _, audit = admin.call("GET", "/api/audit")
+        check(name, "hash reaches neither log", fields[-1] not in json.dumps(tasks) + json.dumps(audit))
+
+        # Rotation, then the second key.
+        tool.run("keys", "add", f"{work}/next.pub")
+        check(name, "rotate-keys", tool.run("rotate-keys", "--device", device).returncode == 0)
+        time.sleep(8)
+        check(name, "new key is pinned", open(f"{work}/next.pub").read().split()[1] in inside("cat /var/lib/hauswart/agent.json").stdout)
+
+        # Lost state must stop the agent, not reset it.
+        inside("kill $(cat /run/agent.pid); rm /var/lib/hauswart/guard.json; : >/var/log/agent.log")
+        start_agent()
+        time.sleep(3)
+        log = inside("cat /var/log/agent.log").stdout
+        check(name, "lost signing state stops the agent", "signing state" in log and inside("kill -0 $(cat /run/agent.pid)").returncode != 0, log)
+
+        # Protecting an already enrolled device.
+        _, token = admin.call("POST", "/api/enroll-tokens")
+        check(name, "plain enrollment", inside(token["command"].replace("sudo ", "", 1) + " --dir /var/lib/h2").returncode == 0)
+        trust = tool.run("trust-command").stdout.strip().replace("sudo ", "", 1)
+        check(name, "trust-key protects later", inside(trust + " --dir /var/lib/h2").returncode == 0)
+        check(name, "trust-key works only once", inside(trust + " --dir /var/lib/h2").returncode != 0)
+    except Exception as err:
+        check(name, "no crash", False, repr(err))
+        print(inside("tail -20 /var/log/agent.log").stdout)
+    finally:
+        tool.close()
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 RENEWAL_VALIDITY = 90
 
 
@@ -355,13 +548,15 @@ seen = set()
 
 def main():
     # Short lifetimes apply to the whole server, so this runs on its own.
-    names = sys.argv[1:] or [*DISTROS, "systemd"]
+    names = sys.argv[1:] or [*DISTROS, "systemd", "signing"]
     extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
     work = tempfile.mkdtemp(prefix="hauswart-e2e-", dir=os.environ.get("E2E_TMP"))
     server_bin, agent_bin = f"{work}/server", f"{work}/agent"
     env = {**os.environ, "CGO_ENABLED": "0"}
     subprocess.run(["go", "build", "-o", server_bin, "./cmd/hauswart-server"], cwd=ROOT, env=env, check=True)
     subprocess.run(["go", "build", "-o", agent_bin, "./cmd/hauswart-agent"], cwd=ROOT, env=env, check=True)
+    admin_bin = f"{work}/admin-tool"
+    subprocess.run(["go", "build", "-o", admin_bin, "./cmd/hauswart-admin"], cwd=ROOT, env=env, check=True)
 
     log_path = f"{work}/server.log"
     with open(log_path, "w") as log:
@@ -388,6 +583,8 @@ def main():
                 test_systemd(admin, agent_bin)
             elif name == "renewal":
                 test_renewal(admin, agent_bin)
+            elif name == "signing":
+                test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             else:
                 test_distro(name, admin, agent_bin, ca_pem)
     finally:

@@ -24,8 +24,11 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/pki"
+	"github.com/philippe/hauswart/internal/sign"
 )
 
 const (
@@ -34,6 +37,7 @@ const (
 	certFile       = "agent.pem"
 	caFile         = "ca.pem"
 	grantsFile     = "grants.json"
+	guardFile      = "guard.json"
 	reportInterval = time.Minute
 	grantInterval  = 15 * time.Second
 	pollWaitSecs   = 25
@@ -55,18 +59,73 @@ type Config struct {
 	Server       string   `json:"server"`
 	DeviceID     string   `json:"device_id"`
 	AllowedPaths []string `json:"allowed_paths"`
+	// SigningKeys are the public keys tasks must be signed with. The server
+	// has no way to change them. Empty means this device is not protected.
+	SigningKeys []string `json:"signing_keys,omitempty"`
+}
+
+// DeviceID reads the ID of an enrolled device.
+func DeviceID(dir string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, configFile))
+	if err != nil {
+		return "", err
+	}
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return "", err
+	}
+	return cfg.DeviceID, nil
+}
+
+// TrustKeys pins signing keys on a device that has none yet, which needs root
+// on the device. Afterwards, a signed keys.set is the way to change them.
+func TrustKeys(dir string, keys []string) error {
+	if len(keys) == 0 {
+		return errors.New("no keys given")
+	}
+	for _, key := range keys {
+		if _, err := sign.ParseKey(key); err != nil {
+			return err
+		}
+	}
+	path := filepath.Join(dir, configFile)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("not enrolled: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return err
+	}
+	if len(cfg.SigningKeys) > 0 {
+		return errors.New("signing keys are already pinned, use a signed keys.set task")
+	}
+	if err := CreateGuard(filepath.Join(dir, guardFile)); err != nil {
+		return err
+	}
+	cfg.SigningKeys = keys
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomicSync(path, out, 0o600)
 }
 
 // Enroll registers this device. The CA is fetched over an unverified
 // connection and accepted only if it matches the pinned fingerprint, so the
 // fingerprint in the enroll command is what the whole trust rests on.
-func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string) error {
+func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string, signingKeys []string) error {
 	serverURL = strings.TrimRight(serverURL, "/")
 	if !strings.HasPrefix(serverURL, "https://") {
 		return errors.New("server URL must use https")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	for _, key := range signingKeys {
+		if _, err := sign.ParseKey(key); err != nil {
+			return err
+		}
 	}
 	insecure := &http.Client{
 		Timeout:   30 * time.Second,
@@ -142,7 +201,17 @@ func Enroll(ctx context.Context, dir, serverURL, token, fingerprint string) erro
 		return err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-	cfg, err := json.MarshalIndent(Config{Server: serverURL, DeviceID: out.DeviceID, AllowedPaths: DefaultAllowedPaths}, "", "  ")
+	if len(signingKeys) > 0 {
+		if err := CreateGuard(filepath.Join(dir, guardFile)); err != nil {
+			return err
+		}
+	}
+	cfg, err := json.MarshalIndent(Config{
+		Server:       serverURL,
+		DeviceID:     out.DeviceID,
+		AllowedPaths: DefaultAllowedPaths,
+		SigningKeys:  signingKeys,
+	}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -196,6 +265,9 @@ type Agent struct {
 	cert tls.Certificate
 	leaf *x509.Certificate
 	pool *x509.CertPool
+
+	// guard is nil on a device without pinned keys.
+	guard *Guard
 }
 
 // Load reads the enrolled state from dir.
@@ -228,13 +300,20 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	var guard *Guard
+	if len(cfg.SigningKeys) > 0 {
+		if guard, err = OpenGuard(filepath.Join(dir, guardFile), cfg.SigningKeys); err != nil {
+			return nil, err
+		}
+	}
 	platform := Detect()
 	a := &Agent{
-		cfg:  cfg,
-		dir:  dir,
-		cert: cert,
-		leaf: leaf,
-		pool: pool,
+		guard: guard,
+		cfg:   cfg,
+		dir:   dir,
+		cert:  cert,
+		leaf:  leaf,
+		pool:  pool,
 		exec: &Executor{
 			Root:         "/",
 			AllowedPaths: cfg.AllowedPaths,
@@ -379,7 +458,15 @@ func (a *Agent) reportLoop(ctx context.Context) {
 	ticker := time.NewTicker(reportInterval)
 	defer ticker.Stop()
 	for {
-		if err := a.post(ctx, "/agent/report", Collect(a.platform)); err != nil && ctx.Err() == nil {
+		report := Collect(a.platform)
+		if a.guard != nil {
+			report.Protected = true
+			report.Counter = a.guard.Counter()
+			if err := a.guard.Touch(time.Now()); err != nil {
+				a.log.Error("saving signing state failed", "err", err)
+			}
+		}
+		if err := a.post(ctx, "/agent/report", report); err != nil && ctx.Err() == nil {
 			a.log.Warn("report failed", "err", err)
 		}
 		select {
@@ -407,13 +494,65 @@ func (a *Agent) taskLoop(ctx context.Context) {
 		if task == nil {
 			continue
 		}
-		a.log.Info("running task", "id", task.ID, "type", task.Type)
-		result := a.exec.Execute(ctx, *task)
+		result := a.handle(ctx, *task)
 		a.log.Info("task finished", "id", task.ID, "ok", result.OK)
 		if err := a.post(ctx, "/agent/tasks/"+task.ID+"/result", result); err != nil {
 			a.log.Error("sending result failed", "id", task.ID, "err", err)
 		}
 	}
+}
+
+// handle runs a task after the guard admitted it. On a protected device, the
+// guard replaces what the server sent with what the admin signed.
+func (a *Agent) handle(ctx context.Context, task api.Task) api.TaskResult {
+	if a.guard != nil {
+		admitted, err := a.guard.Admit(task, a.cfg.DeviceID, time.Now())
+		if err != nil {
+			a.log.Warn("task refused", "id", task.ID, "err", err)
+			return api.TaskResult{OK: false, Output: "refused: " + err.Error()}
+		}
+		task = admitted
+	}
+	a.log.Info("running task", "id", task.ID, "type", task.Type)
+	if task.Type == api.TaskKeysSet {
+		return a.setKeys(task)
+	}
+	return a.exec.Execute(ctx, task)
+}
+
+// setKeys is only reachable through the guard: without pinned keys there is
+// nothing to replace, and a server must not be able to pin its own.
+func (a *Agent) setKeys(task api.Task) api.TaskResult {
+	if a.guard == nil {
+		return api.TaskResult{OK: false, Output: "this device has no pinned keys"}
+	}
+	if err := api.Validate(task.Type, task.Payload); err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	var p api.KeysPayload
+	if err := json.Unmarshal(task.Payload, &p); err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	keys := make([]ssh.PublicKey, 0, len(p.Keys))
+	for _, line := range p.Keys {
+		key, err := sign.ParseKey(line)
+		if err != nil {
+			return api.TaskResult{OK: false, Output: err.Error()}
+		}
+		keys = append(keys, key)
+	}
+	cfg := a.cfg
+	cfg.SigningKeys = p.Keys
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err == nil {
+		err = writeAtomicSync(filepath.Join(a.dir, configFile), raw, 0o600)
+	}
+	if err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	a.cfg = cfg
+	a.guard.SetKeys(keys)
+	return api.TaskResult{OK: true, Output: fmt.Sprintf("%d signing keys pinned", len(keys))}
 }
 
 func (a *Agent) poll(ctx context.Context) (*api.Task, error) {

@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/pki"
+	"github.com/philippe/hauswart/internal/sign"
 	"github.com/philippe/hauswart/internal/store"
 )
 
@@ -302,6 +304,105 @@ func TestErrorsCarryCodes(t *testing.T) {
 	json.Unmarshal(data, &out)
 	if out["code"] != api.ErrInvalidPackage || out["value"] != "--evil" {
 		t.Fatalf("got %s", data)
+	}
+}
+
+func protect(t *testing.T, e *env, agent *http.Client) {
+	t.Helper()
+	if code, _ := e.do(agent, "POST", "/agent/report", api.Report{Hostname: "laptop", Protected: true}); code != http.StatusNoContent {
+		t.Fatalf("report: %d", code)
+	}
+}
+
+func TestProtectedDeviceWaitsForSignature(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	protect(t, e, agent)
+	admin := e.login("admin")
+
+	code, data := e.do(admin, "POST", "/api/devices/"+id+"/tasks",
+		map[string]any{"type": api.TaskPkgInstall, "payload": api.PackagesPayload{Packages: []string{"vim"}}})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, data)
+	}
+	var created struct{ ID string }
+	json.Unmarshal(data, &created)
+	if code, _ := e.do(agent, "GET", "/agent/tasks?wait=0", nil); code != http.StatusNoContent {
+		t.Fatalf("delivered without a signature: %d", code)
+	}
+	code, data = e.do(admin, "GET", "/api/signing", nil)
+	if code != http.StatusOK || !strings.Contains(string(data), created.ID) {
+		t.Fatalf("queue: %d %s", code, data)
+	}
+	signed := sign.Signed{Envelope: []byte("e"), Signature: []byte("s")}
+	if code, _ := e.do(admin, "POST", "/api/tasks/"+created.ID+"/signature", signed); code != http.StatusNoContent {
+		t.Fatalf("signature: %d", code)
+	}
+	code, data = e.do(agent, "GET", "/agent/tasks?wait=0", nil)
+	if code != http.StatusOK {
+		t.Fatalf("poll: %d", code)
+	}
+	var task api.Task
+	json.Unmarshal(data, &task)
+	if task.Signed == nil || string(task.Signed.Envelope) != "e" {
+		t.Fatalf("got %s", data)
+	}
+}
+
+func TestProtectedDeviceStillGetsSafeTasksDirectly(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	protect(t, e, agent)
+	e.do(e.login("admin"), "POST", "/api/devices/"+id+"/tasks", map[string]any{"type": api.TaskPkgUpgrade})
+	if code, _ := e.do(agent, "GET", "/agent/tasks?wait=0", nil); code != http.StatusOK {
+		t.Fatalf("got %d", code)
+	}
+}
+
+func TestProtectedDeviceRefusesServerMadePassword(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	protect(t, e, agent)
+	code, data := e.do(e.login("admin"), "POST", "/api/devices/"+id+"/start-password", map[string]string{"user": "anna"})
+	if code != http.StatusConflict || !strings.Contains(string(data), api.ErrUseAdminTool) {
+		t.Fatalf("got %d %s", code, data)
+	}
+}
+
+func TestSigningRoutesAreAdminOnly(t *testing.T) {
+	e := setup(t)
+	id, _ := e.enroll()
+	member := e.login("anna")
+	routes := []struct{ method, path string }{
+		{"GET", "/api/signing"},
+		{"POST", "/api/tasks/x/signature"},
+		{"POST", "/api/tasks/x/reject"},
+		{"POST", "/api/devices/" + id + "/signed-tasks"},
+	}
+	for _, r := range routes {
+		if code, _ := e.do(member, r.method, r.path, map[string]any{}); code != http.StatusForbidden {
+			t.Errorf("%s %s: %d", r.method, r.path, code)
+		}
+	}
+}
+
+func TestSignedTaskContentStaysOutOfLogs(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	admin := e.login("admin")
+	in := map[string]any{"type": api.TaskUserPassword, "signed": sign.Signed{Envelope: []byte("secret-hash"), Signature: []byte("s")}}
+	if code, data := e.do(admin, "POST", "/api/devices/"+id+"/signed-tasks", in); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, data)
+	}
+	if code, _ := e.do(agent, "GET", "/agent/tasks?wait=0", nil); code != http.StatusOK {
+		t.Fatalf("poll: %d", code)
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte("secret-hash"))
+	for _, path := range []string{"/api/tasks", "/api/audit"} {
+		_, body := e.do(admin, "GET", path, nil)
+		if strings.Contains(string(body), encoded) {
+			t.Errorf("%s leaks the envelope", path)
+		}
 	}
 }
 

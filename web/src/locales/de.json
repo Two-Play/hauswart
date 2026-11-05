@@ -25,7 +25,7 @@
   },
   "devices": {
     "add": "Gerät hinzufügen",
-    "addHint": "Auf dem neuen Gerät ausführen. Der Befehl gilt einmal und eine Stunde lang.",
+    "addHint": "Auf dem neuen Gerät ausführen. Der Befehl gilt einmal und eine Stunde lang. Für ein durch Signaturen geschütztes Gerät nutze stattdessen hauswart-admin enroll-command.",
     "empty": "Noch keine Geräte angemeldet.",
     "online": "Online",
     "offline": "Offline",
@@ -41,7 +41,8 @@
     "revoke": "Sperren",
     "revokeTitle": "{{name}} sperren?",
     "revokeText": "Das Gerät verliert sofort den Zugriff und muss neu angemeldet werden.",
-    "revokeConfirm": "Gerät sperren"
+    "revokeConfirm": "Gerät sperren",
+    "protected": "Geschützt"
   },
   "actions": {
     "title": "Aktion für {{name}}",
@@ -65,7 +66,8 @@
     "user_lock": "Linux-Benutzer sperren",
     "user_unlock": "Linux-Benutzer entsperren",
     "limit_set": "Ressourcen begrenzen",
-    "user_passwd": "Linux-Startpasswort setzen"
+    "user_passwd": "Linux-Startpasswort setzen",
+    "keys_set": "Signaturschlüssel ersetzen"
   },
   "fields": {
     "packages": "Pakete, durch Leerzeichen getrennt",
@@ -110,7 +112,8 @@
     "pending": "Wartet",
     "running": "Läuft",
     "done": "Fertig",
-    "failed": "Fehlgeschlagen"
+    "failed": "Fehlgeschlagen",
+    "signing": "Wartet auf Signatur"
   },
   "tasks": {
     "empty": "Noch keine Aufgaben.",
@@ -197,6 +200,9 @@
     "unknown_task_type": "Die Aktion {{value}} ist unbekannt.",
     "invalid_payload": "Die Eingaben sind ungültig.",
     "invalid_duration": "Die Dauer muss zwischen 1 und {{value}} Minuten liegen.",
-    "unknown_request_kind": "Die Anfrageart {{value}} ist unbekannt."
+    "unknown_request_kind": "Die Anfrageart {{value}} ist unbekannt.",
+    "invalid_keys": "Die Signaturschlüssel sind ungültig.",
+    "use_admin_tool": "Dieses Gerät ist geschützt. Nutze hauswart-admin auf deinem Rechner.",
+    "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur."
   }
 }

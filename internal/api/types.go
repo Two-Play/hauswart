@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/philippe/hauswart/internal/sign"
 )
 
 // Task types. The agent executes only these; there is deliberately no
@@ -29,12 +31,23 @@ const (
 	TaskUserUnlock     = "user.unlock"
 	TaskUserPassword   = "user.passwd"
 	TaskLimitSet       = "limit.set"
+	TaskKeysSet        = "keys.set"
 )
+
+// NeedsSignature says whether a task requires a signature on a protected
+// device. Revoking sudo only ever takes rights away, and updates come from the
+// device's own repositories: a signature would only delay security fixes.
+func NeedsSignature(taskType string) bool {
+	return taskType != TaskSudoRevoke && taskType != TaskPkgUpgrade
+}
 
 type Task struct {
 	ID      string          `json:"id"`
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
+	// Signed is set on tasks an admin signed. On a device with pinned keys,
+	// it is the only part that counts.
+	Signed *sign.Signed `json:"signed,omitempty"`
 }
 
 type TaskResult struct {
@@ -76,6 +89,11 @@ type PasswordPayload struct {
 	Hash string `json:"hash"`
 }
 
+// KeysPayload replaces the signing keys pinned on a device.
+type KeysPayload struct {
+	Keys []string `json:"keys"`
+}
+
 type LimitPayload struct {
 	User       string `json:"user"`
 	CPUPercent int    `json:"cpu_percent,omitempty"` // 100 = one core
@@ -84,6 +102,11 @@ type LimitPayload struct {
 
 // Report is the periodic inventory and health snapshot from an agent.
 type Report struct {
+	// Protected says that this device requires signatures, and Counter how far
+	// it got. Both are only hints for the admin tool, the device decides.
+	Protected bool   `json:"protected"`
+	Counter   uint64 `json:"counter"`
+
 	Hostname     string   `json:"hostname"`
 	Distro       string   `json:"distro"`
 	Kernel       string   `json:"kernel"`
@@ -235,6 +258,19 @@ func Validate(taskType string, payload json.RawMessage) error {
 			// the time-limited sudo grant instead.
 			if !userRe.MatchString(g) || privilegedGroups[g] {
 				return Fail(ErrGroupNotAllowed, g)
+			}
+		}
+	case TaskKeysSet:
+		var p KeysPayload
+		if err := strictDecode(payload, &p); err != nil {
+			return err
+		}
+		if len(p.Keys) == 0 {
+			return Fail(ErrInvalidKeys)
+		}
+		for _, key := range p.Keys {
+			if _, err := sign.ParseKey(key); err != nil {
+				return Fail(ErrInvalidKeys)
 			}
 		}
 	case TaskLimitSet:
