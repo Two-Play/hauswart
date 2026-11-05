@@ -15,6 +15,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type User } from '../api';
@@ -63,6 +64,7 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
     setBusy(true);
     try {
       await api('POST', `/api/devices/${device.id}/tasks`, { type, payload: buildPayload(values) });
+      notifications.show({ color: 'teal', message: t('actions.queued', { name: device.hostname }) });
       onClose(true);
     } catch (err) {
       showError(err);

@@ -45,7 +45,8 @@
   "actions": {
     "title": "Aktion für {{name}}",
     "type": "Aktion",
-    "run": "Ausführen"
+    "run": "Ausführen",
+    "queued": "An {{name}} gesendet. Das Ergebnis steht unter Aufgaben."
   },
   "taskTypes": {
     "pkg_install": "Paket installieren",

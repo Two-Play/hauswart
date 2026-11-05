@@ -45,7 +45,8 @@
   "actions": {
     "title": "Action for {{name}}",
     "type": "Action",
-    "run": "Run"
+    "run": "Run",
+    "queued": "Sent to {{name}}. The result appears under Tasks."
   },
   "taskTypes": {
     "pkg_install": "Install package",

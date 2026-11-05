@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,7 +35,12 @@ func run(log *slog.Logger) error {
 	dataDir := flag.String("data", "/var/lib/hauswart-server", "data directory")
 	publicURL := flag.String("url", "https://localhost:8443", "URL under which agents reach this server")
 	extraHosts := flag.String("hosts", "", "additional comma-separated DNS names or IPs for the TLS certificate")
+	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
 	flag.Parse()
+
+	if *devHTTP != "" && !isLoopback(*devHTTP) {
+		return fmt.Errorf("-dev-http must be a loopback address, got %q", *devHTTP)
+	}
 
 	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
 		return err
@@ -80,6 +86,19 @@ func run(log *slog.Logger) error {
 		WriteTimeout:      60 * time.Second, // must exceed the long-poll wait
 		IdleTimeout:       2 * time.Minute,
 	}
+	if *devHTTP != "" {
+		dev := &http.Server{Addr: *devHTTP, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+		log.Warn("serving without TLS for development", "addr", *devHTTP)
+		go func() {
+			if err := dev.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				log.Error("dev listener failed", "err", err)
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			dev.Close()
+		}()
+	}
 	go srv.Janitor(ctx)
 	go func() {
 		<-ctx.Done()
@@ -93,6 +112,16 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// isLoopback keeps the unencrypted development listener off the network.
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
 // bootstrapAdmin creates the first account. The password is printed once and
