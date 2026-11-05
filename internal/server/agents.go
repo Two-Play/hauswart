@@ -108,6 +108,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 	if !readJSON(w, r, &rep) {
 		return
 	}
+	s.recordInsight(r, id, &rep)
 	if err := s.store.SaveReport(r.Context(), id, rep); err != nil {
 		s.internal(w, err)
 		return

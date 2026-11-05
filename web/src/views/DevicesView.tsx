@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type User } from '../api';
 import { buildPayload, TASK_FIELDS, taskKey } from '../tasks';
 import { formatBytes, Loaded, showError } from '../ui';
+import { DeviceInsight, InsightBadges } from './DeviceInsight';
 
 const ONLINE_SECONDS = 90;
 
@@ -175,6 +176,7 @@ export function DevicesView({ user }: { user: User }) {
   const isAdmin = user.role === 'admin';
   const { data, error, reload } = useResource<Device[]>('/api/devices', 10_000);
   const [taskDevice, setTaskDevice] = useState<Device>();
+  const [insightDevice, setInsightDevice] = useState<string>();
   const [revokeDevice, setRevokeDevice] = useState<Device>();
   const [enrollCommand, setEnrollCommand] = useState<string>();
 
@@ -243,12 +245,16 @@ export function DevicesView({ user }: { user: User }) {
                           {' · '}
                           {d.report.backends?.join(', ') || t('devices.noBackend')}
                         </Text>
+                        {isAdmin && <InsightBadges device={d} />}
                       </>
                     )}
                     {isAdmin && !d.revoked && (
                       <Group gap="xs" mt="xs">
                         <Button size="xs" onClick={() => setTaskDevice(d)}>
                           {t('devices.action')}
+                        </Button>
+                        <Button size="xs" variant="default" onClick={() => setInsightDevice(d.id)}>
+                          {t('insight.open')}
                         </Button>
                         <Button size="xs" variant="subtle" color="red" onClick={() => setRevokeDevice(d)}>
                           {t('devices.revoke')}
@@ -263,6 +269,12 @@ export function DevicesView({ user }: { user: User }) {
         }
       </Loaded>
 
+      {data?.some((d) => d.id === insightDevice) && (
+        <DeviceInsight
+          device={data.find((d) => d.id === insightDevice)!}
+          onClose={() => setInsightDevice(undefined)}
+        />
+      )}
       {taskDevice && <TaskModal device={taskDevice} onClose={() => setTaskDevice(undefined)} />}
       {enrollCommand && <EnrollModal command={enrollCommand} onClose={() => setEnrollCommand(undefined)} />}
       {revokeDevice && (

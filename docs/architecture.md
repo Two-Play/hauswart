@@ -75,6 +75,7 @@ The agent runs only these task types:
 | `user.passwd` | Start password from a hash, to be changed at first login |
 | `keys.set` | Replaces the pinned signing keys, needs a signature |
 | `limit.set` | CPU and memory limits through a systemd slice drop-in |
+| `logs.fetch` | Reads the journal, see [Insight into devices](#insight-into-devices) |
 
 `api.Validate` checks every task on the server for early feedback, and again on
 the agent, which is the actual enforcement boundary.
@@ -86,7 +87,7 @@ not retried, because whether it ran is unknown.
 ## Signed tasks
 
 A device with pinned keys runs a task only with a valid signature, except
-`sudo.revoke` and `pkg.upgrade`. The keys live in `agent.json` and the server has
+`sudo.revoke`, `pkg.upgrade` and `logs.fetch`. The keys live in `agent.json` and the server has
 no way to change them: they come from the enroll command or `trust-key`, and
 later only from a signed `keys.set`.
 
@@ -120,6 +121,73 @@ sudoers has no expiry of its own. The agent writes a rule to
 expiry in `grants.json`. It checks every 15 seconds and at start, without needing
 the server, so a grant also ends on time on a disconnected device or after a
 reboot.
+
+## Insight into devices
+
+Everything here only reads. It is for admins, and members see none of it.
+
+### Logs
+
+`logs.fetch` takes a number of lines and nothing else, so the server cannot choose
+what the agent reads. The agent runs `journalctl --system` twice: for
+`hauswart-agent.service` at every priority, and for all messages from warning up.
+At most 500 entries and 256 KiB per part come back, as a structured result.
+
+`--system` is not enough to keep users out. It skips the files of users, but a
+volatile journal or `SplitMode=none` keeps everything in the system's file. The
+agent therefore reads JSON and drops an entry in `internal/agent/logs.go` if it
+
+- comes from a UID of 1000 or above, or names one in another field
+- comes from a user's service manager
+- ran in a `user-*.slice`, which covers root through sudo in a session
+- has no slice at all, because the sender ended before journald could look at it
+
+The result counts what was left out. It stays out of task lists and is fetched
+through `GET /api/tasks/{id}/data`. The server deletes it after an hour.
+
+### Rights overview
+
+Every report lists the accounts with a UID of 1000 or above, except `nobody`, with
+their groups, the groups that amount to root, and running grants. Sudo rights come
+from `sudo -l -U`, because only sudo knows what rules, aliases and groups add up
+to. Each question lands in the system log, so the agent asks again only if the
+account files or sudoers changed, and at least every hour. Only local accounts
+appear, not those from a directory service.
+
+### Update status
+
+The agent checks at start, every six hours, and after every package task, and
+retries after 30 minutes if a check failed. A check and a package task never run
+at once, because package managers refuse that. The report carries the last result
+and the error of a failed check.
+
+| Backend | Pending updates | Reboot needed |
+| --- | --- | --- |
+| dnf, dnf5 | `repoquery --upgrades` | `needs-restarting --reboothint` |
+| apt | `apt-get update`, then a simulated upgrade | `/run/reboot-required` |
+| zypper | `list-updates` | `needs-rebooting` |
+| pacman | `pacman -Sy` on a copy in `/var/cache/hauswart/pacman` | Kernels only |
+| rpm-ostree | `upgrade --preview` | Newest deployment is not the booted one |
+
+On every backend, a running kernel that is gone or older than an installed one
+also counts as a reason. The answer is "unknown" if nothing gives one, for example
+in a container. pacman gets a copy because refreshing the real databases without
+upgrading would set up a partial upgrade.
+
+A system that follows a container image, like Fedora CoreOS, knows no package list
+before the upgrade, so the new image counts as one update, named by its version.
+
+### Resource history
+
+The server keeps load, memory and disk per device for seven days in
+`device_samples`, at most one row per device and minute, so a device cannot fill
+the database. `GET /api/devices/{id}/history` returns averages over 5 minutes for
+a day and over 30 minutes for longer.
+
+`GET /api/devices` adds warnings for admins when it is called: a disk at 90 percent
+or more, and a certificate with less than 30 days left. The expiry comes from the
+certificate the device connected with, not from what it claims, and the warning
+also appears for a device that went quiet.
 
 ## Certificates
 

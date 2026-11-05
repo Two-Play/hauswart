@@ -349,6 +349,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.reportLoop(ctx) })
 	wg.Go(func() { a.taskLoop(ctx) })
 	wg.Go(func() { a.renewLoop(ctx) })
+	wg.Go(func() { a.updateLoop(ctx) })
 	wg.Wait()
 }
 
@@ -459,6 +460,7 @@ func (a *Agent) reportLoop(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		report := Collect(a.platform)
+		report.Insight = a.exec.collectInsight(ctx)
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()

@@ -36,6 +36,8 @@ type Executor struct {
 	// RunInput is Run with data on stdin, for values that must stay out of
 	// the process list.
 	RunInput func(ctx context.Context, input, name string, args ...string) (string, error)
+
+	insight insightState
 }
 
 func (e *Executor) path(p string) string { return filepath.Join(e.Root, p) }
@@ -119,6 +121,7 @@ func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, json.RawMe
 }
 
 func (e *Executor) packages(ctx context.Context, taskType string, names []string) (string, error) {
+	defer e.lockPackages()()
 	if taskType == api.TaskFlatpakInstall {
 		if !e.Platform.Flatpak {
 			return "", errors.New("flatpak is not installed")

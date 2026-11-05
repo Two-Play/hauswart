@@ -220,6 +220,7 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 	}
 	for _, stmt := range []string{
 		`ALTER TABLE devices DROP COLUMN next_serial`,
+		`DROP TABLE device_samples`,
 		`DROP TABLE group_devices`,
 		`DROP TABLE device_groups`,
 		`ALTER TABLE tasks DROP COLUMN data`,

@@ -26,6 +26,7 @@ GUEST_URL = f"https://10.0.2.2:{PORT}"
 ROOT = e2e.ROOT
 CACHE = os.environ.get("VM_CACHE", os.path.expanduser("~/.cache/hauswart-vm"))
 
+STREAM_BUILDS = "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds"
 CLOUD_DIR = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/"
 CLOUD_IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
 STREAM = "https://builds.coreos.fedoraproject.org/streams/stable.json"
@@ -79,6 +80,24 @@ def coreos_image():
     path = packed.removesuffix(".xz")
     if not os.path.exists(path):
         fetch(disk["location"], packed)
+        if sha256(packed) != disk["sha256"]:
+            os.remove(packed)
+            sys.exit("CoreOS image checksum mismatch")
+        with lzma.open(packed) as src, open(path, "wb") as out:
+            shutil.copyfileobj(src, out)
+    return path
+
+
+def previous_coreos_image():
+    """The build before the current one, so that a real update is pending."""
+    builds = f"{STREAM_BUILDS}/builds.json"
+    build = json.load(urllib.request.urlopen(builds))["builds"][1]["id"]
+    meta = json.load(urllib.request.urlopen(f"{STREAM_BUILDS}/{build}/x86_64/meta.json"))
+    disk = meta["images"]["qemu"]
+    packed = f"{CACHE}/{disk['path']}"
+    path = packed.removesuffix(".xz")
+    if not os.path.exists(path):
+        fetch(f"{STREAM_BUILDS}/{build}/x86_64/{disk['path']}", packed)
         if sha256(packed) != disk["sha256"]:
             os.remove(packed)
             sys.exit("CoreOS image checksum mismatch")
@@ -271,11 +290,18 @@ def test_atomic(admin, agent_bin, work, public_key):
     }
     with open(f"{work}/config.ign", "w") as f:
         json.dump(ignition, f)
-    vm = VM(work, "atomic", coreos_image(), "core", 2232,
+    vm = VM(work, "atomic", previous_coreos_image(), "core", 2232,
             ["-fw_cfg", f"name=opt/com.coreos/config,file={work}/config.ign"])
     try:
         check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
         device = start_agent(vm, admin, agent_bin, work)
+
+        report = e2e.wait_report(admin, device, lambda r: "updates" in r, 420)
+        updates = (report or {}).get("updates", {})
+        print(f"       updates={updates}", flush=True)
+        check(group, "update check on rpm-ostree", updates.get("checked_at") and not updates.get("error"), str(updates))
+        check(group, "booted deployment needs no reboot", updates.get("reboot") == "not_required", str(updates))
+        check(group, "newer image counts as pending", updates.get("pending") == 1 and updates.get("packages"), str(updates))
 
         task = e2e.run_task(admin, device, "pkg.install", {"packages": ["tree"]}, wait=900)
         check(group, "pkg.install", task["status"] == "done", task["output"])
@@ -297,6 +323,9 @@ def test_atomic(admin, agent_bin, work, public_key):
 
         task = e2e.run_task(admin, device, "pkg.upgrade", {}, wait=1200)
         check(group, "pkg.upgrade", task["status"] == "done", task["output"])
+        report = e2e.wait_report(admin, device, lambda r: r.get("updates", {}).get("reboot") == "required", 420)
+        check(group, "staged deployment asks for a reboot", report, str(e2e.last_report(admin, device).get("updates")))
+        check(group, "nothing pending after the upgrade", report and report["updates"]["pending"] == 0, str(report))
     finally:
         vm.stop()
 

@@ -114,6 +114,8 @@ type Report struct {
 	MemUsed      uint64   `json:"mem_used"`
 	DiskTotal    uint64   `json:"disk_total"`
 	DiskUsed     uint64   `json:"disk_used"`
+
+	Insight
 }
 
 type EnrollRequest struct {

@@ -19,6 +19,32 @@ export interface Report {
   mem_used?: number;
   disk_total?: number;
   disk_used?: number;
+  cert_expires?: string;
+  accounts?: Account[];
+  updates?: UpdateStatus;
+}
+
+export interface Account {
+  name: string;
+  uid: number;
+  groups: string[];
+  privileged?: string[];
+  sudo?: string[];
+  sudo_unknown?: boolean;
+  grant_expires?: string;
+}
+
+export interface UpdateStatus {
+  checked_at?: string;
+  pending: number;
+  packages?: string[];
+  reboot: 'required' | 'not_required' | 'unknown';
+  error?: string;
+}
+
+export interface Warning {
+  code: 'disk_full' | 'cert_expiring';
+  value: number;
 }
 
 export interface Device {
@@ -27,6 +53,7 @@ export interface Device {
   revoked: boolean;
   last_seen: number;
   report: Report | null;
+  warnings?: Warning[];
 }
 
 export interface Task {

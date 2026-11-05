@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"sync"
 	"time"
@@ -63,4 +64,11 @@ func (g *GrantStore) save() error {
 		return err
 	}
 	return writeAtomic(g.path, raw, 0o600)
+}
+
+// All returns a copy of the running grants.
+func (g *GrantStore) All() map[string]time.Time {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return maps.Clone(g.data)
 }

@@ -194,6 +194,9 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, _ store.Use
 		if tasks[i].Type == api.TaskUserPassword {
 			tasks[i].Payload = json.RawMessage(`{}`)
 		}
+		if tasks[i].Type == api.TaskLogsFetch {
+			tasks[i].Data = nil // large, and fetched one at a time
+		}
 	}
 	writeJSON(w, http.StatusOK, tasks)
 }

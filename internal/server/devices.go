@@ -25,9 +25,11 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request, u store.U
 		s.internal(w, err)
 		return
 	}
-	if u.Role != "admin" {
-		// Members only need something to pick from when filing a request.
-		for i := range devices {
+	for i := range devices {
+		if u.Role == "admin" {
+			devices[i].Warnings = deviceWarnings(devices[i])
+		} else {
+			// Members only need something to pick from when filing a request.
 			devices[i].Report = nil
 		}
 	}

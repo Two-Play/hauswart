@@ -138,6 +138,16 @@ var migrations = []string{
 		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
 		PRIMARY KEY (group_id, device_id)
 	);`,
+	`CREATE TABLE device_samples (
+		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		minute INTEGER NOT NULL,
+		load1 REAL NOT NULL,
+		mem_used INTEGER NOT NULL,
+		mem_total INTEGER NOT NULL,
+		disk_used INTEGER NOT NULL,
+		disk_total INTEGER NOT NULL,
+		PRIMARY KEY (device_id, minute)
+	) WITHOUT ROWID;`,
 }
 
 func migrate(db *sql.DB) error {
@@ -346,6 +356,8 @@ type Device struct {
 	Revoked  bool        `json:"revoked"`
 	LastSeen int64       `json:"last_seen"`
 	Report   *api.Report `json:"report"`
+	// Warnings is set for admins only, like the report it comes from.
+	Warnings []api.Warning `json:"warnings,omitempty"`
 	serial   string
 }
 
@@ -587,6 +599,9 @@ func (s *Store) FinishTask(ctx context.Context, deviceID, taskID string, r api.T
 // never arrived. They are not retried, because whether they ran is unknown.
 func (s *Store) Cleanup(ctx context.Context, staleAfter time.Duration) error {
 	now := time.Now()
+	if err := s.pruneInsight(ctx, now); err != nil {
+		return err
+	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, now.Unix()); err != nil {
 		return err
 	}

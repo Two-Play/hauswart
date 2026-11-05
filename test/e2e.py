@@ -2,7 +2,10 @@
 """End-to-end test: real server on the host, real agents as root in containers.
 
 Everything privileged happens inside throwaway containers; the host is never
-touched. Usage: test/e2e.py [fedora debian arch opensuse systemd]
+touched. Usage: test/e2e.py [fedora debian arch opensuse systemd signing renewal
+journal-fedora journal-debian journal-arch journal-opensuse]
+
+E2E_PORT and E2E_PREFIX keep parallel runs apart.
 """
 import base64
 import http.cookiejar
@@ -20,7 +23,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-PORT = 18443
+PORT = int(os.environ.get("E2E_PORT", "18443"))
+PREFIX = os.environ.get("E2E_PREFIX", "hauswart-e2e")
 URL = f"https://localhost:{PORT}"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -94,16 +98,19 @@ def wait_task(admin, task_id, wait=300):
 def test_distro(name, admin, agent_bin, ca_pem):
     image, setup, package = DISTROS[name]
     print(f"\n== {name} ({image})", flush=True)
-    container = f"hauswart-e2e-{name}"
+    container = f"{PREFIX}-{name}"
     sh("podman", "rm", "-f", container, check_rc=False)
     sh("podman", "run", "-d", "--name", container, "--network", "host",
-       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", image, "sleep", "1800", timeout=600)
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", image, "sleep", "3000", timeout=600)
 
     def inside(cmd, check_rc=False, timeout=600):
         return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=check_rc, timeout=timeout)
 
     try:
         inside(setup, check_rc=True)
+        if PENDING_SETUP[name]:
+            inside(PENDING_SETUP[name], check_rc=True)
+        sync_before = inside(ARCH_SYNC_DB).stdout
 
         _, enroll = admin.call("POST", "/api/enroll-tokens")
         command = enroll["command"].replace("sudo ", "", 1)
@@ -133,6 +140,18 @@ def test_distro(name, admin, agent_bin, ca_pem):
         print(f"       distro={report['distro']!r} backends={report['backends']}", flush=True)
         id_ = device["id"]
 
+        test_update_status(name, admin, id_, inside, sync_before)
+
+        code, samples = admin.call("GET", f"/api/devices/{id_}/history")
+        check(name, "resource history has the report", code == 200 and samples and samples[0]["mem_total"] > 0, str(samples))
+        expires_in = datetime.fromisoformat(report["cert_expires"]) - datetime.now(timezone.utc)
+        check(name, "certificate expiry is reported", expires_in > timedelta(days=700), str(expires_in))
+        check(name, "a new certificate raises no warning", not any(w["code"] == "cert_expiring" for w in device.get("warnings", [])))
+
+        task = run_task(admin, id_, "logs.fetch", {})
+        data = task_data(admin, task)
+        check(name, "logs.fetch without a journal", task["status"] == "done" and data.get("available") is False, str(task))
+
         task = run_task(admin, id_, "pkg.install", {"packages": [package]})
         check(name, "pkg.install", task["status"] == "done", task["output"])
         check(name, "package really installed", inside(f"command -v {package}").returncode == 0)
@@ -141,8 +160,13 @@ def test_distro(name, admin, agent_bin, ca_pem):
         check(name, "pkg.remove", task["status"] == "done", task["output"])
         check(name, "package really removed", inside(f"command -v {package}").returncode != 0)
 
+        # A kernel directory that is not the running kernel's means a new kernel
+        # was installed, which is what a reboot is for.
+        inside("mkdir -p /usr/lib/modules/0.0.0-hauswart-test")
         task = run_task(admin, id_, "pkg.upgrade", {}, wait=580)
         check(name, "pkg.upgrade", task["status"] == "done", task["output"])
+        updates = wait_report(admin, id_, lambda r: r.get("updates", {}).get("pending") == 0 and r["updates"]["reboot"] == "required", 240)
+        check(name, "no updates pending after pkg.upgrade", updates, str(last_report(admin, id_).get("updates")))
 
         task = run_task(admin, id_, "user.create", {"user": "anna", "full_name": "Anna Test"})
         check(name, "user.create", task["status"] == "done", task["output"])
@@ -181,6 +205,8 @@ def test_distro(name, admin, agent_bin, ca_pem):
         listing = inside("sudo -l -U anna").stdout
         check(name, "sudo expires by itself", "(ALL : ALL) ALL" not in listing and inside("test -e /etc/sudoers.d/hauswart-anna").returncode != 0, listing)
 
+        test_rights(name, admin, id_, inside)
+
         task = run_task(admin, id_, "user.lock", {"user": "anna"})
         check(name, "user.lock", task["status"] == "done", task["output"])
         check(name, "account really locked", inside("passwd -S anna 2>/dev/null | grep -Eq ' (L|LK) |locked'; [ $? = 0 ] || grep -q '^anna:!' /etc/shadow").returncode == 0)
@@ -203,6 +229,247 @@ def test_distro(name, admin, agent_bin, ca_pem):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+def last_report(admin, device):
+    _, devices = admin.call("GET", "/api/devices")
+    return next((d["report"] for d in devices if d["id"] == device), {})
+
+
+def wait_report(admin, device, condition, wait=150):
+    """Agents report once a minute."""
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        report = last_report(admin, device)
+        if condition(report):
+            return report
+        time.sleep(2)
+    return None
+
+
+def task_data(admin, task):
+    """The structured result, which task lists leave out for logs."""
+    code, full = admin.call("GET", f"/api/tasks/{task['id']}/data") if "id" in task else (0, None)
+    return full.get("data", {}) if code == 200 else {}
+
+
+# Puts a real pending update in place where the image is up to date. An older
+# version comes from the repositories on Fedora. On Debian, the package database
+# is told so, which apt then fixes for real.
+PENDING_SETUP = {
+    "fedora": "dnf5 downgrade -y tzdata",
+    "debian": "sed -i '/^Package: ca-certificates$/,/^$/ s/^Version: .*/Version: 20000101/' /var/lib/dpkg/status",
+    "arch": "",
+    "opensuse": "",
+}
+# What the package manager says itself, to compare with. Arch needs no number:
+# checking must not touch the real sync databases, which ARCH_SYNC_DB shows.
+PENDING_COUNT = {
+    "fedora": "dnf5 repoquery --upgrades --quiet --qf '%{name}.%{arch}\\n' | sort -u | wc -l",
+    "debian": "apt-get -s upgrade | grep -c '^Inst '",
+    "arch": "",
+    "opensuse": "zypper --non-interactive list-updates | grep -c '^v '",
+}
+ARCH_SYNC_DB = "ls -l --time-style=full-iso /var/lib/pacman/sync 2>/dev/null"
+
+
+def test_update_status(name, admin, device, inside, sync_before):
+    report = wait_report(admin, device, lambda r: r.get("updates", {}).get("checked_at"), 240)
+    check(name, "update status arrives", report, str(last_report(admin, device).get("updates")))
+    if not report:
+        return
+    updates = report["updates"]
+    print(f"       updates={updates['pending']} reboot={updates['reboot']} error={updates.get('error')!r}", flush=True)
+    check(name, "update check succeeds", not updates.get("error"), updates.get("error", ""))
+    check(name, "updates are pending", updates["pending"] > 0 and updates["packages"], str(updates))
+    check(name, "reboot state is a known value", updates["reboot"] in ("required", "not_required", "unknown"), updates["reboot"])
+    if PENDING_COUNT[name]:
+        expected = inside(PENDING_COUNT[name]).stdout.strip()
+        check(name, "count matches the package manager", expected == str(updates["pending"]), f"{expected} != {updates['pending']}")
+    check(name, "real package databases untouched", inside(ARCH_SYNC_DB).stdout == sync_before)
+
+
+def test_rights(name, admin, device, inside):
+    created = inside("groupadd -f docker && useradd -m -G docker ben")
+    check(name, "second account prepared", created.returncode == 0, created.stderr)
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+    task = run_task(admin, device, "sudo.grant", {"user": "anna", "expires_at": expires})
+    check(name, "sudo.grant for the overview", task["status"] == "done", task["output"])
+
+    def accounts(report):
+        return {a["name"]: a for a in report.get("accounts") or []}
+
+    def granted(report):
+        found = accounts(report)
+        return "ben" in found and "(ALL : ALL) ALL" in found.get("anna", {}).get("sudo", [])
+
+    report = wait_report(admin, device, granted)
+    check(name, "rights overview shows the grant", report, str(accounts(last_report(admin, device))))
+    if not report:
+        return
+    found = accounts(report)
+    anna, ben = found["anna"], found["ben"]
+    check(name, "running grant has its expiry", anna.get("grant_expires"), str(anna))
+    check(name, "own group is listed", "anna" in anna["groups"] or anna["groups"], str(anna))
+    check(name, "UID is the real one", str(anna["uid"]) == inside("id -u anna").stdout.strip(), str(anna))
+    check(name, "group equal to root is marked", ben.get("privileged") == ["docker"] and "docker" in ben["groups"], str(ben))
+    # openSUSE lets everyone use sudo with the root password by default.
+    allowed = "is not allowed" not in inside("sudo -l -U ben").stdout
+    check(name, "sudo rights match what sudo says", bool(ben.get("sudo")) == allowed and not ben.get("sudo_unknown"), str(ben))
+    check(name, "no grant without a grant", not ben.get("grant_expires"), str(ben))
+    check(name, "system accounts stay out", not {"root", "daemon", "nobody"} & set(found), str(sorted(found)))
+
+    task = run_task(admin, device, "sudo.revoke", {"user": "anna"})
+    check(name, "sudo.revoke", task["status"] == "done", task["output"])
+    gone = wait_report(admin, device, lambda r: "anna" in accounts(r) and not granted(r) and not accounts(r)["anna"].get("grant_expires"))
+    check(name, "rights overview shows the end of the grant", gone, str(accounts(last_report(admin, device))))
+
+
+JOURNAL_IMAGES = {
+    "fedora": ("FROM registry.fedoraproject.org/fedora:44\n"
+               "RUN dnf5 install -y systemd sudo shadow-utils && dnf5 clean all\n", "/sbin/init"),
+    "debian": ("FROM docker.io/library/debian:stable\n"
+               "RUN apt-get update && apt-get install -y systemd systemd-sysv dbus sudo ca-certificates\n", "/sbin/init"),
+    # The image has no machine ID, and what fails without one or in a container
+    # takes the system bus with it.
+    "arch": ("FROM docker.io/library/archlinux:latest\n"
+             "RUN pacman -Sy --noconfirm sudo ca-certificates && systemd-machine-id-setup && "
+             "systemctl mask systemd-firstboot.service systemd-homed.service systemd-resolved.service\n",
+             "/usr/lib/systemd/systemd"),
+    "opensuse": ("FROM registry.opensuse.org/opensuse/tumbleweed:latest\n"
+                 "RUN zypper --non-interactive install systemd dbus-1-daemon sudo shadow ca-certificates\n", "/usr/lib/systemd/systemd"),
+}
+
+
+def test_journal(distro, admin, agent_bin):
+    """Proves that logs.fetch shows the system and nothing from users.
+
+    Runs against a volatile journal, where user messages share the system's
+    file, and a persistent one, where they have files of their own. Each marker
+    is first shown to be in the journal, so a miss really means filtered.
+    """
+    name = f"journal-{distro}"
+    print(f"\n== {name} (systemd as PID 1, real journal)", flush=True)
+    containerfile, init = JOURNAL_IMAGES[distro]
+    image = f"localhost/hauswart-e2e-journal-{distro}"
+    built = subprocess.run(["podman", "build", "-q", "-t", image, "-"],
+                           input=containerfile, text=True, capture_output=True, timeout=900)
+    check(name, "image builds", built.returncode == 0, built.stderr)
+    if built.returncode != 0:
+        return
+    container = f"{PREFIX}-{name}"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--systemd=always", "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", image, init)
+
+    def inside(cmd, timeout=120):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=timeout)
+
+    def in_journal(marker):
+        # Whole lines only: systemd also logs the command that held the marker.
+        return inside(f"journalctl --no-pager -o cat | grep -qx {marker}").returncode == 0
+
+    def journald(storage):
+        inside("mkdir -p /etc/systemd/journald.conf.d && "
+               f"printf '[Journal]\\nStorage={storage}\\n' >/etc/systemd/journald.conf.d/test.conf && "
+               "systemctl restart systemd-journald")
+
+    def emit(round_):
+        """Writes one system message and one per way a user's message can arrive.
+
+        A message through a pipe can lose its metadata, because the sender ends
+        before journald looks at it. That is the point of those variants.
+        """
+        system = f"SYSTEMMARKER{round_}"
+        as_service = "sh -c 'echo \"<4>{}\"; sleep 1'"
+        through_pipe = "sh -c 'echo {} | systemd-cat -p warning'"
+        run = "systemd-run --quiet --wait"
+        ways = {
+            f"USERPIPE{round_}": f"{run} --uid=anna {through_pipe}",
+            f"USEROUTPUT{round_}": f"{run} --uid=anna {as_service}",
+            f"USERSERVICE{round_}": f"{run} --uid=anna --pipe --setenv=XDG_RUNTIME_DIR=/run/user/{uid} {run} --user {as_service}",
+            f"ROOTOUTPUT{round_}": f"{run} --slice=user-{uid}.slice {as_service}",
+            f"ROOTPIPE{round_}": f"{run} --slice=user-{uid}.slice {through_pipe}",
+        }
+        inside(f"{run} {as_service.format(system)}")
+        for marker, command in ways.items():
+            inside(command.format(marker))
+        time.sleep(2)
+        return system, list(ways)
+
+    def verify(label, system, private, withheld):
+        check(name, f"{label}: system marker is in the journal", in_journal(system))
+        for marker in private:
+            check(name, f"{label}: control, {marker} is in the journal", in_journal(marker))
+        task = run_task(admin, device["id"], "logs.fetch", {"lines": 500})
+        check(name, f"{label}: logs.fetch", task["status"] == "done", task["output"])
+        data = task_data(admin, task)
+        raw = json.dumps(data)
+        check(name, f"{label}: journal is available", data.get("available") is True, raw[:300])
+        check(name, f"{label}: system message is shown", system in raw, raw[-300:])
+        for marker in private:
+            check(name, f"{label}: NO user journal: {marker} left out", marker not in raw, raw[-300:])
+        check(name, f"{label}: left out entries are counted", data.get("withheld", 0) >= withheld, str(data.get("withheld")))
+        _, tasks = admin.call("GET", "/api/tasks")
+        check(name, f"{label}: logs stay out of the task list", system not in json.dumps(tasks))
+        return data
+
+    try:
+        inside("systemctl is-system-running --wait")
+        inside("useradd -m anna && loginctl enable-linger anna")
+        uid = inside("id -u anna").stdout.strip()
+        inside("systemctl start user@$(id -u anna).service")
+
+        _, enroll = admin.call("POST", "/api/enroll-tokens")
+        check(name, "enrollment", inside(enroll["command"].replace("sudo ", "", 1)).returncode == 0)
+        # The same name as the real unit, so the agent's messages are found the
+        # same way as on a device with the package installed.
+        started = inside("systemd-run --quiet --unit=hauswart-agent.service /usr/local/bin/hauswart-agent run")
+        check(name, "agent runs as a unit", started.returncode == 0, started.stderr)
+
+        device = None
+        deadline = time.time() + 30
+        while time.time() < deadline and not device:
+            _, devices = admin.call("GET", "/api/devices")
+            live = [d for d in devices if not d["revoked"] and d["report"].get("distro") and d["id"] not in seen]
+            device = live[0] if live else None
+            time.sleep(1)
+        check(name, "report arrives", device)
+        if not device:
+            return
+        seen.add(device["id"])
+
+        journald("volatile")
+        check(name, "journal is volatile", inside("ls /run/log/journal/*/system.journal").returncode == 0)
+        system, private = emit("A")
+        verify("volatile journal", system, private, len(private))
+        shown = inside("journalctl --system --priority=warning --no-pager -o cat | grep -cx 'USER.*A'").stdout.strip()
+        print(f"       user messages that --system alone would have shown: {shown}", flush=True)
+
+        journald("persistent")
+        inside("journalctl --flush")
+        system, private = emit("B")
+        check(name, "user has a journal file of their own", inside(f"ls /var/log/journal/*/user-{uid}.journal").returncode == 0,
+              inside("ls -R /var/log/journal").stdout)
+        # Messages of the user's own UID are in that file, which is not read at
+        # all. What runs as root in a session stays in the system's file.
+        data = verify("persistent journal", system, private, 2)
+
+        check(name, "agent unit is in the result", any("running task" in e["message"] for e in data["agent"]), json.dumps(data["agent"])[-300:])
+        check(name, "system part holds warnings and worse only", all(e["priority"] <= 4 for e in data["system"]), json.dumps(data["system"])[:300])
+
+        inside("systemd-run --quiet --wait sh -c 'for i in 1 2 3 4 5 6 7 8; do echo \"<4>filler$i\"; done; sleep 1'")
+        task = run_task(admin, device["id"], "logs.fetch", {"lines": 3})
+        data = task_data(admin, task)
+        check(name, "length is limited", len(data.get("system", [])) == 3 and len(data.get("agent", [])) <= 3, str(data)[:300])
+        check(name, "the newest entries are kept", data.get("system", [{}])[-1].get("message") == "filler8", str(data.get("system")))
+        code, out = admin.call("POST", f"/api/devices/{device['id']}/tasks", {"type": "logs.fetch", "payload": {"lines": 501}})
+        check(name, "more than the limit is refused", code == 400, str(out))
+    except Exception as err:
+        check(name, "no crash", False, repr(err))
+        print(inside("journalctl -u hauswart-agent.service --no-pager | tail -20").stdout)
+    finally:
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 SYSTEMD_IMAGE = "localhost/hauswart-e2e-systemd"
 SYSTEMD_CONTAINERFILE = """FROM registry.fedoraproject.org/fedora:44
 RUN dnf5 install -y systemd sudo shadow-utils && dnf5 clean all
@@ -216,7 +483,7 @@ def test_systemd(admin, agent_bin):
     print(f"\n== {name} (Fedora with systemd as PID 1)", flush=True)
     subprocess.run(["podman", "build", "-q", "-t", SYSTEMD_IMAGE, "-"],
                    input=SYSTEMD_CONTAINERFILE, text=True, check=True, capture_output=True, timeout=600)
-    container = "hauswart-e2e-systemd"
+    container = f"{PREFIX}-systemd"
     sh("podman", "rm", "-f", container, check_rc=False)
     sh("podman", "run", "-d", "--name", container, "--systemd=always", "--network", "host",
        "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", SYSTEMD_IMAGE, "/sbin/init")
@@ -305,7 +572,7 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
     """A compromised server is simulated by writing to its database directly."""
     name = "signing"
     print(f"\n== {name} (real ssh-agent, tasks written straight into the database)", flush=True)
-    container = "hauswart-e2e-signing"
+    container = f"{PREFIX}-signing"
     sh("podman", "rm", "-f", container, check_rc=False)
     sh("podman", "run", "-d", "--name", container, "--network", "host",
        "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "1500")
@@ -416,6 +683,12 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         check(name, "rejecting closes the task", next(t for t in admin.call("GET", "/api/tasks")[1] if t["id"] == out["id"])["status"] == "failed")
         task = run_task(admin, device, "sudo.revoke", {"user": "anna"}, wait=45)
         check(name, "sudo.revoke needs no signature", task["status"] == "done", task["output"])
+        task = run_task(admin, device, "logs.fetch", {}, wait=45)
+        check(name, "logs.fetch needs no signature", task["status"] == "done", task["output"])
+        task = attack(device, "logs.fetch", {"unit": "sshd.service"})
+        check(name, "ATTACK logs of a chosen unit refused", task["status"] == "failed", task["output"])
+        task = attack(device, "logs.fetch", {"lines": 100000})
+        check(name, "ATTACK unlimited logs refused", task["status"] == "failed", task["output"])
 
         # Sudo and the start password.
         code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "sudo.grant", "payload": {"user": "anna", "expires_at": expires}})
@@ -471,7 +744,7 @@ def test_renewal(admin, agent_bin):
     """Runs an agent past the expiry of its first certificate."""
     name = "renewal"
     print(f"\n== {name} (certificates valid for {RENEWAL_VALIDITY}s)", flush=True)
-    container = "hauswart-e2e-renewal"
+    container = f"{PREFIX}-renewal"
     sh("podman", "rm", "-f", container, check_rc=False)
     sh("podman", "run", "-d", "--name", container, "--network", "host",
        "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "1200")
@@ -508,6 +781,9 @@ def test_renewal(admin, agent_bin):
         device = wait_device()
         check(name, "report arrives", device)
         first_cert, first_key = digest(cert), digest(key)
+        _, devices = admin.call("GET", "/api/devices")
+        warnings = next(d for d in devices if d["id"] == device).get("warnings", [])
+        check(name, "soon expiring certificate is flagged", any(w["code"] == "cert_expiring" for w in warnings), str(warnings))
 
         time.sleep(RENEWAL_VALIDITY + 25)  # past the expiry of the first certificate
         check(name, "certificate was replaced", digest(cert) != first_cert)
@@ -548,7 +824,7 @@ seen = set()
 
 def main():
     # Short lifetimes apply to the whole server, so this runs on its own.
-    names = sys.argv[1:] or [*DISTROS, "systemd", "signing"]
+    names = sys.argv[1:] or [*DISTROS, *(f"journal-{d}" for d in DISTROS), "systemd", "signing"]
     extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
     work = tempfile.mkdtemp(prefix="hauswart-e2e-", dir=os.environ.get("E2E_TMP"))
     server_bin, agent_bin = f"{work}/server", f"{work}/agent"
@@ -585,6 +861,8 @@ def main():
                 test_renewal(admin, agent_bin)
             elif name == "signing":
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
+            elif name.startswith("journal-"):
+                test_journal(name.removeprefix("journal-"), admin, agent_bin)
             else:
                 test_distro(name, admin, agent_bin, ca_pem)
     finally:

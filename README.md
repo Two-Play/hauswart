@@ -11,6 +11,10 @@ in containers, not on physical machines or over a real VPN. See
 ## Features
 
 - Web dashboard in English and German, with device health at a glance
+- Details per device: seven days of resource history, pending updates and
+  reboots, accounts with their groups and sudo rights, and system logs without
+  anything from users
+- Warnings for a nearly full disk and a soon expiring device certificate
 - Requests for software and sudo, approved by an admin
 - Temporary sudo that ends on time, even if the server is unreachable
 - Package install, removal and system update through dnf, apt, zypper, pacman
@@ -64,7 +68,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | Command | Checks |
 | --- | --- |
 | `make test` | `go vet` and unit tests |
-| `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, resource limits under systemd, and certificate renewal |
+| `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, and certificate renewal |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
 | `make test-vm` | Flatpak and `rpm-ostree` in real virtual machines. Needs KVM and downloads about 1.5 GB of images |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
@@ -86,3 +90,4 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 - Only devices with pinned signing keys are protected against a compromised
   server. See [the security model](docs/security.md).
 - Only `amd64` packages are built.
+- The update check for classic `dnf` is written for it but only tested with `dnf5`.

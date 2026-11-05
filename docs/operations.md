@@ -220,6 +220,30 @@ edit `allowed_paths` in `/var/lib/hauswart/agent.json` on that device and
 restart the agent. Think before widening it: a path from which the system
 executes files gives the server root on that device.
 
+## Look into a device
+
+**Details** on a device shows:
+
+- **Resources:** disk, memory and load of the last 24 hours or 7 days. A gap means
+  the device was off.
+- **Updates:** what is pending and whether a reboot is needed. Devices check a few
+  times a day and after every package task. Whether a reboot is needed can read
+  "unknown", which is normal in a container. On Arch and Debian only a new kernel
+  counts, unless a package left `/run/reboot-required`.
+- **Accounts and rights:** accounts from UID 1000, their groups, sudo rights and
+  running grants. Groups in red amount to root. On openSUSE, every account shows
+  a sudo rule, because its default rule lets anyone who knows the root password
+  use sudo.
+- **Logs:** fetched when you ask, from a device that is online. You see the
+  Hauswart agent and system messages from warning up. Messages of users stay on
+  the device, and the server deletes fetched logs after an hour. A device without
+  a journal says so.
+
+The device card warns when a disk is at least 90 percent full and when a device
+certificate has less than 30 days left. An agent renews long before that, so this
+means the device has been off for months or cannot reach the server. See
+[Certificates](#certificates).
+
 ## Certificates
 
 Device certificates last two years. Agents renew theirs on their own once a
