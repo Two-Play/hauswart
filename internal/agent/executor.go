@@ -21,6 +21,7 @@ const (
 	taskTimeout = 30 * time.Minute
 	maxOutput   = 64 << 10
 	minUserUID  = 1000
+	flathubURL  = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 )
 
 // Executor applies tasks to the system. Root is prepended to every path it
@@ -124,6 +125,10 @@ func (e *Executor) packages(ctx context.Context, taskType string, names []string
 	if taskType == api.TaskFlatpakInstall {
 		if !e.Platform.Flatpak {
 			return "", errors.New("flatpak is not installed")
+		}
+		// Fresh systems often have no Flathub remote yet.
+		if out, err := e.Run(ctx, "flatpak", "remote-add", "--system", "--if-not-exists", "flathub", flathubURL); err != nil {
+			return out, err
 		}
 		return e.Run(ctx, "flatpak", append([]string{"install", "--system", "--noninteractive", "-y", "flathub", "--"}, names...)...)
 	}

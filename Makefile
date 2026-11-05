@@ -1,7 +1,7 @@
 VERSION ?= 0.1.0
 LDFLAGS := -X github.com/philippe/hauswart/internal/agent.Version=$(VERSION)
 
-.PHONY: build web test e2e packages test-packages clean
+.PHONY: build web test e2e test-vm packages test-packages clean
 
 build: web
 	mkdir -p dist
@@ -18,6 +18,9 @@ test:
 e2e:
 	python3 test/e2e.py
 	python3 test/e2e.py renewal
+
+test-vm:
+	python3 test/vm.py
 
 test-packages: packages
 	VERSION=$(VERSION) python3 test/packages.py

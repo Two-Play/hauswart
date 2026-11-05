@@ -242,6 +242,18 @@ func TestExpiredGrantRefused(t *testing.T) {
 	}
 }
 
+func TestFlatpakAddsFlathubFirst(t *testing.T) {
+	e, runner := newExecutor(t)
+	e.Platform.Flatpak = true
+	res := e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.example.App"}}))
+	if !res.OK {
+		t.Fatal(res.Output)
+	}
+	if len(runner.calls) != 2 || runner.calls[0][1] != "remote-add" || runner.calls[1][1] != "install" {
+		t.Fatalf("calls: %v", runner.calls)
+	}
+}
+
 func TestExecutorValidatesIndependently(t *testing.T) {
 	e, runner := newExecutor(t)
 	res := e.Execute(context.Background(), api.Task{Type: api.TaskPkgInstall, Payload: json.RawMessage(`{"packages":["--evil"]}`)})

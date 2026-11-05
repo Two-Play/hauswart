@@ -58,9 +58,13 @@ func simpleBackend(name string, install, remove, upgrade []string) *Backend {
 func detectBackend(has func(string) bool, atomic bool) *Backend {
 	switch {
 	case atomic && has("rpm-ostree"):
+		// rpm-ostree treats "--" as the end of its arguments and then sees no
+		// package at all. Names are validated to not start with a dash.
 		return simpleBackend("rpm-ostree",
-			[]string{"rpm-ostree", "install", "--idempotent", "--"},
-			[]string{"rpm-ostree", "uninstall", "--"},
+			// Without --apply-live, a package only appears after a reboot, while
+			// the task already reports success.
+			[]string{"rpm-ostree", "install", "--idempotent", "--apply-live"},
+			[]string{"rpm-ostree", "uninstall"},
 			[]string{"rpm-ostree", "upgrade"})
 	case has("dnf5"):
 		return simpleBackend("dnf5",

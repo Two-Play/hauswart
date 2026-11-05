@@ -13,7 +13,8 @@ in containers, not on physical machines or over a real VPN. See
 - Web dashboard in English and German, with device health at a glance
 - Requests for software and sudo, approved by an admin
 - Temporary sudo that ends on time, even if the server is unreachable
-- Package install, removal and system update through dnf, apt, zypper and pacman
+- Package install, removal and system update through dnf, apt, zypper, pacman
+  and rpm-ostree, and Flatpak installs from Flathub
 - Deployment of configuration files and CA certificates
 - Linux users: create, lock, and set a start password that must be changed
 - CPU and memory limits per user
@@ -63,6 +64,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | `make test` | `go vet` and unit tests |
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, resource limits under systemd, and certificate renewal |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
+| `make test-vm` | Flatpak and `rpm-ostree` in real virtual machines. Needs KVM and downloads about 1.5 GB of images |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
 
 The privileged tests run inside throwaway containers and need Podman.
@@ -75,7 +77,8 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 ## Limitations
 
 - Not yet tried on real hardware or over a real VPN.
-- `flatpak.install` and the `rpm-ostree` backend have never been executed.
+- Atomic Fedora is tested on CoreOS, not on Silverblue or Kinoite, and Flatpak
+  installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by
   hand. Flatpak browsers are not measured.
 - A compromised server can reach root on the devices. See

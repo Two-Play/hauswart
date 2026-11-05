@@ -111,6 +111,11 @@ The agent only connects outwards, so a device needs no open port.
 
 Enrollment also adds the Hauswart CA to the system store of the device.
 
+On atomic systems such as Silverblue, Kinoite and CoreOS, Hauswart uses
+`rpm-ostree`. Installed packages are usable right away. Removing a package and
+system updates take effect after the next reboot, and Hauswart does not reboot a
+device by itself.
+
 ## Browser trust
 
 Whether a browser honours the system store depends on the distribution. This is
