@@ -147,6 +147,44 @@ func (e *env) enroll() (string, *http.Client) {
 	return out.DeviceID, e.client(cert)
 }
 
+func TestIndexGetsFreshNonce(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv := &Server{store: st, index: []byte(`<meta content="` + noncePlaceholder + `">`)}
+
+	fetch := func() (csp, body string) {
+		rec := httptest.NewRecorder()
+		srv.handleIndex(rec, httptest.NewRequest("GET", "/", nil))
+		return rec.Header().Get("Content-Security-Policy"), rec.Body.String()
+	}
+	csp, body := fetch()
+	if strings.Contains(body, noncePlaceholder) {
+		t.Fatal("placeholder not replaced")
+	}
+	nonce := strings.TrimSuffix(strings.TrimPrefix(body, `<meta content="`), `">`)
+	if !strings.Contains(csp, "'nonce-"+nonce+"'") {
+		t.Fatalf("CSP %q does not carry nonce %q", csp, nonce)
+	}
+	if strings.Contains(csp, "unsafe-inline") {
+		t.Fatal("CSP allows inline styles")
+	}
+	if _, second := fetch(); second == body {
+		t.Fatal("nonce reused")
+	}
+}
+
+func TestIndexWithoutBuild(t *testing.T) {
+	srv := &Server{}
+	rec := httptest.NewRecorder()
+	srv.handleIndex(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("got %d", rec.Code)
+	}
+}
+
 func TestLogin(t *testing.T) {
 	e := setup(t)
 	code, _ := e.do(e.client(), "POST", "/api/login", map[string]string{"username": "admin", "password": "wrong"})

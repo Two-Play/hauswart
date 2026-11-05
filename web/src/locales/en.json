@@ -1,0 +1,137 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "failed": "That did not work",
+    "loading": "Loading…",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "login": {
+    "title": "Sign in to Hauswart",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in"
+  },
+  "nav": {
+    "devices": "Devices",
+    "requests": "Requests",
+    "tasks": "Tasks",
+    "users": "Users",
+    "audit": "Audit log",
+    "logout": "Sign out",
+    "theme": "Toggle color scheme",
+    "menu": "Toggle navigation"
+  },
+  "devices": {
+    "add": "Add device",
+    "addHint": "Run this on the new device. It works once and for one hour.",
+    "empty": "No devices enrolled yet.",
+    "online": "Online",
+    "offline": "Offline",
+    "revoked": "Revoked",
+    "unknownDistro": "Unknown system",
+    "kernel": "Kernel {{version}}",
+    "memory": "Memory",
+    "disk": "Disk",
+    "usage": "{{used}} of {{total}}",
+    "load": "Load {{load}} on {{cpus}} cores",
+    "noBackend": "no package manager",
+    "action": "Run action",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke {{name}}?",
+    "revokeText": "The device loses access at once and has to be enrolled again.",
+    "revokeConfirm": "Revoke device"
+  },
+  "actions": {
+    "title": "Action for {{name}}",
+    "type": "Action",
+    "run": "Run"
+  },
+  "taskTypes": {
+    "pkg_install": "Install package",
+    "pkg_remove": "Remove package",
+    "pkg_upgrade": "Update system",
+    "flatpak_install": "Install Flatpak",
+    "file_put": "Deploy configuration file",
+    "ca_install": "Deploy CA certificate",
+    "sudo_grant": "Grant temporary sudo",
+    "sudo_revoke": "Revoke sudo",
+    "user_create": "Create Linux user",
+    "user_lock": "Lock Linux user",
+    "user_unlock": "Unlock Linux user",
+    "limit_set": "Limit resources"
+  },
+  "fields": {
+    "packages": "Packages, separated by spaces",
+    "flatpaks": "Flatpak IDs, separated by spaces",
+    "path": "Target path",
+    "mode": "Mode, for example 0644",
+    "content": "Content",
+    "name": "Name",
+    "pem": "Certificate (PEM)",
+    "user": "Linux user",
+    "minutes": "Duration in minutes",
+    "full_name": "Full name",
+    "cpu_percent": "CPU in percent (100 = one core)",
+    "memory_mb": "Memory in MB"
+  },
+  "requests": {
+    "new": "New request",
+    "device": "Device",
+    "kind": "Type",
+    "packages": "Package names",
+    "minutes": "Duration in minutes",
+    "reason": "Reason",
+    "submit": "Send request",
+    "empty": "No requests yet.",
+    "time": "Time",
+    "from": "From",
+    "request": "Request",
+    "status": "Status",
+    "approve": "Approve",
+    "deny": "Deny",
+    "sudoDetail": "{{minutes}} min",
+    "kinds": {
+      "software": "Software",
+      "flatpak": "Flatpak",
+      "sudo": "sudo rights"
+    }
+  },
+  "status": {
+    "open": "Open",
+    "approved": "Approved",
+    "denied": "Denied",
+    "pending": "Waiting",
+    "running": "Running",
+    "done": "Done",
+    "failed": "Failed"
+  },
+  "tasks": {
+    "empty": "No tasks yet.",
+    "time": "Time",
+    "device": "Device",
+    "action": "Action",
+    "by": "By",
+    "status": "Status",
+    "output": "Output"
+  },
+  "users": {
+    "new": "New user",
+    "username": "Username",
+    "linuxUser": "Linux user",
+    "linuxUserHint": "Leave empty to use the username",
+    "password": "Password",
+    "passwordHint": "At least 10 characters",
+    "role": "Role",
+    "admin": "Admin",
+    "member": "Member",
+    "create": "Create user"
+  },
+  "audit": {
+    "empty": "No entries yet.",
+    "time": "Time",
+    "actor": "Actor",
+    "action": "Action",
+    "detail": "Details"
+  }
+}

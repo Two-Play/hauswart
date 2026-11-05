@@ -1,0 +1,137 @@
+{
+  "common": {
+    "cancel": "Abbrechen",
+    "failed": "Das hat nicht geklappt",
+    "loading": "Wird geladen…",
+    "copy": "Kopieren",
+    "copied": "Kopiert"
+  },
+  "login": {
+    "title": "Bei Hauswart anmelden",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "submit": "Anmelden"
+  },
+  "nav": {
+    "devices": "Geräte",
+    "requests": "Anfragen",
+    "tasks": "Aufgaben",
+    "users": "Benutzer",
+    "audit": "Protokoll",
+    "logout": "Abmelden",
+    "theme": "Farbschema wechseln",
+    "menu": "Navigation ein- oder ausblenden"
+  },
+  "devices": {
+    "add": "Gerät hinzufügen",
+    "addHint": "Auf dem neuen Gerät ausführen. Der Befehl gilt einmal und eine Stunde lang.",
+    "empty": "Noch keine Geräte angemeldet.",
+    "online": "Online",
+    "offline": "Offline",
+    "revoked": "Gesperrt",
+    "unknownDistro": "Unbekanntes System",
+    "kernel": "Kernel {{version}}",
+    "memory": "Arbeitsspeicher",
+    "disk": "Festplatte",
+    "usage": "{{used}} von {{total}}",
+    "load": "Last {{load}} auf {{cpus}} Kernen",
+    "noBackend": "kein Paketmanager",
+    "action": "Aktion ausführen",
+    "revoke": "Sperren",
+    "revokeTitle": "{{name}} sperren?",
+    "revokeText": "Das Gerät verliert sofort den Zugriff und muss neu angemeldet werden.",
+    "revokeConfirm": "Gerät sperren"
+  },
+  "actions": {
+    "title": "Aktion für {{name}}",
+    "type": "Aktion",
+    "run": "Ausführen"
+  },
+  "taskTypes": {
+    "pkg_install": "Paket installieren",
+    "pkg_remove": "Paket entfernen",
+    "pkg_upgrade": "System aktualisieren",
+    "flatpak_install": "Flatpak installieren",
+    "file_put": "Konfigurationsdatei ablegen",
+    "ca_install": "CA-Zertifikat verteilen",
+    "sudo_grant": "sudo befristet freigeben",
+    "sudo_revoke": "sudo entziehen",
+    "user_create": "Linux-Benutzer anlegen",
+    "user_lock": "Linux-Benutzer sperren",
+    "user_unlock": "Linux-Benutzer entsperren",
+    "limit_set": "Ressourcen begrenzen"
+  },
+  "fields": {
+    "packages": "Pakete, durch Leerzeichen getrennt",
+    "flatpaks": "Flatpak-IDs, durch Leerzeichen getrennt",
+    "path": "Zielpfad",
+    "mode": "Rechte, zum Beispiel 0644",
+    "content": "Inhalt",
+    "name": "Name",
+    "pem": "Zertifikat (PEM)",
+    "user": "Linux-Benutzer",
+    "minutes": "Dauer in Minuten",
+    "full_name": "Voller Name",
+    "cpu_percent": "CPU in Prozent (100 = ein Kern)",
+    "memory_mb": "Arbeitsspeicher in MB"
+  },
+  "requests": {
+    "new": "Neue Anfrage",
+    "device": "Gerät",
+    "kind": "Art",
+    "packages": "Paketnamen",
+    "minutes": "Dauer in Minuten",
+    "reason": "Begründung",
+    "submit": "Anfrage senden",
+    "empty": "Noch keine Anfragen.",
+    "time": "Zeit",
+    "from": "Von",
+    "request": "Anfrage",
+    "status": "Status",
+    "approve": "Freigeben",
+    "deny": "Ablehnen",
+    "sudoDetail": "{{minutes}} Min.",
+    "kinds": {
+      "software": "Software",
+      "flatpak": "Flatpak",
+      "sudo": "sudo-Rechte"
+    }
+  },
+  "status": {
+    "open": "Offen",
+    "approved": "Freigegeben",
+    "denied": "Abgelehnt",
+    "pending": "Wartet",
+    "running": "Läuft",
+    "done": "Fertig",
+    "failed": "Fehlgeschlagen"
+  },
+  "tasks": {
+    "empty": "Noch keine Aufgaben.",
+    "time": "Zeit",
+    "device": "Gerät",
+    "action": "Aktion",
+    "by": "Von",
+    "status": "Status",
+    "output": "Ausgabe"
+  },
+  "users": {
+    "new": "Neuer Benutzer",
+    "username": "Benutzername",
+    "linuxUser": "Linux-Benutzer",
+    "linuxUserHint": "Leer lassen, um den Benutzernamen zu verwenden",
+    "password": "Passwort",
+    "passwordHint": "Mindestens 10 Zeichen",
+    "role": "Rolle",
+    "admin": "Admin",
+    "member": "Mitglied",
+    "create": "Benutzer anlegen"
+  },
+  "audit": {
+    "empty": "Noch keine Einträge.",
+    "time": "Zeit",
+    "actor": "Von",
+    "action": "Aktion",
+    "detail": "Details"
+  }
+}

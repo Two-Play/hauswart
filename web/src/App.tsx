@@ -1,0 +1,165 @@
+import {
+  ActionIcon,
+  AppShell,
+  Burger,
+  Button,
+  Center,
+  Group,
+  Loader,
+  NavLink,
+  SegmentedControl,
+  Text,
+  Title,
+  useComputedColorScheme,
+  useMantineColorScheme,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import {
+  IconClipboardList,
+  IconDevicesPc,
+  IconHistory,
+  IconListCheck,
+  IconLogout,
+  IconMoon,
+  IconSun,
+  IconUsers,
+} from '@tabler/icons-react';
+import { useEffect, useState, type ComponentType } from 'react';
+import { useTranslation } from 'react-i18next';
+import { api, setUnauthorizedHandler, type User } from './api';
+import { LANGUAGES, setLanguage } from './i18n';
+import { AuditView } from './views/AuditView';
+import { DevicesView } from './views/DevicesView';
+import { LoginView } from './views/LoginView';
+import { RequestsView } from './views/RequestsView';
+import { TasksView } from './views/TasksView';
+import { UsersView } from './views/UsersView';
+
+interface ViewProps {
+  user: User;
+}
+
+const VIEWS: {
+  key: string;
+  icon: typeof IconUsers;
+  view: ComponentType<ViewProps>;
+  adminOnly?: boolean;
+}[] = [
+  { key: 'devices', icon: IconDevicesPc, view: DevicesView },
+  { key: 'requests', icon: IconClipboardList, view: RequestsView },
+  { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
+  { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },
+  { key: 'audit', icon: IconHistory, view: AuditView, adminOnly: true },
+];
+
+function ColorSchemeToggle() {
+  const { t } = useTranslation();
+  const { setColorScheme } = useMantineColorScheme();
+  const computed = useComputedColorScheme('light');
+  return (
+    <ActionIcon
+      variant="default"
+      size="lg"
+      aria-label={t('nav.theme')}
+      onClick={() => setColorScheme(computed === 'dark' ? 'light' : 'dark')}
+    >
+      {computed === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+    </ActionIcon>
+  );
+}
+
+function LanguageSwitch() {
+  const { i18n } = useTranslation();
+  return (
+    <SegmentedControl
+      size="xs"
+      value={i18n.language}
+      onChange={setLanguage}
+      data={LANGUAGES.map((l) => ({ value: l, label: l.toUpperCase() }))}
+    />
+  );
+}
+
+export function App() {
+  const { t } = useTranslation();
+  const [user, setUser] = useState<User | null>();
+  const [active, setActive] = useState('devices');
+  const [opened, { toggle, close }] = useDisclosure();
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    api<User>('GET', '/api/me')
+      .then(setUser)
+      .catch(() => setUser(null));
+  }, []);
+
+  if (user === undefined) {
+    return (
+      <Center h="100vh">
+        <Loader aria-label={t('common.loading')} />
+      </Center>
+    );
+  }
+  if (user === null) {
+    return <LoginView onLogin={setUser} controls={<LanguageSwitch />} />;
+  }
+
+  const views = VIEWS.filter((v) => !v.adminOnly || user.role === 'admin');
+  const View = (views.find((v) => v.key === active) ?? views[0]).view;
+
+  return (
+    <AppShell
+      header={{ height: 56 }}
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      padding="md"
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label={t('nav.menu')} />
+            <Title order={4}>Hauswart</Title>
+          </Group>
+          <Group gap="xs" wrap="nowrap">
+            <LanguageSwitch />
+            <ColorSchemeToggle />
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Navbar p="sm">
+        <AppShell.Section grow>
+          {views.map((v) => (
+            <NavLink
+              key={v.key}
+              component="button"
+              label={t(`nav.${v.key}`)}
+              leftSection={<v.icon size={18} />}
+              active={v.key === active}
+              onClick={() => {
+                setActive(v.key);
+                close();
+              }}
+            />
+          ))}
+        </AppShell.Section>
+        <AppShell.Section>
+          <Text size="sm" c="dimmed" mb="xs" truncate>
+            {user.username}
+          </Text>
+          <Button
+            variant="default"
+            fullWidth
+            leftSection={<IconLogout size={16} />}
+            onClick={() => api('POST', '/api/logout').finally(() => setUser(null))}
+          >
+            {t('nav.logout')}
+          </Button>
+        </AppShell.Section>
+      </AppShell.Navbar>
+
+      <AppShell.Main>
+        <View user={user} />
+      </AppShell.Main>
+    </AppShell>
+  );
+}

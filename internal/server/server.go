@@ -3,11 +3,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -25,18 +27,19 @@ import (
 )
 
 const (
-	sessionCookie   = "hauswart_session"
-	sessionTTL      = 12 * time.Hour
-	enrollTokenTTL  = time.Hour
-	maxBody         = 2 << 20
-	maxPollWait     = 30 * time.Second
-	staleTaskAfter  = 45 * time.Minute
-	minPasswordLen  = 10
-	maxLoginFails   = 5
-	loginLockout    = time.Minute
-	maxSudoMinutes  = int(api.MaxGrant / time.Minute)
-	listLimit       = 200
-	janitorInterval = 5 * time.Minute
+	noncePlaceholder = "__CSP_NONCE__"
+	sessionCookie    = "hauswart_session"
+	sessionTTL       = 12 * time.Hour
+	enrollTokenTTL   = time.Hour
+	maxBody          = 2 << 20
+	maxPollWait      = 30 * time.Second
+	staleTaskAfter   = 45 * time.Minute
+	minPasswordLen   = 10
+	maxLoginFails    = 5
+	loginLockout     = time.Minute
+	maxSudoMinutes   = int(api.MaxGrant / time.Minute)
+	listLimit        = 200
+	janitorInterval  = 5 * time.Minute
 )
 
 type Server struct {
@@ -51,6 +54,9 @@ type Server struct {
 
 	// dummyHash keeps login timing equal for unknown usernames.
 	dummyHash []byte
+
+	// index is the dashboard entry page, nil if the dashboard was not built.
+	index []byte
 }
 
 type loginFailure struct {
@@ -63,6 +69,10 @@ func New(st *store.Store, ca *pki.CA, publicURL string, log *slog.Logger) (*Serv
 	if err != nil {
 		return nil, err
 	}
+	index, err := fs.ReadFile(web.FS, "index.html")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
 	return &Server{
 		store:     st,
 		ca:        ca,
@@ -71,6 +81,7 @@ func New(st *store.Store, ca *pki.CA, publicURL string, log *slog.Logger) (*Serv
 		waiters:   map[string]chan struct{}{},
 		failures:  map[string]*loginFailure{},
 		dummyHash: dummy,
+		index:     index,
 	}, nil
 }
 
@@ -93,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /", http.FileServerFS(web.FS))
+	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /ca.pem", s.handleCA)
 
@@ -137,10 +149,12 @@ func (s *Server) Janitor(ctx context.Context) {
 	}
 }
 
+const cspBase = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		h.Set("Content-Security-Policy", cspBase)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Strict-Transport-Security", "max-age=31536000")
@@ -211,6 +225,21 @@ func (s *Server) agent(next deviceHandler) http.Handler {
 }
 
 // --- public ---
+
+// handleIndex serves the dashboard with a nonce that is new on every request.
+// Mantine injects style tags at runtime; the nonce lets exactly those through
+// without allowing inline styles in general.
+func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	if s.index == nil {
+		http.Error(w, "dashboard not built, run make build", http.StatusServiceUnavailable)
+		return
+	}
+	nonce := store.RandomToken()[:32]
+	w.Header().Set("Content-Security-Policy", fmt.Sprintf("%s; style-src 'self' 'nonce-%s'", cspBase, nonce))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(bytes.ReplaceAll(s.index, []byte(noncePlaceholder), []byte(nonce)))
+}
 
 func (s *Server) handleCA(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/x-pem-file")
