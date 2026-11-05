@@ -17,7 +17,10 @@ import (
 	"github.com/philippe/hauswart/internal/api"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound  = errors.New("not found")
+	ErrLastAdmin = errors.New("last admin")
+)
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
@@ -152,6 +155,53 @@ func (s *Store) UserByName(ctx context.Context, username string) (User, error) {
 		return u, ErrNotFound
 	}
 	return u, err
+}
+
+func (s *Store) UserPasswordHash(ctx context.Context, id int64) (string, error) {
+	var hash string
+	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, id).Scan(&hash)
+	return hash, err
+}
+
+// ChangePassword stores a new hash and ends every other session of the user,
+// so a stolen session does not outlive the password it came from.
+func (s *Store) ChangePassword(ctx context.Context, id int64, hash, keepSession string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, hash, id); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`, id, hashToken(keepSession))
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteUser removes an account. A single statement decides, so two admins
+// removing each other at the same moment cannot leave nobody in charge.
+func (s *Store) DeleteUser(ctx context.Context, id int64) error {
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM users WHERE id = ?
+		AND (role != 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1)`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	var exists bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = ?)`, id).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return ErrLastAdmin
+	}
+	return ErrNotFound
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
@@ -346,9 +396,10 @@ func (s *Store) FinishTask(ctx context.Context, deviceID, taskID string, r api.T
 		status = "done"
 	}
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = ?, output = ?, finished_at = ?
+		UPDATE tasks SET status = ?, output = ?, finished_at = ?,
+			payload = CASE WHEN type = ? THEN '{}' ELSE payload END
 		WHERE id = ? AND device_id = ? AND status = 'running'`,
-		status, r.Output, time.Now().Unix(), taskID, deviceID)
+		status, r.Output, time.Now().Unix(), api.TaskUserPassword, taskID, deviceID)
 	if err != nil {
 		return err
 	}
@@ -369,8 +420,9 @@ func (s *Store) Cleanup(ctx context.Context, staleAfter time.Duration) error {
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = 'failed', output = 'no result from agent', finished_at = ?
-		WHERE status = 'running' AND claimed_at < ?`, now.Unix(), now.Add(-staleAfter).Unix())
+		UPDATE tasks SET status = 'failed', output = 'no result from agent', finished_at = ?,
+			payload = CASE WHEN type = ? THEN '{}' ELSE payload END
+		WHERE status = 'running' AND claimed_at < ?`, now.Unix(), api.TaskUserPassword, now.Add(-staleAfter).Unix())
 	return err
 }
 

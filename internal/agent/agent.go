@@ -206,6 +206,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 			Platform:     platform,
 			Grants:       grants,
 			Run:          RunCommand,
+			RunInput:     RunCommandInput,
 		},
 		platform: platform,
 		log:      log,

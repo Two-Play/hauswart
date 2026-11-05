@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -35,6 +36,10 @@ func TestValidateRejectsDangerousInput(t *testing.T) {
 		{"lock root", TaskUserLock, `{"user":"root"}`},
 		{"empty limit", TaskLimitSet, `{"user":"anna"}`},
 		{"negative limit", TaskLimitSet, `{"user":"anna","memory_mb":-1}`},
+		{"clear text password", TaskUserPassword, `{"user":"anna","hash":"secret"}`},
+		{"weak hash", TaskUserPassword, `{"user":"anna","hash":"$1$abc$def"}`},
+		{"chpasswd line injection", TaskUserPassword, `{"user":"anna","hash":"$6$a$` + strings.Repeat("a", 86) + `\nroot:x"}`},
+		{"password for root", TaskUserPassword, `{"user":"root","hash":"$6$a$` + strings.Repeat("a", 86) + `"}`},
 		{"ca name traversal", TaskCAInstall, `{"name":"../x","pem":"-----BEGIN CERTIFICATE-----"}`},
 	}
 	for _, c := range cases {
@@ -57,6 +62,8 @@ func TestValidateAcceptsNormalInput(t *testing.T) {
 		{TaskSudoGrant, `{"user":"anna","expires_at":"` + soon + `","commands":["/usr/bin/dnf"]}`},
 		{TaskUserCreate, `{"user":"anna","full_name":"Anna B","groups":["video"]}`},
 		{TaskLimitSet, `{"user":"anna","cpu_percent":200,"memory_mb":4096}`},
+		{TaskUserPassword, `{"user":"anna","hash":"$6$salt$` + strings.Repeat("a", 86) + `"}`},
+		{TaskUserPassword, `{"user":"anna","hash":"$6$rounds=5000$salt$` + strings.Repeat("a", 86) + `"}`},
 	}
 	for _, c := range cases {
 		if err := Validate(c.taskType, json.RawMessage(c.payload)); err != nil {

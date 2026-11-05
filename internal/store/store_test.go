@@ -58,6 +58,66 @@ func TestSessionExpiry(t *testing.T) {
 	}
 }
 
+func TestChangePasswordEndsOtherSessions(t *testing.T) {
+	s := open(t)
+	id, err := s.CreateUser(ctx, "anna", "anna", "old", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, _ := s.CreateSession(ctx, id, time.Hour)
+	other, _ := s.CreateSession(ctx, id, time.Hour)
+	if err := s.ChangePassword(ctx, id, "new", keep); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SessionUser(ctx, keep); err != nil {
+		t.Fatalf("current session ended: %v", err)
+	}
+	if _, err := s.SessionUser(ctx, other); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other session survived: %v", err)
+	}
+	if hash, _ := s.UserPasswordHash(ctx, id); hash != "new" {
+		t.Fatalf("hash %q", hash)
+	}
+}
+
+func TestDeleteUserKeepsLastAdmin(t *testing.T) {
+	s := open(t)
+	first, _ := s.CreateUser(ctx, "a", "a", "h", "admin")
+	second, _ := s.CreateUser(ctx, "b", "b", "h", "admin")
+	member, _ := s.CreateUser(ctx, "c", "c", "h", "member")
+	if err := s.DeleteUser(ctx, member); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUser(ctx, first); err != nil {
+		t.Fatalf("second to last admin: %v", err)
+	}
+	if err := s.DeleteUser(ctx, second); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("last admin: %v", err)
+	}
+	if err := s.DeleteUser(ctx, 999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown user: %v", err)
+	}
+}
+
+func TestPasswordHashIsDroppedFromFinishedTasks(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	id, err := s.CreateTask(ctx, "a", api.TaskUserPassword, []byte(`{"hash":"secret"}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimTask(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTask(ctx, "a", id, api.TaskResult{OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	tasks, _ := s.ListTasks(ctx, 10)
+	if string(tasks[0].Payload) != "{}" {
+		t.Fatalf("hash kept: %s", tasks[0].Payload)
+	}
+}
+
 func TestTokensAreStoredHashed(t *testing.T) {
 	s := open(t)
 	token, err := s.CreateEnrollToken(ctx, time.Hour)

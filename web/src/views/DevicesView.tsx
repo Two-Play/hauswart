@@ -58,11 +58,19 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
   const [type, setType] = useState('pkg.install');
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [startPassword, setStartPassword] = useState<string>();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
+      if (type === 'user.passwd') {
+        const out = await api<{ password: string }>('POST', `/api/devices/${device.id}/start-password`, {
+          user: values.user,
+        });
+        setStartPassword(out.password);
+        return;
+      }
       await api('POST', `/api/devices/${device.id}/tasks`, { type, payload: buildPayload(values) });
       notifications.show({ color: 'teal', message: t('actions.queued', { name: device.hostname }) });
       onClose(true);
@@ -71,6 +79,32 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
     } finally {
       setBusy(false);
     }
+  }
+
+  if (startPassword) {
+    return (
+      <Modal
+        opened
+        onClose={() => onClose(true)}
+        title={t('actions.startPasswordTitle', { user: values.user })}
+        closeOnClickOutside={false}
+      >
+        <Stack>
+          <Text size="sm">{t('actions.startPasswordHint', { user: values.user })}</Text>
+          <Code block>{startPassword}</Code>
+          <Group justify="flex-end">
+            <CopyButton value={startPassword}>
+              {({ copied, copy }) => (
+                <Button variant="default" onClick={copy}>
+                  {t(copied ? 'common.copied' : 'common.copy')}
+                </Button>
+              )}
+            </CopyButton>
+            <Button onClick={() => onClose(true)}>{t('actions.close')}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+    );
   }
 
   return (

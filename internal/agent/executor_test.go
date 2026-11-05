@@ -16,8 +16,14 @@ import (
 )
 
 type fakeRunner struct {
-	calls [][]string
-	err   error
+	calls  [][]string
+	inputs []string
+	err    error
+}
+
+func (f *fakeRunner) runInput(ctx context.Context, input, name string, args ...string) (string, error) {
+	f.inputs = append(f.inputs, input)
+	return f.run(ctx, name, args...)
 }
 
 func (f *fakeRunner) run(_ context.Context, name string, args ...string) (string, error) {
@@ -38,6 +44,7 @@ func newExecutor(t *testing.T) (*Executor, *fakeRunner) {
 		AllowedPaths: DefaultAllowedPaths,
 		Grants:       grants,
 		Run:          runner.run,
+		RunInput:     runner.runInput,
 		Platform:     Platform{Backend: detectBackend(func(n string) bool { return n == "dnf5" }, false)},
 	}, runner
 }
@@ -182,6 +189,36 @@ func TestSudoGrantRejectedByVisudoLeavesNoRule(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Join(e.Root, "etc/sudoers.d"))
 	if len(entries) != 0 {
 		t.Fatalf("left files behind: %v", entries)
+	}
+}
+
+func TestUserPasswordKeepsHashOutOfArguments(t *testing.T) {
+	e, runner := newExecutor(t)
+	name := currentUser(t)
+	hash := "$6$salt$" + strings.Repeat("a", 86)
+	res := e.Execute(context.Background(), task(t, api.TaskUserPassword, api.PasswordPayload{User: name, Hash: hash}))
+	if !res.OK {
+		t.Fatal(res.Output)
+	}
+	if len(runner.inputs) != 1 || runner.inputs[0] != name+":"+hash+"\n" {
+		t.Fatalf("stdin: %q", runner.inputs)
+	}
+	if len(runner.calls) != 2 || runner.calls[0][0] != "chpasswd" || runner.calls[1][0] != "chage" {
+		t.Fatalf("calls: %v", runner.calls)
+	}
+	for _, call := range runner.calls {
+		if strings.Contains(strings.Join(call, " "), hash) {
+			t.Fatal("hash visible in the process list")
+		}
+	}
+}
+
+func TestUserPasswordRefusesSystemAccounts(t *testing.T) {
+	e, runner := newExecutor(t)
+	hash := "$6$salt$" + strings.Repeat("a", 86)
+	res := e.Execute(context.Background(), task(t, api.TaskUserPassword, api.PasswordPayload{User: "daemon", Hash: hash}))
+	if res.OK || len(runner.calls) != 0 {
+		t.Fatalf("changed a system account: %v", runner.calls)
 	}
 }
 

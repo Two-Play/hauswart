@@ -26,6 +26,7 @@ const (
 	TaskUserCreate     = "user.create"
 	TaskUserLock       = "user.lock"
 	TaskUserUnlock     = "user.unlock"
+	TaskUserPassword   = "user.passwd"
 	TaskLimitSet       = "limit.set"
 )
 
@@ -66,6 +67,12 @@ type UserPayload struct {
 	User     string   `json:"user"`
 	FullName string   `json:"full_name,omitempty"`
 	Groups   []string `json:"groups,omitempty"`
+}
+
+// PasswordPayload carries a crypt(3) hash, never a clear text password.
+type PasswordPayload struct {
+	User string `json:"user"`
+	Hash string `json:"hash"`
 }
 
 type LimitPayload struct {
@@ -109,6 +116,9 @@ var (
 	caNameRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 	commandRe = regexp.MustCompile(`^/[A-Za-z0-9._/+-]{1,255}$`)
 	modeRe    = regexp.MustCompile(`^0?[0-7]{3}$`)
+	// SHA-512 crypt. The alphabet excludes ":" and newlines, so a hash cannot
+	// add fields or lines to what chpasswd reads.
+	hashRe = regexp.MustCompile(`^\$6\$(rounds=[0-9]{4,9}\$)?[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$`)
 )
 
 func ValidPackage(s string) bool { return pkgRe.MatchString(s) }
@@ -186,6 +196,17 @@ func Validate(taskType string, payload json.RawMessage) error {
 		}
 		if !ValidUser(p.User) {
 			return fmt.Errorf("invalid user %q", p.User)
+		}
+	case TaskUserPassword:
+		var p PasswordPayload
+		if err := strictDecode(payload, &p); err != nil {
+			return err
+		}
+		if !ValidUser(p.User) {
+			return fmt.Errorf("invalid user %q", p.User)
+		}
+		if !hashRe.MatchString(p.Hash) {
+			return errors.New("not a SHA-512 crypt hash")
 		}
 	case TaskUserCreate:
 		var p UserPayload

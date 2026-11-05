@@ -20,7 +20,8 @@
     "audit": "Audit log",
     "logout": "Sign out",
     "theme": "Toggle color scheme",
-    "menu": "Toggle navigation"
+    "menu": "Toggle navigation",
+    "password": "Change password"
   },
   "devices": {
     "add": "Add device",
@@ -46,7 +47,10 @@
     "title": "Action for {{name}}",
     "type": "Action",
     "run": "Run",
-    "queued": "Sent to {{name}}. The result appears under Tasks."
+    "queued": "Sent to {{name}}. The result appears under Tasks.",
+    "startPasswordTitle": "Start password for {{user}}",
+    "startPasswordHint": "This is shown only once. {{user}} has to choose a new password at the first login.",
+    "close": "Close"
   },
   "taskTypes": {
     "pkg_install": "Install package",
@@ -60,7 +64,8 @@
     "user_create": "Create Linux user",
     "user_lock": "Lock Linux user",
     "user_unlock": "Unlock Linux user",
-    "limit_set": "Limit resources"
+    "limit_set": "Limit resources",
+    "user_passwd": "Set Linux start password"
   },
   "fields": {
     "packages": "Packages, separated by spaces",
@@ -126,7 +131,11 @@
     "role": "Role",
     "admin": "Admin",
     "member": "Member",
-    "create": "Create user"
+    "create": "Create user",
+    "remove": "Remove",
+    "removeTitle": "Remove {{name}}?",
+    "removeText": "The account and its requests are deleted. Linux accounts on devices stay as they are.",
+    "removeConfirm": "Remove user"
   },
   "audit": {
     "empty": "No entries yet.",
@@ -134,5 +143,14 @@
     "actor": "Actor",
     "action": "Action",
     "detail": "Details"
+  },
+  "password": {
+    "current": "Current password",
+    "new": "New password",
+    "hint": "At least 10 characters. Your other sessions will be signed out.",
+    "mismatch": "The passwords do not match",
+    "repeat": "Repeat new password",
+    "submit": "Change password",
+    "done": "Password changed"
   }
 }

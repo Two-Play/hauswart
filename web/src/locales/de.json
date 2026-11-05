@@ -20,7 +20,8 @@
     "audit": "Protokoll",
     "logout": "Abmelden",
     "theme": "Farbschema wechseln",
-    "menu": "Navigation ein- oder ausblenden"
+    "menu": "Navigation ein- oder ausblenden",
+    "password": "Passwort ändern"
   },
   "devices": {
     "add": "Gerät hinzufügen",
@@ -46,7 +47,10 @@
     "title": "Aktion für {{name}}",
     "type": "Aktion",
     "run": "Ausführen",
-    "queued": "An {{name}} gesendet. Das Ergebnis steht unter Aufgaben."
+    "queued": "An {{name}} gesendet. Das Ergebnis steht unter Aufgaben.",
+    "startPasswordTitle": "Startpasswort für {{user}}",
+    "startPasswordHint": "Es wird nur dieses eine Mal angezeigt. {{user}} muss beim ersten Anmelden ein neues Passwort wählen.",
+    "close": "Schließen"
   },
   "taskTypes": {
     "pkg_install": "Paket installieren",
@@ -60,7 +64,8 @@
     "user_create": "Linux-Benutzer anlegen",
     "user_lock": "Linux-Benutzer sperren",
     "user_unlock": "Linux-Benutzer entsperren",
-    "limit_set": "Ressourcen begrenzen"
+    "limit_set": "Ressourcen begrenzen",
+    "user_passwd": "Linux-Startpasswort setzen"
   },
   "fields": {
     "packages": "Pakete, durch Leerzeichen getrennt",
@@ -126,7 +131,11 @@
     "role": "Rolle",
     "admin": "Admin",
     "member": "Mitglied",
-    "create": "Benutzer anlegen"
+    "create": "Benutzer anlegen",
+    "remove": "Entfernen",
+    "removeTitle": "{{name}} entfernen?",
+    "removeText": "Das Konto und seine Anfragen werden gelöscht. Linux-Konten auf den Geräten bleiben unverändert.",
+    "removeConfirm": "Benutzer entfernen"
   },
   "audit": {
     "empty": "Noch keine Einträge.",
@@ -134,5 +143,14 @@
     "actor": "Von",
     "action": "Aktion",
     "detail": "Details"
+  },
+  "password": {
+    "current": "Aktuelles Passwort",
+    "new": "Neues Passwort",
+    "hint": "Mindestens 10 Zeichen. Deine anderen Sitzungen werden abgemeldet.",
+    "mismatch": "Die Passwörter stimmen nicht überein",
+    "repeat": "Neues Passwort wiederholen",
+    "submit": "Passwort ändern",
+    "done": "Passwort geändert"
   }
 }

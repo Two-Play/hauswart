@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/GehirnInc/crypt/sha512_crypt"
 
 	"github.com/philippe/hauswart/internal/api"
 	"github.com/philippe/hauswart/internal/pki"
@@ -182,6 +185,106 @@ func TestIndexWithoutBuild(t *testing.T) {
 	srv.handleIndex(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("got %d", rec.Code)
+	}
+}
+
+func TestChangePassword(t *testing.T) {
+	e := setup(t)
+	first, second := e.login("anna"), e.login("anna")
+	change := func(c *http.Client, current, next string) int {
+		code, _ := e.do(c, "POST", "/api/password", map[string]string{"current": current, "new": next})
+		return code
+	}
+	if code := change(first, "wrong", "a new long password"); code != http.StatusForbidden {
+		t.Fatalf("wrong current: %d", code)
+	}
+	if code := change(first, testPassword, "short"); code != http.StatusBadRequest {
+		t.Fatalf("short: %d", code)
+	}
+	if code := change(first, testPassword, "a new long password"); code != http.StatusNoContent {
+		t.Fatalf("change: %d", code)
+	}
+	if code, _ := e.do(first, "GET", "/api/me", nil); code != http.StatusOK {
+		t.Fatalf("own session ended: %d", code)
+	}
+	if code, _ := e.do(second, "GET", "/api/me", nil); code != http.StatusUnauthorized {
+		t.Fatalf("other session survived: %d", code)
+	}
+	code, _ := e.do(e.client(), "POST", "/api/login", map[string]string{"username": "anna", "password": "a new long password"})
+	if code != http.StatusOK {
+		t.Fatalf("login with new password: %d", code)
+	}
+}
+
+func TestLastAdminCannotBeRemoved(t *testing.T) {
+	e := setup(t)
+	admin := e.login("admin")
+	var users []store.User
+	_, data := e.do(admin, "GET", "/api/users", nil)
+	json.Unmarshal(data, &users)
+	ids := map[string]int64{}
+	for _, u := range users {
+		ids[u.Username] = u.ID
+	}
+	if code, _ := e.do(e.login("anna"), "DELETE", fmt.Sprintf("/api/users/%d", ids["admin"]), nil); code != http.StatusForbidden {
+		t.Fatalf("member removed a user: %d", code)
+	}
+	if code, _ := e.do(admin, "DELETE", fmt.Sprintf("/api/users/%d", ids["admin"]), nil); code != http.StatusConflict {
+		t.Fatalf("last admin: %d", code)
+	}
+	if code, _ := e.do(admin, "DELETE", fmt.Sprintf("/api/users/%d", ids["anna"]), nil); code != http.StatusNoContent {
+		t.Fatalf("member: %d", code)
+	}
+}
+
+func TestStartPasswordStaysSecret(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	admin := e.login("admin")
+
+	code, data := e.do(admin, "POST", "/api/devices/"+id+"/start-password", map[string]string{"user": "anna"})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, data)
+	}
+	var out struct{ Password string }
+	json.Unmarshal(data, &out)
+	if len(out.Password) != startPasswordLen {
+		t.Fatalf("password %q", out.Password)
+	}
+
+	code, data = e.do(agent, "GET", "/agent/tasks?wait=0", nil)
+	if code != http.StatusOK {
+		t.Fatalf("poll: %d", code)
+	}
+	var task api.Task
+	json.Unmarshal(data, &task)
+	var payload api.PasswordPayload
+	json.Unmarshal(task.Payload, &payload)
+	if err := sha512_crypt.New().Verify(payload.Hash, []byte(out.Password)); err != nil {
+		t.Fatalf("hash does not match the password: %v", err)
+	}
+
+	for _, path := range []string{"/api/tasks", "/api/audit"} {
+		_, body := e.do(admin, "GET", path, nil)
+		if strings.Contains(string(body), payload.Hash) || strings.Contains(string(body), out.Password) {
+			t.Errorf("%s leaks the password or its hash", path)
+		}
+	}
+}
+
+func TestStartPasswordOnlyThroughItsRoute(t *testing.T) {
+	e := setup(t)
+	id, _ := e.enroll()
+	admin := e.login("admin")
+	in := map[string]any{"type": api.TaskUserPassword, "payload": api.PasswordPayload{User: "anna", Hash: "$6$s$" + strings.Repeat("a", 86)}}
+	if code, _ := e.do(admin, "POST", "/api/devices/"+id+"/tasks", in); code != http.StatusBadRequest {
+		t.Fatalf("got %d", code)
+	}
+	if code, _ := e.do(admin, "POST", "/api/devices/"+id+"/start-password", map[string]string{"user": "root"}); code != http.StatusBadRequest {
+		t.Fatalf("root: %d", code)
+	}
+	if code, _ := e.do(e.login("anna"), "POST", "/api/devices/"+id+"/start-password", map[string]string{"user": "anna"}); code != http.StatusForbidden {
+		t.Fatalf("member: %d", code)
 	}
 }
 

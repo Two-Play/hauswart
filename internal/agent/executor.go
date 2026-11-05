@@ -32,6 +32,9 @@ type Executor struct {
 	Grants       *GrantStore
 	// Run executes a command and returns its combined output.
 	Run func(ctx context.Context, name string, args ...string) (string, error)
+	// RunInput is Run with data on stdin, for values that must stay out of
+	// the process list.
+	RunInput func(ctx context.Context, input, name string, args ...string) (string, error)
 }
 
 func (e *Executor) path(p string) string { return filepath.Join(e.Root, p) }
@@ -101,6 +104,12 @@ func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, error) {
 			return "", err
 		}
 		return e.userLock(ctx, p.User, t.Type == api.TaskUserLock)
+	case api.TaskUserPassword:
+		var p api.PasswordPayload
+		if err := json.Unmarshal(t.Payload, &p); err != nil {
+			return "", err
+		}
+		return e.userPassword(ctx, p)
 	case api.TaskLimitSet:
 		var p api.LimitPayload
 		if err := json.Unmarshal(t.Payload, &p); err != nil {
@@ -311,6 +320,25 @@ func (e *Executor) userLock(ctx context.Context, name string, lock bool) (string
 	return e.Run(ctx, "usermod", flag, "--", name)
 }
 
+// userPassword sets a start password and expires it at once, so the user has
+// to choose an own one at the first login.
+func (e *Executor) userPassword(ctx context.Context, p api.PasswordPayload) (string, error) {
+	u, err := e.lookupUser(p.User)
+	if err != nil {
+		return "", err
+	}
+	if uid, _ := strconv.Atoi(u.Uid); uid < minUserUID {
+		return "", fmt.Errorf("refusing to change system account %s", p.User)
+	}
+	if out, err := e.RunInput(ctx, p.User+":"+p.Hash+"\n", "chpasswd", "-e"); err != nil {
+		return out, err
+	}
+	if out, err := e.Run(ctx, "chage", "-d", "0", "--", p.User); err != nil {
+		return out, err
+	}
+	return "start password set for " + p.User, nil
+}
+
 // limitSet uses a drop-in for the user's slice, which needs systemd but works
 // the same on every systemd distribution.
 func (e *Executor) limitSet(ctx context.Context, p api.LimitPayload) (string, error) {
@@ -369,8 +397,14 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 
 // RunCommand is the production implementation of Executor.Run.
 func RunCommand(ctx context.Context, name string, args ...string) (string, error) {
+	return RunCommandInput(ctx, "", name, args...)
+}
+
+// RunCommandInput is the production implementation of Executor.RunInput.
+func RunCommandInput(ctx context.Context, input, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive")
+	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

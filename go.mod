@@ -3,6 +3,7 @@ module github.com/philippe/hauswart
 go 1.26.10
 
 require (
+	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.61.1
 )

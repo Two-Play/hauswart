@@ -75,10 +75,14 @@ def run_task(admin, device, task_type, payload, wait=300):
     code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": task_type, "payload": payload})
     if code != 201:
         return {"status": "rejected", "output": str(out)}
+    return wait_task(admin, out["id"], wait)
+
+
+def wait_task(admin, task_id, wait=300):
     deadline = time.time() + wait
     while time.time() < deadline:
         _, tasks = admin.call("GET", "/api/tasks")
-        task = next(t for t in tasks if t["id"] == out["id"])
+        task = next(t for t in tasks if t["id"] == task_id)
         if task["status"] in ("done", "failed"):
             return task
         time.sleep(1)
@@ -141,6 +145,17 @@ def test_distro(name, admin, agent_bin, ca_pem):
         task = run_task(admin, id_, "user.create", {"user": "anna", "full_name": "Anna Test"})
         check(name, "user.create", task["status"] == "done", task["output"])
         check(name, "user exists", inside("id anna").returncode == 0)
+
+        code, started = admin.call("POST", f"/api/devices/{id_}/start-password", {"user": "anna"})
+        check(name, "start password created", code == 201, str(started))
+        task = wait_task(admin, started["id"])
+        check(name, "user.passwd", task["status"] == "done", task["output"])
+        shadow = inside("getent shadow anna").stdout.strip().split(":")
+        fields = shadow[1].split("$")
+        expected = sh("openssl", "passwd", "-6", "-salt", fields[-2], started["password"]).stdout.strip()
+        # openssl leaves out a rounds prefix, so compare salt and digest.
+        check(name, "shadow hash matches the password", expected.split("$")[-1] == fields[-1])
+        check(name, "password change forced at first login", shadow[2] == "0", shadow[2])
 
         task = run_task(admin, id_, "ca.install", {"name": "family", "pem": ca_pem})
         check(name, "ca.install", task["status"] == "done", task["output"])

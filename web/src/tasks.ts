@@ -29,6 +29,7 @@ export const TASK_FIELDS: Record<string, TaskField[]> = {
   'user.create': [user, { name: 'full_name' }],
   'user.lock': [user],
   'user.unlock': [user],
+  'user.passwd': [user],
   'limit.set': [
     user,
     { name: 'cpu_percent', kind: 'number' },

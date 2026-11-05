@@ -18,6 +18,7 @@ import {
   IconClipboardList,
   IconDevicesPc,
   IconHistory,
+  IconKey,
   IconListCheck,
   IconLogout,
   IconMoon,
@@ -31,6 +32,7 @@ import { LANGUAGES, setLanguage } from './i18n';
 import { AuditView } from './views/AuditView';
 import { DevicesView } from './views/DevicesView';
 import { LoginView } from './views/LoginView';
+import { PasswordModal } from './views/PasswordModal';
 import { RequestsView } from './views/RequestsView';
 import { TasksView } from './views/TasksView';
 import { UsersView } from './views/UsersView';
@@ -85,6 +87,7 @@ export function App() {
   const [user, setUser] = useState<User | null>();
   const [active, setActive] = useState('devices');
   const [opened, { toggle, close }] = useDisclosure();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
@@ -149,6 +152,15 @@ export function App() {
           <Button
             variant="default"
             fullWidth
+            mb="xs"
+            leftSection={<IconKey size={16} />}
+            onClick={() => setChangingPassword(true)}
+          >
+            {t('nav.password')}
+          </Button>
+          <Button
+            variant="default"
+            fullWidth
             leftSection={<IconLogout size={16} />}
             onClick={() => api('POST', '/api/logout').finally(() => setUser(null))}
           >
@@ -160,6 +172,7 @@ export function App() {
       <AppShell.Main>
         <View user={user} />
       </AppShell.Main>
+      {changingPassword && <PasswordModal onClose={() => setChangingPassword(false)} />}
     </AppShell>
   );
 }

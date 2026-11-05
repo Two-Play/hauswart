@@ -1,16 +1,29 @@
-import { Button, Group, Paper, PasswordInput, Select, SimpleGrid, Stack, TextInput, Title } from '@mantine/core';
+import {
+  Button,
+  Group,
+  Modal,
+  Paper,
+  PasswordInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type User } from '../api';
 import { DataTable, Loaded, showError } from '../ui';
 
-export function UsersView() {
+export function UsersView({ user }: { user: User }) {
   const { t } = useTranslation();
   const { data, error, reload } = useResource<User[]>('/api/users');
   const [username, setUsername] = useState('');
   const [linuxUser, setLinuxUser] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('member');
+  const [removing, setRemoving] = useState<User>();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -19,6 +32,16 @@ export function UsersView() {
       setUsername('');
       setLinuxUser('');
       setPassword('');
+      reload();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function remove(target: User) {
+    try {
+      await api('DELETE', `/api/users/${target.id}`);
+      setRemoving(undefined);
       reload();
     } catch (err) {
       showError(err);
@@ -78,15 +101,40 @@ export function UsersView() {
           {(users) => (
             <DataTable
               empty=""
-              headers={[t('users.username'), t('users.linuxUser'), t('users.role')]}
+              headers={[t('users.username'), t('users.linuxUser'), t('users.role'), '']}
               rows={users.map((u) => ({
                 key: String(u.id),
-                cells: [u.username, u.linux_user, t(`users.${u.role}`)],
+                cells: [
+                  u.username,
+                  u.linux_user,
+                  t(`users.${u.role}`),
+                  u.id !== user.id && (
+                    <Button size="xs" variant="subtle" color="red" onClick={() => setRemoving(u)}>
+                      {t('users.remove')}
+                    </Button>
+                  ),
+                ],
               }))}
             />
           )}
         </Loaded>
       </Paper>
+
+      {removing && (
+        <Modal opened onClose={() => setRemoving(undefined)} title={t('users.removeTitle', { name: removing.username })}>
+          <Stack>
+            <Text size="sm">{t('users.removeText')}</Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setRemoving(undefined)}>
+                {t('common.cancel')}
+              </Button>
+              <Button color="red" onClick={() => remove(removing)}>
+                {t('users.removeConfirm')}
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      )}
     </Stack>
   );
 }

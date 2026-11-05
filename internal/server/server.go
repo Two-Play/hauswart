@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GehirnInc/crypt/sha512_crypt"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/philippe/hauswart/internal/api"
@@ -34,6 +35,7 @@ const (
 	maxBody          = 2 << 20
 	maxPollWait      = 30 * time.Second
 	staleTaskAfter   = 45 * time.Minute
+	startPasswordLen = 20
 	minPasswordLen   = 10
 	maxLoginFails    = 5
 	loginLockout     = time.Minute
@@ -116,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.Handle("POST /api/logout", s.user(s.handleLogout))
 	mux.Handle("GET /api/me", s.user(s.handleMe))
+	mux.Handle("POST /api/password", s.user(s.handleChangePassword))
 	mux.Handle("GET /api/devices", s.user(s.handleDevices))
 	mux.Handle("GET /api/requests", s.user(s.handleListRequests))
 	mux.Handle("POST /api/requests", s.user(s.handleCreateRequest))
@@ -125,9 +128,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/enroll-tokens", s.admin(s.handleEnrollToken))
 	mux.Handle("POST /api/devices/{id}/revoke", s.admin(s.handleRevoke))
 	mux.Handle("POST /api/devices/{id}/tasks", s.admin(s.handleCreateTask))
+	mux.Handle("POST /api/devices/{id}/start-password", s.admin(s.handleStartPassword))
 	mux.Handle("GET /api/tasks", s.admin(s.handleTasks))
 	mux.Handle("GET /api/users", s.admin(s.handleUsers))
 	mux.Handle("POST /api/users", s.admin(s.handleCreateUser))
+	mux.Handle("DELETE /api/users/{id}", s.admin(s.handleDeleteUser))
 	mux.Handle("GET /api/audit", s.admin(s.handleAudit))
 
 	return securityHeaders(http.MaxBytesHandler(mux, maxBody))
@@ -512,6 +517,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request, u stor
 	if len(in.Payload) == 0 {
 		in.Payload = json.RawMessage(`{}`)
 	}
+	if in.Type == api.TaskUserPassword {
+		// Only the start-password route may create these, because it keeps
+		// the hash out of the audit log.
+		fail(w, http.StatusBadRequest, "use the start-password route")
+		return
+	}
 	if err := api.Validate(in.Type, in.Payload); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
@@ -522,6 +533,41 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request, u stor
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
+// handleStartPassword creates a random password, sends only its hash to the
+// device and returns the password exactly once. It is stored nowhere.
+func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u store.User) {
+	var in struct {
+		User string `json:"user"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	password := store.RandomToken()[:startPasswordLen]
+	hash, err := sha512_crypt.New().Generate([]byte(password), nil)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	payload, err := json.Marshal(api.PasswordPayload{User: in.User, Hash: hash})
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if err := api.Validate(api.TaskUserPassword, payload); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	deviceID := r.PathValue("id")
+	id, err := s.store.CreateTask(r.Context(), deviceID, api.TaskUserPassword, payload, u.Username)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, u.Username, "task."+api.TaskUserPassword, deviceID+" "+in.User)
+	s.wake(deviceID)
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "password": password})
 }
 
 func (s *Server) enqueue(r *http.Request, deviceID, taskType string, payload []byte, actor string) (string, error) {
@@ -539,6 +585,11 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, _ store.Use
 	if err != nil {
 		s.internal(w, err)
 		return
+	}
+	for i := range tasks {
+		if tasks[i].Type == api.TaskUserPassword {
+			tasks[i].Payload = json.RawMessage(`{}`)
+		}
 	}
 	writeJSON(w, http.StatusOK, tasks)
 }
@@ -708,6 +759,71 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, u stor
 	}
 	s.audit(r, u.Username, "user.created", in.Username+" ("+in.Role+")")
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, u store.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	switch err := s.store.DeleteUser(r.Context(), id); {
+	case errors.Is(err, store.ErrNotFound):
+		fail(w, http.StatusNotFound, "no such user")
+	case errors.Is(err, store.ErrLastAdmin):
+		fail(w, http.StatusConflict, "the last admin cannot be removed")
+	case err != nil:
+		s.internal(w, err)
+	default:
+		s.audit(r, u.Username, "user.deleted", r.PathValue("id"))
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, u store.User) {
+	var in struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	ip := clientIP(r)
+	if s.lockedOut(ip) {
+		fail(w, http.StatusTooManyRequests, "too many attempts, try again in a minute")
+		return
+	}
+	current, err := s.store.UserPasswordHash(r.Context(), u.ID)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(current), []byte(in.Current)) != nil {
+		s.recordFailure(ip)
+		s.audit(r, u.Username, "password.change_failed", ip)
+		fail(w, http.StatusForbidden, "current password is wrong")
+		return
+	}
+	if len(in.New) < minPasswordLen {
+		fail(w, http.StatusBadRequest, fmt.Sprintf("password needs at least %d characters", minPasswordLen))
+		return
+	}
+	hash, err := HashPassword(in.New)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "password too long")
+		return
+	}
+	cookie, err := r.Cookie(sessionCookie)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if err := s.store.ChangePassword(r.Context(), u.ID, hash, cookie.Value); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, u.Username, "password.changed", ip)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, _ store.User) {
