@@ -185,6 +185,12 @@ To replace a key, add the new one with `keys add`, remove the old one from the
 while you still hold a working key. Signed tasks expire after 30 days, so a device
 that stays off longer needs a new one.
 
+The counter of each device lives in `admin.json`. If a second computer signs too,
+or you restore an old copy, the tool catches up from the device's report, up to
+about a million ahead. It refuses anything beyond that, because the report passes
+through the server and could be false. If the device really is that far ahead,
+copy its counter from your newest `admin.json`.
+
 If you lose every key, or a device loses `/var/lib/hauswart/guard.json`, that
 device refuses work until you enroll it again. That is deliberate: a state that
 can be reset could be replayed.
