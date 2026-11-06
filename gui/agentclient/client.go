@@ -1,0 +1,82 @@
+// Package agentclient talks to the agent on this device, over its socket.
+package agentclient
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Two-Play/hauswart/internal/api"
+)
+
+// DefaultSocket is where the agent listens.
+const DefaultSocket = "/run/hauswart/user.sock"
+
+const timeout = 10 * time.Second
+
+// ErrTooMany says that someone asked too often.
+var ErrTooMany = errors.New("too many requests")
+
+// ErrUnreachable says that the agent or its server could not be reached.
+var ErrUnreachable = errors.New("not reachable")
+
+// Client asks the agent. The agent knows who is asking from the kernel, so there
+// is nothing to log in with.
+type Client struct {
+	http *http.Client
+}
+
+func New(socket string) *Client {
+	return &Client{http: &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+			},
+		},
+	}}
+}
+
+// Status returns what the agent says about the person running this.
+func (c *Client) Status() (api.UserStatus, error) {
+	var status api.UserStatus
+	resp, err := c.http.Get("http://agent/status")
+	if err != nil {
+		return status, ErrUnreachable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return status, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return status, json.NewDecoder(resp.Body).Decode(&status)
+}
+
+// Request files a request.
+func (c *Client) Request(r api.UserRequest) error {
+	body, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Post("http://agent/request", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return ErrUnreachable
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		return nil
+	case http.StatusTooManyRequests:
+		return ErrTooMany
+	case http.StatusBadGateway:
+		return ErrUnreachable
+	}
+	text, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+	return errors.New(strings.TrimSpace(string(text)))
+}
