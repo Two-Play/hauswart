@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 // SetGroupPolicy stores what a group asks for. Nothing about it reaches a device

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 func entry(t *testing.T, fields map[string]any) string {

@@ -13,21 +13,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 // loginSystem fakes loginctl for one logged in user.
 type loginSystem struct {
 	mu       sync.Mutex
 	user     string
+	uid      string
 	calls    [][]string
 	failStop bool
+	// accounts are what getent knows, by name.
+	accounts map[string]string
 }
 
 func (l *loginSystem) run(_ context.Context, name string, args ...string) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.calls = append(l.calls, append([]string{name}, args...))
+	if name == "getent" {
+		if uid, ok := l.accounts[args[1]]; ok {
+			return args[1] + ":*:" + uid + ":" + uid + "::/home/x:/bin/bash\n", nil
+		}
+		return "", errors.New("exit status 2")
+	}
 	if name != "loginctl" {
 		return "", nil
 	}
@@ -36,7 +45,7 @@ func (l *loginSystem) run(_ context.Context, name string, args ...string) (strin
 		if l.user == "" {
 			return "", nil
 		}
-		return "7 1000 " + l.user + " seat0 tty2\n", nil
+		return "7 " + l.uid + " " + l.user + " seat0 tty2\n", nil
 	case "show-session":
 		return "Name=" + l.user + "\nType=wayland\nClass=user\nState=active\nRemote=no\n", nil
 	case "terminate-user":
@@ -88,10 +97,11 @@ func newScreenEngine(t *testing.T) (*PolicyEngine, *loginSystem, string) {
 	t.Helper()
 	pe, _ := newEngine(t)
 	name := currentUser(t)
-	if u, err := user.Lookup(name); err != nil || u.Uid < "1000" {
+	me, err := user.Lookup(name)
+	if err != nil || me.Uid < "1000" {
 		t.Skip("test needs an ordinary account")
 	}
-	system := &loginSystem{}
+	system := &loginSystem{uid: me.Uid}
 	pe.exec.Run = system.run
 	setPolicy(t, pe, api.Policy{
 		TimeZone: "UTC",
@@ -263,7 +273,7 @@ func TestFailureToEndASessionIsReported(t *testing.T) {
 
 func TestSomeoneElseIsLeftAlone(t *testing.T) {
 	pe, system, name := newScreenEngine(t)
-	system.user = "root"
+	system.user, system.uid = "root", "0"
 	tick(pe, monday(20, 0))
 	if system.count("terminate-user", name) != 0 || system.count("terminate-user", "root") != 0 {
 		t.Fatalf("got %v", system.calls)
@@ -273,10 +283,51 @@ func TestSomeoneElseIsLeftAlone(t *testing.T) {
 func TestSystemAccountsAreNeverEnded(t *testing.T) {
 	pe, system, _ := newScreenEngine(t)
 	setPolicy(t, pe, api.Policy{TimeZone: "UTC", ScreenTime: []api.ScreenTimeRule{{User: "daemon"}}})
-	system.user = "daemon"
+	system.user, system.uid = "daemon", "2"
 	tick(pe, monday(20, 0))
 	if system.count("terminate-user", "daemon") != 0 {
 		t.Fatal("ended a system account")
+	}
+}
+
+// A child renames their Authentik account. The ID stays, and with it the rule.
+func TestRenamingAnAccountLeadsNowhere(t *testing.T) {
+	pe, system, _ := newScreenEngine(t)
+	system.accounts = map[string]string{"mia": "2007"}
+	setPolicy(t, pe, api.Policy{TimeZone: "UTC", ScreenTime: []api.ScreenTimeRule{{User: "mia"}}})
+	system.user, system.uid = "", ""
+	tick(pe, monday(1, 0)) // seen with nobody logged in, which keeps the ID
+
+	delete(system.accounts, "mia")
+	system.accounts["free-at-last"] = "2007"
+	system.user, system.uid = "free-at-last", "2007"
+	tick(pe, monday(20, 0))
+	if system.count("terminate-user", "free-at-last") != 1 {
+		t.Fatalf("the new name got out of the rule: %v", system.calls)
+	}
+
+	// The ID survives a restart as well.
+	system.user = "free-at-last"
+	reopened := OpenPolicy(pe.dir, pe.exec, quiet())
+	tick(reopened, monday(1, 0))
+	tick(reopened, monday(20, 1))
+	if system.count("terminate-user", "free-at-last") != 2 {
+		t.Fatalf("got %v", system.calls)
+	}
+}
+
+// A local account that was created again has another ID, and the same name.
+func TestRuleFollowsTheNameAsWell(t *testing.T) {
+	pe, system, _ := newScreenEngine(t)
+	system.accounts = map[string]string{"mia": "2007"}
+	setPolicy(t, pe, api.Policy{TimeZone: "UTC", ScreenTime: []api.ScreenTimeRule{{User: "mia"}}})
+	system.user, system.uid = "", ""
+	tick(pe, monday(1, 0))
+	system.accounts["mia"] = "2020"
+	system.user, system.uid = "mia", "2020"
+	tick(pe, monday(20, 0))
+	if system.count("terminate-user", "mia") != 1 {
+		t.Fatalf("got %v", system.calls)
 	}
 }
 

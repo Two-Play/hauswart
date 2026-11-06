@@ -27,9 +27,9 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/pki"
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 const (

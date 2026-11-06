@@ -10,8 +10,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
 )
 
 func testCert(t *testing.T) string {

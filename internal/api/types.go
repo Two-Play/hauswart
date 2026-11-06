@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 // Task types. The agent executes only these; there is deliberately no

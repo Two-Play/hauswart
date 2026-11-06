@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 // assign gives a member a device, as an admin would.

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 // ErrStale says that a later approval went ahead of this one on the device.

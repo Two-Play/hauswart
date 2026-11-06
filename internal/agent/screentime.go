@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 const (
@@ -96,21 +96,65 @@ func (pe *PolicyEngine) ScreenLoop(ctx context.Context) {
 	}
 }
 
-// loginSessions lists the session IDs per user, of every kind: someone who may
-// not be at the desktop may not be on a text console or over SSH either.
-func (e *Executor) loginSessions(ctx context.Context) (map[string][]string, error) {
+// loginUser is someone with running sessions, under the name they have now.
+type loginUser struct {
+	name string
+	ids  []string
+}
+
+// loginSessions lists the sessions per user ID, of every kind: someone who may not
+// be at the desktop may not be on a text console or over SSH either.
+func (e *Executor) loginSessions(ctx context.Context) (map[string]*loginUser, error) {
 	out, err := e.Run(ctx, "loginctl", "list-sessions", "--no-legend")
 	if err != nil {
 		return nil, errors.New("loginctl failed, is this a systemd device?")
 	}
-	sessions := map[string][]string{}
+	sessions := map[string]*loginUser{}
 	for line := range strings.Lines(out) {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && sessionIDRe.MatchString(fields[0]) {
-			sessions[fields[2]] = append(sessions[fields[2]], fields[0])
+		if len(fields) < 3 || !sessionIDRe.MatchString(fields[0]) {
+			continue
 		}
+		if sessions[fields[1]] == nil {
+			sessions[fields[1]] = &loginUser{name: fields[2]}
+		}
+		sessions[fields[1]].ids = append(sessions[fields[1]].ids, fields[0])
 	}
 	return sessions, nil
+}
+
+// screenAccounts says which user IDs a rule stands for. A rule names a person, and
+// a directory account can change its name, while its ID stays. So the ID is
+// remembered the first time the name is seen, and a new name does not lead out of
+// the rule. The name counts as well: a local account that was created again has a
+// new ID, and someone taking over a name is at worst held to that rule.
+func (pe *PolicyEngine) screenAccounts(rule api.ScreenTimeRule) []string {
+	pe.mu.Lock()
+	pinned := pe.state.ScreenUIDs[rule.User]
+	pe.mu.Unlock()
+	person, err := pe.exec.lookupUser(rule.User)
+	if err != nil {
+		if pinned == "" {
+			return nil
+		}
+		return []string{pinned}
+	}
+	if pinned == "" {
+		pe.mu.Lock()
+		defer pe.mu.Unlock()
+		if pe.state.ScreenUIDs == nil {
+			pe.state.ScreenUIDs = map[string]string{}
+		}
+		pe.state.ScreenUIDs[rule.User] = person.Uid
+		if err := pe.saveState(); err != nil {
+			pe.log.Error("saving the policy state failed", "err", err)
+		}
+		return []string{person.Uid}
+	}
+	if pinned == person.Uid {
+		return []string{pinned}
+	}
+	return []string{pinned, person.Uid}
 }
 
 func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {
@@ -138,33 +182,31 @@ func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {
 	var issues []string
 	local := now.In(zone)
 	for _, rule := range rules {
-		ids := sessions[rule.User]
-		if len(ids) == 0 {
-			delete(pe.screen, rule.User)
-			continue
-		}
-		person, err := pe.exec.lookupUser(rule.User)
-		if err != nil {
-			continue
-		}
-		if uid, _ := strconv.Atoi(person.Uid); uid < minUserUID {
-			continue
-		}
-		state := pe.screen[rule.User]
-		if state == nil {
-			// Without memory of someone, they just logged in. Unless this is
-			// the first look at these rules: then they may have been working
-			// for hours, and something to save deserves the lock and a minute.
-			state = &screenUser{allowed: fresh}
-			pe.screen[rule.User] = state
-		}
-		extension := extensions[rule.User].In(zone)
-		if end, ok := sessionEnd(rule, local, extension); ok {
-			pe.warnScreenUser(ctx, rule.User, state, language, local, end)
-			continue
-		}
-		if err := pe.endScreenUser(ctx, rule.User, ids, state, language, now); err != nil {
-			issues = append(issues, rule.User+": "+err.Error())
+		for _, uid := range pe.screenAccounts(rule) {
+			session := sessions[uid]
+			if session == nil {
+				delete(pe.screen, uid)
+				continue
+			}
+			if number, _ := strconv.Atoi(uid); number < minUserUID {
+				continue
+			}
+			state := pe.screen[uid]
+			if state == nil {
+				// Without memory of someone, they just logged in. Unless this is
+				// the first look at these rules: then they may have been working
+				// for hours, and something to save deserves the lock and a minute.
+				state = &screenUser{allowed: fresh}
+				pe.screen[uid] = state
+			}
+			extension := extensions[rule.User].In(zone)
+			if end, ok := sessionEnd(rule, local, extension); ok {
+				pe.warnScreenUser(ctx, session.name, state, language, local, end)
+				continue
+			}
+			if err := pe.endScreenUser(ctx, session.name, session.ids, state, language, now); err != nil {
+				issues = append(issues, rule.User+": "+err.Error())
+			}
 		}
 	}
 	pe.setScreenIssue(strings.Join(issues, "; "))

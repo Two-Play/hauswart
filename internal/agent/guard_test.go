@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
-	"github.com/philippe/hauswart/internal/sign/passkeytest"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/sign/passkeytest"
 )
 
 const guardDevice = "this-device"

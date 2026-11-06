@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 func init() {

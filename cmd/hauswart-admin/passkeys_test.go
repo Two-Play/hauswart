@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/sign/passkeytest"
+	"github.com/Two-Play/hauswart/internal/sign/passkeytest"
 )
 
 func candidateFixture(t *testing.T) serverPasskey {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 func mustJSON(t *testing.T, v any) json.RawMessage {

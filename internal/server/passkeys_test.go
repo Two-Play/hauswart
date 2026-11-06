@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
-	"github.com/philippe/hauswart/internal/sign/passkeytest"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/sign/passkeytest"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 const testOrigin = "https://test"

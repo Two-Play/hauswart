@@ -553,9 +553,12 @@ stays as it is when the policy ends: without a domain, it does no harm.
 Screen time and sudo grants work for these accounts as well. Their IDs start at 2000.
 
 An account named like a local one on a device cannot log in there: local accounts
-stay local. Turn off **Allow users to change username** in the Authentik settings,
-because screen time goes by the name, and a child who renames themselves is someone
-else to it.
+stay local.
+
+A screen time rule follows the account, and not only its name: a device remembers the
+ID the first time it sees the name, so renaming the account in Authentik leads
+nowhere. That needs the device to have seen the name once, which it does as soon as it
+has the policy and can reach the directory.
 
 ### Shares
 

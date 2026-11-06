@@ -1,5 +1,5 @@
 VERSION ?= 0.1.0
-LDFLAGS := -X github.com/philippe/hauswart/internal/agent.Version=$(VERSION)
+LDFLAGS := -X github.com/Two-Play/hauswart/internal/agent.Version=$(VERSION)
 
 .PHONY: build web test e2e test-vm packages test-packages clean
 

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 const (

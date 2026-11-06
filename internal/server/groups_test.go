@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 func newGroup(t *testing.T, e *env, admin *http.Client, devices ...string) string {

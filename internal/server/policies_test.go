@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 type policyView struct {

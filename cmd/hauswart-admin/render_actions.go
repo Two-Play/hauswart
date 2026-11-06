@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 // actionDeadline is the expiry of tasks that carry their own. The signature

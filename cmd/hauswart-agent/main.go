@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/philippe/hauswart/internal/agent"
+	"github.com/Two-Play/hauswart/internal/agent"
 )
 
 const defaultDir = "/var/lib/hauswart"

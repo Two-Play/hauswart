@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 var ctx = context.Background()

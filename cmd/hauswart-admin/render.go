@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 // clean makes text from the server safe to print. Without it, escape sequences

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 func testDirectory() *api.DirectoryRule {
@@ -392,23 +392,23 @@ func TestLocalAccountsStayOutOfTheDirectory(t *testing.T) {
 	if err := os.MkdirAll(pe.exec.path("/etc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(passwd, []byte("root:x:0:0::/root:/bin/bash\nphilippe:x:1000:1000::/home/philippe:/bin/bash\nevil,name = x:x:1:1::/:\n"), 0o644); err != nil {
+	if err := os.WriteFile(passwd, []byte("root:x:0:0::/root:/bin/bash\nparent:x:1000:1000::/home/parent:/bin/bash\nevil,name = x:x:1:1::/:\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	setPolicy(t, pe, api.Policy{Directory: testDirectory()})
 	pe.Enforce(context.Background())
 	raw, _ := os.ReadFile(pe.exec.path(sssdConfig))
-	if !strings.Contains(string(raw), "filter_users = philippe,root\n") {
+	if !strings.Contains(string(raw), "filter_users = parent,root\n") {
 		t.Fatalf("got %s", raw)
 	}
 
 	// A new local account counts from the next check on.
-	if err := os.WriteFile(passwd, []byte("root:x:0:0::/root:/bin/bash\nphilippe:x:1000:1000::/home/philippe:/bin/bash\nanna:x:1001:1001::/home/anna:/bin/bash\n"), 0o644); err != nil {
+	if err := os.WriteFile(passwd, []byte("root:x:0:0::/root:/bin/bash\nparent:x:1000:1000::/home/parent:/bin/bash\nanna:x:1001:1001::/home/anna:/bin/bash\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	pe.Enforce(context.Background())
 	raw, _ = os.ReadFile(pe.exec.path(sssdConfig))
-	if !strings.Contains(string(raw), "filter_users = anna,philippe,root\n") {
+	if !strings.Contains(string(raw), "filter_users = anna,parent,root\n") {
 		t.Fatalf("got %s", raw)
 	}
 }

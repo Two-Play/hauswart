@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 // Origin and RPID are what tests pin unless they say otherwise.

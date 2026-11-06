@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/philippe/hauswart/internal/envfile"
+	"github.com/Two-Play/hauswart/internal/envfile"
 )
 
 const (

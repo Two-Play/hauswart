@@ -22,9 +22,9 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/envfile"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/envfile"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 const (

@@ -18,10 +18,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/philippe/hauswart/internal/backup"
-	"github.com/philippe/hauswart/internal/pki"
-	"github.com/philippe/hauswart/internal/server"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/backup"
+	"github.com/Two-Play/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/server"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 const (

@@ -5,7 +5,7 @@ Family members request software or temporary sudo rights, and an admin approves
 them with a click. It is built for Fedora and works on other distributions.
 
 **Status: early and not yet used on real hardware.** Everything below is tested
-in containers, not on physical machines or over a real VPN. See
+in containers and virtual machines, not on physical machines or over a real VPN. See
 [Limitations](#limitations).
 
 ## Features
@@ -62,6 +62,8 @@ arbitrary commands.
 You need Go, Node.js and `rpmbuild`.
 
 ```bash
+git clone https://github.com/Two-Play/hauswart.git
+cd hauswart
 make packages
 sudo dnf install ./dist/hauswart-server-0.1.0-1.x86_64.rpm
 sudo systemctl enable --now hauswart-server
@@ -86,7 +88,8 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | `make test` | `go vet` and unit tests |
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, certificate renewal, signed tasks against a simulated hacked server, and admin notifications |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
-| `make test-vm` | Flatpak, `rpm-ostree`, real reboots and popups in a GNOME session, in real virtual machines. Needs KVM and downloads about 1.5 GB of images, plus GNOME inside a VM |
+| `make test-vm` | Flatpak, `rpm-ostree`, real reboots, popups and screen time in GNOME and Plasma sessions, and the login with a real Authentik, Samba and Nextcloud, in real virtual machines. Needs KVM and Podman, and downloads several GB |
+| `test/authentik.py` | The dashboard login and the sync of accounts against a real Authentik in containers |
 | `node test/passkeys.mjs` | The passkey flow in Chromium with a virtual authenticator, including what a hacked server tries. Needs `make build` |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
 
@@ -100,8 +103,11 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 ## Limitations
 
 - Not yet tried on real hardware or over a real VPN.
-- Popups and screen time are tested in GNOME and Plasma on Wayland only. Other
-  desktops should work, but are not tested.
+- Popups use the standard notification service of the desktop, so any desktop with
+  one should work, but only GNOME and Plasma on Wayland are tested. So is screen time.
+  The check of the screen lock knows only these two.
+- The login with directory accounts and shares are tested on Fedora only. Debian is
+  written but not tried, and the Nextcloud sync client is not tried either.
 - Atomic Fedora is tested on CoreOS, not on Silverblue or Kinoite, and Flatpak
   installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by

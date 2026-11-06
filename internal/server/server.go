@@ -17,11 +17,11 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/notify"
-	"github.com/philippe/hauswart/internal/pki"
-	"github.com/philippe/hauswart/internal/store"
-	"github.com/philippe/hauswart/web"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/notify"
+	"github.com/Two-Play/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/web"
 )
 
 const (

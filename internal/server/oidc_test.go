@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 // fakeProvider is an identity provider with just enough OIDC for a login.

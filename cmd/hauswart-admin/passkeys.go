@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 // passkeyLifetime ends a pin. Whether the server swapped a passkey when it was

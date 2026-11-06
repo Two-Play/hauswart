@@ -217,7 +217,8 @@ the checks. The server compares the hash with the merge to show each device's st
 their time gets warnings 15, 5 and 1 minutes before the end. At the end the session
 locks, and a minute later `loginctl terminate-user` ends it. Someone who logs in
 outside their time is out at the next check, without a warning or a grace period,
-so that logging in again earns nothing.
+so that logging in again earns nothing. Rules are written with names, and the agent
+keeps the user ID behind each name, as a directory account can be renamed.
 
 There are no PAM changes on purpose: a mistake there locks everyone out, and this
 works the same for accounts that come from elsewhere later. The time zone is part

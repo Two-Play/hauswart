@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/pki"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 // scopedServer serves a CA limited to home.lan, unlike the one from setup.

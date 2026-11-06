@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/api"
 )
 
 const (
@@ -55,6 +55,8 @@ type policyState struct {
 	UpdateError string `json:"update_error,omitempty"`
 	// Extensions hold how long a user may stay beyond the time windows.
 	Extensions map[string]time.Time `json:"extensions,omitempty"`
+	// ScreenUIDs remembers who a screen time rule is about, by the name in the rule.
+	ScreenUIDs map[string]string `json:"screen_uids,omitempty"`
 }
 
 // PolicyEngine keeps a device in the state of its signed policy. Everything it

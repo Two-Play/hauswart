@@ -829,6 +829,35 @@ def test_directory(admin, agent_bin, work, public_key):
         check(group, "offline: a wrong password does not", pam("lena", "wrong-password").returncode != 0)
         proxy = start_proxy()
 
+        # A child renames their account to get out of a rule.
+        policy.update({"time_zone": "UTC", "screen_time": [{"user": "lena", "windows": []}]})
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        check(group, "the screen time rule arrives", wait_for(lambda: "screen_uids" in vm.ssh("cat /var/lib/hauswart/policy-state.json").stdout, 90, 3),
+              vm.ssh("cat /var/lib/hauswart/policy-state.json").stdout)
+        lena_id = stack.pk("core/users/", "lena", key="username")
+        stack.api("PATCH", f"core/users/{lena_id}/", {"username": "free-at-last"})
+        vm.ssh("sss_cache -E; systemctl restart sssd; sleep 3")
+        check(group, "the device knows the new name", vm.ssh("getent passwd free-at-last").returncode == 0,
+              vm.ssh("getent passwd free-at-last; tail -5 /var/log/sssd/sssd_hauswart.log").stdout)
+        child = subprocess.Popen(["ssh", "-p", "2239", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                                  "-o", "PreferredAuthentications=password,keyboard-interactive", "free-at-last@127.0.0.1", "sleep 300"],
+                                 env={**os.environ, "SSH_ASKPASS": askpass, "SSH_ASKPASS_REQUIRE": "force"},
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Logins run into the agent within seconds, often before the command starts,
+        # so what counts is that it acted on the new name and that nothing is left.
+        def ended():
+            return "ending the sessions of a user outside their screen time\" user=free-at-last" in \
+                vm.ssh("journalctl -u hauswart-agent --no-pager | tail -30").stdout
+        check(group, "the agent acts on the new name", wait_for(ended, 90, 2),
+              vm.ssh("loginctl list-sessions; journalctl -u hauswart-agent --no-pager | tail -6").stdout)
+        check(group, "ATTACK the new name does not lead out of the rule",
+              wait_for(lambda: vm.ssh("pgrep -x -u free-at-last sleep").returncode != 0, 30, 1) and child.poll() is not None or
+              vm.ssh("pgrep -x -u free-at-last sleep").returncode != 0,
+              vm.ssh("loginctl list-sessions; ps -u free-at-last").stdout)
+        child.kill()
+
         admin.call("PUT", f"{path}/devices", {"devices": []})
         tool.run("approve", input="y\n")
         check(group, "leaving the group removes the service password",

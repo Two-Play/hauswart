@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/philippe/hauswart/internal/notify"
+	"github.com/Two-Play/hauswart/internal/notify"
 )
 
 const maxShownHostname = 64

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 func devices(t *testing.T, e *env, c *http.Client) []store.Device {

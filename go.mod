@@ -1,4 +1,4 @@
-module github.com/philippe/hauswart
+module github.com/Two-Play/hauswart
 
 go 1.26.10
 

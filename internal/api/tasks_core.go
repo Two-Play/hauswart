@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philippe/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 func init() {

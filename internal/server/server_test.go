@@ -24,10 +24,10 @@ import (
 
 	"github.com/GehirnInc/crypt/sha512_crypt"
 
-	"github.com/philippe/hauswart/internal/api"
-	"github.com/philippe/hauswart/internal/pki"
-	"github.com/philippe/hauswart/internal/sign"
-	"github.com/philippe/hauswart/internal/store"
+	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
+	"github.com/Two-Play/hauswart/internal/sign"
+	"github.com/Two-Play/hauswart/internal/store"
 )
 
 const testPassword = "correct horse battery"
