@@ -143,6 +143,11 @@ func (e *Executor) packages(ctx context.Context, taskType string, names []string
 	var argv []string
 	switch taskType {
 	case api.TaskPkgInstall:
+		// Failing here is no reason to stop: what is known may be enough, and a
+		// real problem shows in the install.
+		if refresh := e.Platform.Backend.Refresh; refresh != nil {
+			e.Run(ctx, refresh[0], refresh[1:]...)
+		}
 		argv = e.Platform.Backend.Install(names)
 	case api.TaskPkgRemove:
 		argv = e.Platform.Backend.Remove(names)

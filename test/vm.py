@@ -4,7 +4,7 @@ real reboots and popups in a real desktop session.
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory]
+directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory directory-debian]
 """
 import hashlib
 import json
@@ -124,6 +124,24 @@ def ubuntu_image():
     if sha256(path) != want:
         os.remove(path)
         sys.exit("Ubuntu image checksum mismatch")
+    return path
+
+
+def debian_image():
+    # Not the genericcloud image: its kernel has no SMB client.
+    base = "https://cloud.debian.org/images/cloud/trixie/latest/"
+    name = "debian-13-generic-amd64.qcow2"
+    path = f"{CACHE}/{name}"
+    fetch(base + name, path)
+    sums = urllib.request.urlopen(base + "SHA512SUMS").read().decode()
+    want = re.search(rf"(\w+)\s+{re.escape(name)}", sums).group(1)
+    digest = hashlib.sha512()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    if digest.hexdigest() != want:
+        os.remove(path)
+        sys.exit("Debian image checksum mismatch")
     return path
 
 
@@ -652,14 +670,14 @@ def sh_logs():
     return subprocess.run(["podman", "logs", "--tail", "12", authentik.CONTAINERS[3]], capture_output=True, text=True).stderr[-1800:]
 
 
-def test_directory(admin, agent_bin, work, public_key):
+def test_directory(admin, agent_bin, work, public_key, debian=False):
     """Accounts from a real Authentik log in on a real device, also offline."""
-    group = "directory"
-    print(f"\n== directory (Fedora Cloud 44 VM, SSSD, Authentik {authentik.VERSION} LDAP outpost)", flush=True)
+    group = "directory-debian" if debian else "directory"
+    print(f"\n== {group} ({'Debian 13' if debian else 'Fedora Cloud 44'} VM, SSSD, Authentik {authentik.VERSION} LDAP outpost)", flush=True)
     tool = signing_tool(admin, work)
     stack = authentik.Authentik()
     proxy = None
-    vm = VM(work, group, cloud_image(), "fedora", 2239, cloud_seed(work, group, public_key))
+    vm = VM(work, group, debian_image() if debian else cloud_image(), "fedora", 2239, cloud_seed(work, group, public_key))
     password = authentik.PASSWORD
 
     def pam(user, secret):
@@ -685,7 +703,9 @@ def test_directory(admin, agent_bin, work, public_key):
 
         check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
         vm.ssh("cloud-init status --wait; echo '10.0.2.2 ldap.home.test' >>/etc/hosts")
-        installed = vm.ssh("dnf5 install -y pamtester authselect", timeout=900)
+        # The lists go again afterwards: a fresh device has none, and the agent has to cope.
+        installed = vm.ssh("apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q pamtester sudo && rm -rf /var/lib/apt/lists/*"
+                           if debian else "dnf5 install -y pamtester authselect", timeout=900)
         check(group, "test tools installed", installed.returncode == 0, installed.stderr[-500:])
         device = protected_agent(vm, admin, tool, agent_bin, group)
 
@@ -713,7 +733,7 @@ def test_directory(admin, agent_bin, work, public_key):
         known = wait_for(lambda: vm.ssh("getent passwd lena").returncode == 0, 60)
         if not known:
             print(vm.ssh(f"echo | timeout 10 openssl s_client -connect ldap.home.test:{LDAPS_PORT} 2>&1 | grep -E 'Verif|verify|CONNECTED|errno|alert' | head -8; "
-                         "dnf5 install -q -y openldap-clients >/dev/null 2>&1; "
+                         ("apt-get install -q -y ldap-utils >/dev/null 2>&1; " if debian else "dnf5 install -q -y openldap-clients >/dev/null 2>&1; ") +
                          f"LDAPTLS_REQCERT=demand ldapsearch -LLL -H ldaps://ldap.home.test:{LDAPS_PORT} -x -D 'cn=ldapreader,ou=users,{base_dn}' "
                          f"-w '{password}' -b '{base_dn}' '(cn=lena)' 2>&1 | head -30; "
                          "grep -E '\\(0x00[1-8]0\\)' /var/log/sssd/sssd_hauswart.log | cut -c1-220 | tail -25").stdout[-5000:], flush=True)
@@ -734,18 +754,20 @@ def test_directory(admin, agent_bin, work, public_key):
         check(group, "and can take the right back", task["status"] == "done", task["output"])
 
         # A share with the same password, and one that is out of reach.
-        prepared = vm.ssh("dnf5 install -y samba kernel-modules-core-$(uname -r) && setenforce 0; modprobe cifs; "
+        prepared = vm.ssh(("DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends samba sssd-tools; " if debian else
+                           "dnf5 install -y samba kernel-modules-core-$(uname -r) && setenforce 0; ") + "modprobe cifs; "
                           "mkdir -p /srv/family && echo hello >/srv/family/hello.txt && chown -R lena /srv/family && "
                           "printf '[family]\\npath = /srv/family\\nread only = no\\n' >>/etc/samba/smb.conf && "
-                          f"printf '%s\\n%s\\n' '{password}' '{password}' | smbpasswd -s -a lena && systemctl enable --now smb && "
+                          f"printf '%s\\n%s\\n' '{password}' '{password}' | smbpasswd -s -a lena && systemctl restart {'smbd' if debian else 'smb'} && "
                           "sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* ; "
-                          "printf 'PasswordAuthentication yes\\nKbdInteractiveAuthentication yes\\n' >/etc/ssh/sshd_config.d/00-test.conf; systemctl restart sshd", timeout=900)
+                          "printf 'PasswordAuthentication yes\\nKbdInteractiveAuthentication yes\\n' >/etc/ssh/sshd_config.d/00-test.conf; systemctl restart ssh || systemctl restart sshd", timeout=900)
         check(group, "Samba runs", prepared.returncode == 0, prepared.stdout[-400:] + prepared.stderr[-400:])
         policy["mounts"] = [{"server": "127.0.0.1", "share": "family", "folder": "Family"}]
         admin.call("PUT", f"{path}/policy", policy)
         tool.run("approve", input="y\n")
-        check(group, "the share is set up", wait_for(lambda: state()["state"] == "current" and "custom/hauswart" in vm.ssh("authselect current").stdout, 300, 5),
-              str(state()) + vm.ssh("authselect current; ls -la /etc/security/pam_mount.conf.xml").stdout)
+        check(group, "the share is set up", wait_for(lambda: state()["state"] == "current" and "family" in vm.ssh("cat /etc/security/pam_mount.conf.xml").stdout
+                       and vm.ssh("grep -q pam_mount /etc/pam.d/common-auth || grep -q pam_mount /etc/pam.d/password-auth").returncode == 0, 300, 5),
+              str(state()) + vm.ssh("ls -la /etc/security/pam_mount.conf.xml").stdout)
         askpass = f"{work}/askpass"
         with open(askpass, "w") as f:
             f.write(f"#!/bin/sh\necho '{password}'\n")
@@ -758,9 +780,12 @@ def test_directory(admin, agent_bin, work, public_key):
                                   capture_output=True, text=True, timeout=120)
         login = as_lena("pwd; cat /media/lena-Family/hello.txt; grep -c cifs /proc/mounts")
         print("       " + login.stdout.replace("\n", " | "), flush=True)
+        if "/home/lena" not in login.stdout:
+            print(vm.ssh("journalctl -u ssh -u sshd --no-pager | tail -14 | cut -c1-200; sshd -T | grep -iE '^(passwordauth|kbdinter|usepam|maxauth)'; "
+                         "ls /etc/ssh/sshd_config.d/; grep -v '^#' /etc/pam.d/sshd | grep -v '^$' | head -20").stdout, flush=True)
         check(group, "the home directory appears", "/home/lena" in login.stdout, login.stderr[-300:])
         if "hello" not in login.stdout:
-            print(vm.ssh("grep -n 'pam_mount\\|pam_sss' /etc/pam.d/password-auth; cat /etc/security/pam_mount.conf.xml | tail -6; "
+            print(vm.ssh("grep -n 'pam_mount\\|pam_sss\\|pam_unix' /etc/pam.d/password-auth /etc/pam.d/common-auth /etc/pam.d/common-session; cat /etc/security/pam_mount.conf.xml | tail -6; "
                          "journalctl -b --no-pager | grep -iE 'pam_mount|cifs|mount\\.' | grep -v AUDIT | tail -14; modprobe cifs; lsmod | grep -c cifs; "
                          "testparm -s 2>/dev/null | tail -5").stdout[-2500:], flush=True)
         check(group, "the share is there after login", "hello" in login.stdout)
@@ -797,7 +822,8 @@ def test_directory(admin, agent_bin, work, public_key):
             except (OSError, ValueError):
                 return False
         check(group, "Nextcloud runs", wait_for(cloud_ready, 240, 5))
-        vm.ssh("echo '10.0.2.2 cloud.home.test' >>/etc/hosts; dnf5 install -y gnome-keyring dbus-daemon", timeout=600)
+        vm.ssh("echo '10.0.2.2 cloud.home.test' >>/etc/hosts; " + ("DEBIAN_FRONTEND=noninteractive apt-get install -y -q gnome-keyring dbus-daemon"
+                                                                    if debian else "dnf5 install -y gnome-keyring dbus-daemon"), timeout=600)
         policy["nextcloud"] = {"url": f"https://cloud.home.test:{CLOUD_PORT}", "mode": "drive"}
         admin.call("PUT", f"{path}/policy", policy)
         tool.run("approve", input="y\n")
@@ -868,6 +894,10 @@ def test_directory(admin, agent_bin, work, public_key):
             proxy.terminate()
         stack.stop()
         vm.stop()
+
+
+def test_directory_debian(admin, agent_bin, work, public_key):
+    test_directory(admin, agent_bin, work, public_key, debian=True)
 
 
 def test_screentime(admin, agent_bin, work, public_key, kde=False):
@@ -1084,7 +1114,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -1112,7 +1142,8 @@ def main():
         for name in names:
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
                      "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
-                     "atomic-policy": test_atomic_policy, "directory": test_directory}
+                     "atomic-policy": test_atomic_policy, "directory": test_directory,
+                     "directory-debian": test_directory_debian}
             tests[name](admin, f"{work}/agent", work, public_key)
     finally:
         if signing:

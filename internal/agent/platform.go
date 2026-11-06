@@ -23,6 +23,9 @@ type Backend struct {
 	Install func(pkgs []string) []string
 	Remove  func(pkgs []string) []string
 	Upgrade func() []string
+	// Refresh comes before an install, if the package manager does not look for
+	// itself. A fresh Debian knows no packages at all before it.
+	Refresh []string
 	// Query asks whether a package is there, and Present reads the answer. A
 	// name can be what another package provides, as vim is on Fedora.
 	Query   func(pkg string) []string
@@ -99,6 +102,7 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			Install: func(p []string) []string { return append([]string{"apt-get", "install", "-y", "--"}, p...) },
 			Remove:  func(p []string) []string { return append([]string{"apt-get", "remove", "-y", "--"}, p...) },
 			Upgrade: func() []string { return []string{"sh", "-c", "apt-get update && apt-get upgrade -y"} },
+			Refresh: []string{"apt-get", "update"},
 			// A removed package stays known to dpkg, so the exit code says nothing.
 			Query: func(pkg string) []string { return []string{"dpkg-query", "-W", "-f=${db:Status-Status}", pkg} },
 			Present: func(out string, err error) bool {

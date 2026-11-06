@@ -106,8 +106,8 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 - Popups use the standard notification service of the desktop, so any desktop with
   one should work, but only GNOME and Plasma on Wayland are tested. So is screen time.
   The check of the screen lock knows only these two.
-- The login with directory accounts and shares are tested on Fedora only. Debian is
-  written but not tried, and the Nextcloud sync client is not tried either.
+- The login with directory accounts, shares and the Nextcloud drive are tested on
+  Fedora and Debian, in virtual machines. The Nextcloud sync client is not tried.
 - Atomic Fedora is tested on CoreOS, not on Silverblue or Kinoite, and Flatpak
   installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by
