@@ -804,7 +804,10 @@ def test_socket(admin, agent_bin):
     try:
         inside(DISTROS["fedora"][1] + " util-linux curl && useradd anna && useradd ben")
         _, enroll = admin.call("POST", "/api/enroll-tokens")
-        check(name, "enrollment", inside(enroll["command"].replace("sudo ", "", 1)).returncode == 0)
+        enrolled = inside(enroll["command"].replace("sudo ", "", 1))
+        check(name, "enrollment", enrolled.returncode == 0, enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        seen.add(device)
         sh("podman", "exec", "-d", container, "sh", "-c", "hauswart-agent run >/var/log/agent.log 2>&1")
         time.sleep(3)
         check(name, "the socket is there", inside("test -S /run/hauswart/user.sock").returncode == 0, inside("tail -5 /var/log/agent.log").stdout)
@@ -813,8 +816,6 @@ def test_socket(admin, agent_bin):
         check(name, "anna is anna", '"user":"anna"' in anna.stdout and " 200" in anna.stdout, anna.stdout + anna.stderr)
         check(name, "ben is ben", '"user":"ben"' in ben.stdout, ben.stdout)
 
-        device = next(d["id"] for d in admin.call("GET", "/api/devices")[1] if d["id"] not in seen and d["report"].get("distro"))
-        seen.add(device)
         code, out = admin.call("POST", "/api/users", {"username": "anna-socket", "linux_user": "anna", "password": "long enough password", "role": "member"})
         check(name, "account for anna", code == 201, str(out))
         account = next(u for u in admin.call("GET", "/api/users")[1] if u["username"] == "anna-socket")
