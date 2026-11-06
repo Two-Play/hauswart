@@ -502,6 +502,7 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		report := Collect(a.platform)
 		report.Insight = a.exec.collectInsight(ctx)
 		report.Policy = a.policy.Status()
+		report.Apps = a.policy.Apps()
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()

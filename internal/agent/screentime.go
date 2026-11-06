@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os/user"
 	"slices"
 	"strconv"
 	"strings"
@@ -142,6 +143,12 @@ func (pe *PolicyEngine) accounts(name string) []string {
 		if pinned == "" {
 			return nil
 		}
+		// A renamed directory account is not in /etc/passwd. A local account with
+		// this ID is someone else, who got the number of a deleted account.
+		if _, err := user.LookupId(pinned); err == nil {
+			pe.forgetAccount(name)
+			return nil
+		}
 		return []string{pinned}
 	}
 	if pinned == "" {
@@ -159,7 +166,46 @@ func (pe *PolicyEngine) accounts(name string) []string {
 	if pinned == person.Uid {
 		return []string{pinned}
 	}
+	// Gone for good: the name came back with a new ID.
+	if _, known := pe.exec.userName(context.Background(), pinned); !known {
+		pe.forgetAccount(name)
+		return []string{person.Uid}
+	}
 	return []string{pinned, person.Uid}
+}
+
+func (pe *PolicyEngine) forgetAccount(name string) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	delete(pe.state.ScreenUIDs, name)
+	if err := pe.saveState(); err != nil {
+		pe.log.Error("saving the policy state failed", "err", err)
+	}
+}
+
+// forgetUnusedAccounts drops the IDs of names no rule talks about any more.
+func (pe *PolicyEngine) forgetUnusedAccounts(p api.Policy) {
+	used := map[string]bool{}
+	for _, rule := range p.ScreenTime {
+		used[rule.User] = true
+	}
+	for _, rule := range p.Apps {
+		used[rule.User] = true
+	}
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	changed := false
+	for name := range pe.state.ScreenUIDs {
+		if !used[name] {
+			delete(pe.state.ScreenUIDs, name)
+			changed = true
+		}
+	}
+	if changed {
+		if err := pe.saveState(); err != nil {
+			pe.log.Error("saving the policy state failed", "err", err)
+		}
+	}
 }
 
 func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {

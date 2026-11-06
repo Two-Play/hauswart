@@ -56,6 +56,10 @@ type policyState struct {
 	UpdateError string `json:"update_error,omitempty"`
 	// Extensions hold how long a user may stay beyond the time windows.
 	Extensions map[string]time.Time `json:"extensions,omitempty"`
+	// AppRulesHash stands for the rules fapolicyd really took, and is set after it did.
+	AppRulesHash string `json:"app_rules_hash,omitempty"`
+	// FapolicydBefore says that the service was enabled before this agent came.
+	FapolicydBefore bool `json:"fapolicyd_before,omitempty"`
 	// AppFilters are the users whose Flatpaks are limited, by user ID.
 	AppFilters []string `json:"app_filters,omitempty"`
 	// ScreenUIDs remembers who a screen time rule is about, by the name in the rule.
@@ -88,6 +92,11 @@ type PolicyEngine struct {
 	// screenFresh says that the agent has not looked at the current rules yet.
 	// Whoever is logged in then was there first, and gets a lock and a minute.
 	screenFresh bool
+	// apps are the launchers of this device, from the last check.
+	apps []api.AppEntry
+	// accountsRestarted limits restarts of accounts-daemon to one per run of the
+	// agent. It helps once, after the package came, and never again after that.
+	accountsRestarted bool
 	// popups counts the warnings on their way, for tests.
 	popups sync.WaitGroup
 }
@@ -176,6 +185,13 @@ func (pe *PolicyEngine) nudge() {
 	case pe.wake <- struct{}{}:
 	default:
 	}
+}
+
+// Apps lists the applications of the device, for choosing from in the dashboard.
+func (pe *PolicyEngine) Apps() []api.AppEntry {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	return slices.Clone(pe.apps)
 }
 
 // Status is the part of a report about the policy, empty without one.
@@ -267,15 +283,17 @@ func (pe *PolicyEngine) Enforce(ctx context.Context) {
 	}
 	pe.enforceMounts(ctx, policy.Mounts, directory == checkOn, &o)
 	pe.enforceNextcloud(ctx, policy.Nextcloud, &o)
-	pe.enforceApps(ctx, policy.Apps, &o)
-	apps := pe.exec.launchers()
+	pe.enforceApps(ctx, policy, &o)
+	pe.forgetUnusedAccounts(policy)
+	apps := pe.exec.launchers().entries()
 	if len(o.corrected) > 0 {
 		pe.log.Warn("policy corrected this device", "items", o.corrected)
 	}
 
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
-	pe.status = api.PolicyStatus{CheckedAt: time.Now().UTC(), Deviations: o.deviations, Corrected: o.corrected, Checks: checks, Apps: apps.entries()}
+	pe.status = api.PolicyStatus{CheckedAt: time.Now().UTC(), Deviations: o.deviations, Corrected: o.corrected, Checks: checks}
+	pe.apps = apps
 }
 
 func (pe *PolicyEngine) enforceCAs(ctx context.Context, cas []api.CAInstallPayload, o *outcome) {

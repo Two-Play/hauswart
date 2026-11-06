@@ -187,8 +187,6 @@ type PolicyStatus struct {
 	// Corrected lists what the last check put right, which says that someone or
 	// something changed the device.
 	Corrected []string `json:"corrected,omitempty"`
-	// Apps are the applications with a launcher, to choose from in the dashboard.
-	Apps []AppEntry `json:"apps,omitempty"`
 }
 
 // AppEntry is an application a device has.
@@ -211,7 +209,7 @@ type PolicyConflict struct {
 }
 
 var (
-	appIDRe         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	appIDRe         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
 	shareRe         = regexp.MustCompile(`^[A-Za-z0-9._-]{1,80}$`)
 	nextcloudRe     = regexp.MustCompile(`^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._-]+)*$`)
 	ldapURIRe       = regexp.MustCompile(`^ldaps://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
@@ -373,6 +371,20 @@ func CheckPolicy(p Policy) error {
 	return nil
 }
 
+// UserWritable are the places a person can put a program into, or bring one in.
+var UserWritable = []string{"/home/", "/var/home/", "/tmp/", "/var/tmp/", "/dev/shm/", "/run/user/", "/media/", "/run/media/", "/mnt/"}
+
+// InUserWritable says whether a person decides what is at a path. Such a path means
+// nothing to a rule, and following a link there would let them write the rule.
+func InUserWritable(path string) bool {
+	return slices.ContainsFunc(UserWritable, func(dir string) bool { return strings.HasPrefix(path, dir) })
+}
+
+// SafeProgramPath accepts what can stand in a rule file, whose fields end at a space.
+func SafeProgramPath(path string) bool {
+	return commandRe.MatchString(path) && !strings.Contains(path, "..")
+}
+
 // These values go into the rule file of a daemon that decides on every program.
 func checkAppRule(r AppRule) error {
 	if !ValidUser(r.User) {
@@ -391,9 +403,13 @@ func checkAppRule(r AppRule) error {
 		}
 	}
 	for _, program := range r.ForbiddenPrograms {
-		if !commandRe.MatchString(program) || strings.Contains(program, "..") {
+		if !SafeProgramPath(program) || InUserWritable(program) {
 			return Fail(ErrInvalidAppRule, program)
 		}
+	}
+	// Taken together, that would allow only what it meant to deny.
+	if r.Strict && r.Flatpaks != nil && r.Flatpaks.Mode == FlatpakDeny {
+		return Fail(ErrInvalidAppRule, r.Flatpaks.Mode)
 	}
 	for _, app := range r.AllowedApps {
 		if !appIDRe.MatchString(app) {
@@ -516,6 +532,9 @@ func (p Policy) Hash() string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
+
+// ValidAppID says whether a launcher can be named in a rule.
+func ValidAppID(id string) bool { return appIDRe.MatchString(id) }
 
 // IsZero says whether a policy asks for nothing.
 func (p Policy) IsZero() bool { return p.Hash() == (Policy{}).Hash() }

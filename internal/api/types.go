@@ -129,6 +129,8 @@ type Report struct {
 
 	Insight
 
+	// Apps are the applications with a launcher, to choose from in the dashboard.
+	Apps []AppEntry `json:"apps,omitempty"`
 	// Policy is empty on a device without one.
 	Policy *PolicyStatus `json:"policy,omitempty"`
 }

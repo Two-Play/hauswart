@@ -44,13 +44,13 @@ var (
 func pamMountConf(mounts []api.MountRule) []byte {
 	var b strings.Builder
 	b.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n<!-- Managed by Hauswart -->\n<pam_mount>\n")
-	b.WriteString("<debug enable=\"0\" />\n<mntoptions allow=\"*\" />\n<mntoptions require=\"nosuid,nodev\" />\n")
+	b.WriteString("<debug enable=\"0\" />\n<mntoptions allow=\"*\" />\n<mntoptions require=\"nosuid,nodev,noexec\" />\n")
 	// It asks first now, and should ask like every login does.
 	b.WriteString("<msg-authpw>Password: </msg-authpw>\n")
 	b.WriteString("<logout wait=\"0\" hup=\"no\" term=\"no\" kill=\"no\" />\n<mkmountpoint enable=\"1\" remove=\"true\" />\n")
 	fmt.Fprintf(&b, "<cifsmount>timeout %d mount.cifs //%%(SERVER)/%%(VOLUME) %%(MNTPT) -o username=%%(USER),uid=%%(USERUID),gid=%%(USERGID)%%(before=\\\",\\\" OPTIONS)</cifsmount>\n", mountTimeout)
 	for _, mount := range mounts {
-		fmt.Fprintf(&b, "<volume uid=\"%d-4294967294\" fstype=\"cifs\" server=\"%s\" path=\"%s\" mountpoint=\"/media/%%(USER)-%s\" options=\"nosuid,nodev,vers=3.0\" />\n",
+		fmt.Fprintf(&b, "<volume uid=\"%d-4294967294\" fstype=\"cifs\" server=\"%s\" path=\"%s\" mountpoint=\"/media/%%(USER)-%s\" options=\"nosuid,nodev,noexec,vers=3.0\" />\n",
 			mountFirstUID, mount.Server, mount.Share, mount.Folder)
 	}
 	b.WriteString("</pam_mount>\n")

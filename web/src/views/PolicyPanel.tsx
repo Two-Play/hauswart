@@ -180,17 +180,28 @@ function AppRuleForm({
         <Checkbox
           label={t('policies.appStrict')}
           checked={!!rule.strict}
-          onChange={(e) => onChange({ ...rule, strict: e.currentTarget.checked })}
+          onChange={(e) => {
+            const strict = e.currentTarget.checked;
+            onChange({ ...rule, strict, flatpaks: strict && rule.flatpaks?.mode === 'deny' ? undefined : rule.flatpaks });
+          }}
         />
-        {rule.strict && (
-          <MultiSelect
-            label={t('policies.appAllowed')}
-            searchable
-            data={choices}
-            value={allowed}
-            onChange={(allowed_apps) => onChange({ ...rule, allowed_apps })}
-          />
-        )}
+        {rule.strict &&
+          (known.length > 0 ? (
+            <MultiSelect
+              label={t('policies.appAllowed')}
+              searchable
+              data={choices}
+              value={allowed}
+              onChange={(allowed_apps) => onChange({ ...rule, allowed_apps })}
+            />
+          ) : (
+            // No device has reported yet, and the rule should not have to wait for one.
+            <TagsInput
+              label={t('policies.appAllowed')}
+              value={allowed}
+              onChange={(allowed_apps) => onChange({ ...rule, allowed_apps })}
+            />
+          ))}
         <Select
           label={t('policies.appFlatpakMode')}
           allowDeselect={false}
@@ -201,7 +212,10 @@ function AppRuleForm({
               flatpaks: !next || next === 'none' ? undefined : { mode: next, apps: rule.flatpaks?.apps ?? [] },
             })
           }
-          data={['none', 'allow', 'deny'].map((value) => ({ value, label: t(`policies.appFlatpakModes.${value}`) }))}
+          data={(rule.strict ? ['none', 'allow'] : ['none', 'allow', 'deny']).map((value) => ({
+            value,
+            label: t(`policies.appFlatpakModes.${value}`),
+          }))}
         />
         {rule.flatpaks && (
           <TagsInput

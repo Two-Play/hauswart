@@ -235,9 +235,10 @@ func (s *Server) policyState(ctx context.Context, device string) (devicePolicy, 
 		state.Deviations = report.Policy.Deviations
 		state.Corrected = report.Policy.Corrected
 		state.Checks = report.Policy.Checks
-		state.Apps = report.Policy.Apps
 		state.CheckedAt = report.Policy.CheckedAt
 	}
+	// Also without a policy: the first rule needs something to choose from.
+	state.Apps = report.Apps
 	want := ""
 	if !effective.IsZero() {
 		want = effective.Hash()
