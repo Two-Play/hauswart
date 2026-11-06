@@ -216,11 +216,12 @@ func (e *Executor) firewallState(ctx context.Context) string {
 	}
 	switch firewall {
 	case firewallD:
+		// Without the daemon the tool says "FirewallD is not running".
 		out, _ := e.Run(ctx, "firewall-cmd", "--state")
-		switch strings.TrimSpace(out) {
-		case "running":
+		switch state := strings.TrimSpace(out); {
+		case state == "running":
 			return api.CheckOn
-		case "not running":
+		case strings.HasSuffix(state, "not running"):
 			return api.CheckOff
 		}
 		return api.CheckUnknown

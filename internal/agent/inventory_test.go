@@ -139,6 +139,12 @@ func TestFirewallIsOnlyAskedAbout(t *testing.T) {
 	if !slices.Equal(calls, []string{"firewall-cmd --state"}) {
 		t.Fatalf("got %v", calls)
 	}
+	e.Run = func(context.Context, string, ...string) (string, error) {
+		return "FirewallD is not running\n", errors.New("exit status 252")
+	}
+	if got := e.firewallState(context.Background()); got != api.CheckOff {
+		t.Fatal(got)
+	}
 	e.Run = func(context.Context, string, ...string) (string, error) { return "", context.DeadlineExceeded }
 	if got := e.firewallState(context.Background()); got != api.CheckUnknown {
 		t.Fatal(got)
