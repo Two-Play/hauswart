@@ -45,7 +45,7 @@ export interface UpdateStatus {
 }
 
 export interface Warning {
-  code: 'disk_full' | 'cert_expiring';
+  code: 'disk_full' | 'cert_expiring' | 'warranty_ending';
   value: number;
 }
 
@@ -179,4 +179,55 @@ export function useResource<T>(path: string, pollMs?: number) {
   }, [reload, pollMs]);
 
   return { data, error, reload };
+}
+
+export interface Asset {
+  tag?: string;
+  person?: string;
+  location?: string;
+  purchased?: string;
+  warranty_until?: string;
+  note?: string;
+}
+
+export interface InstalledPackage {
+  kind: 'package' | 'flatpak';
+  name: string;
+  version?: string;
+}
+
+export interface StoredInventory {
+  hardware: { vendor?: string; model?: string; serial?: string; bios?: string; cpu?: string };
+  disks?: { name: string; model?: string; size: number; rotational?: boolean }[];
+  network?: { name: string; mac?: string; addresses?: string[] }[];
+  security: { disk_encryption?: string; screen_lock?: string; firewall?: string };
+  truncated?: boolean;
+  package_count: number;
+  updated_at: number;
+}
+
+export interface InventoryDevice {
+  id: string;
+  hostname: string;
+  revoked: boolean;
+  last_seen: number;
+  distro?: string;
+  kernel?: string;
+  cpus?: number;
+  mem_total?: number;
+  disk_total?: number;
+  agent_version?: string;
+  updates?: UpdateStatus;
+  inventory_at?: string;
+  inventory?: StoredInventory;
+  asset: Asset;
+  warnings?: Warning[];
+  packages?: InstalledPackage[];
+}
+
+export interface SoftwareEntry {
+  kind: string;
+  name: string;
+  version: string;
+  devices: { id: string; hostname: string }[];
 }

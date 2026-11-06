@@ -1,0 +1,81 @@
+{
+  "inventory": {
+    "export": "CSV exportieren",
+    "save": "Speichern",
+    "search": "Suche",
+    "searchHint": "Name, Person, Seriennummer …",
+    "filter": "Anzeigen",
+    "empty": "Keine passenden Geräte.",
+    "device": "Gerät",
+    "model": "Modell",
+    "vendor": "Hersteller",
+    "serial": "Seriennummer",
+    "bios": "BIOS",
+    "cpu": "Prozessor",
+    "memory": "Arbeitsspeicher",
+    "system": "System",
+    "kernel": "Kernel",
+    "agent": "Agent",
+    "disks": "Festplatten",
+    "encryption": "Verschlüsselung",
+    "screenLock": "Bildschirmsperre",
+    "firewall": "Firewall",
+    "updates": "Updates",
+    "pending_one": "{{count}} offen",
+    "pending_other": "{{count}} offen",
+    "revoked": "Abgemeldet",
+    "revokedHint": "Dieses Gerät ist abgemeldet. Das sind seine letzten Angaben.",
+    "none": "Dieses Gerät hat noch kein Inventar gesendet.",
+    "reported": "Alles Folgende stammt vom Gerät selbst und kann falsch sein.",
+    "reportedAt": "Alles Folgende stammt vom Gerät selbst und kann falsch sein. Stand: {{time}}.",
+    "truncated": "Dieses Gerät hat mehr Pakete, als es senden darf. Die Liste ist deshalb unvollständig.",
+    "searchPackages": "Pakete suchen",
+    "noPackages": "Keine Pakete gefunden.",
+    "morePackages": "{{shown}} von {{count}} angezeigt. Die Suche grenzt die Liste ein.",
+    "package": "Paket",
+    "version": "Version",
+    "kind": "Art",
+    "noNetwork": "Keine Netzwerkkarten gefunden.",
+    "card": "Karte",
+    "mac": "MAC-Adresse",
+    "addresses": "Adressen",
+    "software": "Software",
+    "softwareHint": "Name eines Pakets oder Flatpaks, mindestens zwei Zeichen",
+    "noSoftware": "Nichts gefunden.",
+    "devices": "Geräte",
+    "moreSoftware": "Es gibt weitere Treffer. Suche bitte genauer.",
+    "kinds": {
+      "package": "Paket",
+      "flatpak": "Flatpak"
+    },
+    "check": {
+      "on": "An",
+      "off": "Aus",
+      "unknown": "Unbekannt"
+    },
+    "filters": {
+      "all": "Alle Geräte",
+      "unencrypted": "Nicht verschlüsselt",
+      "firewall": "Firewall aus",
+      "warranty": "Garantie läuft ab",
+      "updates": "Updates offen",
+      "revoked": "Abgemeldet"
+    },
+    "tabs": {
+      "devices": "Geräte",
+      "hardware": "Hardware",
+      "software_one": "Software ({{count}})",
+      "software_other": "Software ({{count}})",
+      "network": "Netzwerk",
+      "security": "Sicherheit"
+    },
+    "asset": {
+      "tag": "Inventarnummer",
+      "person": "Person",
+      "location": "Standort",
+      "purchased": "Kaufdatum",
+      "warranty_until": "Garantie bis",
+      "note": "Notiz"
+    }
+  }
+}

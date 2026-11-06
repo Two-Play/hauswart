@@ -156,10 +156,15 @@ def test_distro(name, admin, agent_bin, ca_pem):
         task = run_task(admin, id_, "pkg.install", {"packages": [package]})
         check(name, "pkg.install", task["status"] == "done", task["output"])
         check(name, "package really installed", inside(f"command -v {package}").returncode == 0)
+        def in_inventory():
+            return package in inventory_names(admin, id_)
+        check(name, "the inventory lists what the system has", wait_for(lambda: len(inventory_names(admin, id_)) > 20, 150), str(inventory_names(admin, id_))[:200])
+        check(name, "a new package reaches the inventory", wait_for(in_inventory, 150), str(inventory_names(admin, id_))[:200])
 
         task = run_task(admin, id_, "pkg.remove", {"packages": [package]})
         check(name, "pkg.remove", task["status"] == "done", task["output"])
         check(name, "package really removed", inside(f"command -v {package}").returncode != 0)
+        check(name, "and leaves the inventory", wait_for(lambda: not in_inventory(), 150), str(inventory_names(admin, id_))[:200])
 
         # A kernel directory that is not the running kernel's means a new kernel
         # was installed, which is what a reboot is for.
@@ -244,6 +249,20 @@ def wait_report(admin, device, condition, wait=150):
             return report
         time.sleep(2)
     return None
+
+
+def wait_for(condition, wait=150, step=3):
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if condition():
+            return True
+        time.sleep(step)
+    return False
+
+
+def inventory_names(admin, device):
+    code, entry = admin.call("GET", f"/api/inventory/{device}")
+    return [p["name"] for p in entry.get("packages", [])] if code == 200 else []
 
 
 def task_data(admin, task):

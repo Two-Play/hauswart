@@ -234,8 +234,47 @@ def test_flatpak(admin, agent_bin, work, public_key):
         check(group, "app really installed", FLATPAK_APP in vm.ssh("flatpak list --system --app --columns=application").stdout)
         task = e2e.run_task(admin, device, "flatpak.install", {"packages": [FLATPAK_APP]}, wait=120)
         check(group, "installing again is harmless", task["status"] == "done", task["output"])
+        check(group, "the Flatpak is in the inventory", wait_for(lambda: FLATPAK_APP in e2e.inventory_names(admin, device), 150))
     finally:
         vm.stop()
+
+
+def test_inventory(admin, agent_bin, work, public_key):
+    group = "inventory"
+    print("\n== inventory (Fedora Cloud 44 VM with made-up hardware)", flush=True)
+    smbios = "type=1,manufacturer=Hauswart Test,product=Box 7,serial=HW-0042"
+    vm = VM(work, group, cloud_image(), "fedora", 2247, [*cloud_seed(work, group, public_key), "-smbios", smbios])
+    try:
+        check(group, "VM boots", vm.wait_ssh())
+        vm.ssh("dnf5 install -y firewalld; systemctl disable --now firewalld", timeout=600)
+        device = start_agent(vm, admin, agent_bin, work)
+
+        def entry():
+            return admin.call("GET", f"/api/inventory/{device}")[1]
+        check(group, "the inventory arrives", wait_for(lambda: entry().get("inventory"), 150), str(entry())[:300])
+        inventory = entry()["inventory"]
+        hardware = inventory["hardware"]
+        check(group, "the hardware is the real one", (hardware.get("vendor"), hardware.get("model"), hardware.get("serial")) == ("Hauswart Test", "Box 7", "HW-0042"), str(hardware))
+        check(group, "the processor is named", hardware.get("cpu"), str(hardware))
+        check(group, "the disk is there", any(d["size"] > 10 << 30 for d in inventory.get("disks", [])), str(inventory.get("disks")))
+        cards = inventory.get("network", [])
+        check(group, "the network card is there", any(c.get("mac", "").startswith("52:54:00") and "10.0.2.15" in c.get("addresses", []) for c in cards), str(cards))
+        check(group, "without a policy too, the disk counts as unencrypted", inventory["security"].get("disk_encryption") == "off", str(inventory["security"]))
+        check(group, "a stopped firewall shows as off", inventory["security"].get("firewall") == "off", str(inventory["security"]))
+        check(group, "and asking does not start it", vm.ssh("systemctl is-active firewalld").stdout.strip() != "active")
+        count = int(vm.ssh("rpm -qa | sort -u | wc -l").stdout.strip())
+        check(group, "the whole package list arrives", abs(inventory["package_count"] - count) < 5, f'{inventory["package_count"]} of {count}')
+        check(group, "the report says how fresh it is", wait_for(lambda: entry().get("inventory_at"), 90), str(entry())[:200])
+
+        csv_data = vm_csv(admin)
+        check(group, "the export has the serial number", "HW-0042" in csv_data, csv_data[:300])
+    finally:
+        vm.stop()
+
+
+def vm_csv(admin):
+    with admin.opener.open(f"{e2e.URL}/api/inventory.csv", timeout=40) as response:
+        return response.read().decode()
 
 
 def test_ubuntu(admin, agent_bin, work, public_key):
@@ -1358,7 +1397,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "inventory", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -1384,7 +1423,7 @@ def main():
         code, _ = admin.call("POST", "/api/login", {"username": "admin", "password": password})
         assert code == 200, code
         for name in names:
-            tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
+            tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu, "inventory": test_inventory,
                      "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
                      "atomic-policy": test_atomic_policy, "directory": test_directory,
                      "directory-debian": test_directory_debian, "gui-kde": test_gui, "gui-gnome": test_gui_gnome,
