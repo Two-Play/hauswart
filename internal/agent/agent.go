@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -285,6 +286,8 @@ type Agent struct {
 
 	// guard is nil on a device without pinned keys.
 	guard *Guard
+	// policy keeps this device in the state its admin signed.
+	policy *PolicyEngine
 }
 
 // Load reads the enrolled state from dir.
@@ -339,10 +342,12 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 			Grants:       grants,
 			Run:          RunCommand,
 			RunInput:     RunCommandInput,
+			Has:          func(name string) bool { _, err := exec.LookPath(name); return err == nil },
 		},
 		platform: platform,
 		log:      log,
 	}
+	a.policy = OpenPolicy(dir, a.exec, log)
 	a.client = &http.Client{
 		Timeout: (pollWaitSecs + 15) * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
@@ -382,6 +387,8 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.taskLoop(ctx) })
 	wg.Go(func() { a.renewLoop(ctx) })
 	wg.Go(func() { a.updateLoop(ctx) })
+	wg.Go(func() { a.policy.Loop(ctx) })
+	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Wait()
 }
 
@@ -493,6 +500,7 @@ func (a *Agent) reportLoop(ctx context.Context) {
 	for {
 		report := Collect(a.platform)
 		report.Insight = a.exec.collectInsight(ctx)
+		report.Policy = a.policy.Status()
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()
@@ -561,8 +569,13 @@ func (a *Agent) handle(ctx context.Context, task api.Task) api.TaskResult {
 			"passkey", task.Approver, "payload", string(task.Payload))
 	}
 	a.log.Info("running task", "id", task.ID, "type", task.Type)
-	if task.Type == api.TaskKeysSet {
+	switch task.Type {
+	case api.TaskKeysSet:
 		return a.setKeys(task)
+	case api.TaskPolicySet, api.TaskPolicyClear:
+		return a.setPolicy(task)
+	case api.TaskScreenExtend:
+		return a.extendScreenTime(task)
 	}
 	return a.exec.Execute(ctx, task)
 }

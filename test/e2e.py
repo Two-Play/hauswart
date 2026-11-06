@@ -785,6 +785,171 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+POLICY_FILE = "/etc/hauswart.d/policy-test"
+
+
+def test_policy(distro, admin, agent_bin, work, password, admin_bin, ca_pem, stop_server, restart_server):
+    """The whole way of a policy, on a real package manager. Stopping the server
+    shows that a device keeps its state on its own."""
+    name = f"policy-{distro}"
+    image, setup, package = DISTROS[distro]
+    print(f"\n== {name} ({image})", flush=True)
+    container = f"{PREFIX}-{name}{SUFFIX}"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", image, "sleep", "1500", timeout=600)
+    home = f"{work}/{name}"
+    os.makedirs(home)
+    tool = Admin(home, admin_bin)
+    db_path = f"{work}/data/hauswart.db"
+
+    def inside(cmd, timeout=600):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=timeout)
+
+    def start_agent():
+        sh("podman", "exec", "-d", container, "sh", "-c",
+           "echo $$ >/run/agent.pid; exec hauswart-agent run >>/var/log/agent.log 2>&1")
+
+    def attack(device, payload, signed=""):
+        task_id = f"attack-{time.time_ns()}"
+        with sqlite3.connect(db_path, timeout=10) as db:
+            db.execute("INSERT INTO tasks (id, device_id, type, payload, status, signed, created_by, created_at) "
+                       "VALUES (?,?,?,?,'pending',?,'attacker',?)",
+                       (task_id, device, "policy.set", json.dumps(payload), signed, int(time.time())))
+        return wait_task(admin, task_id, 45)
+
+    def until(condition, wait=180):
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            if condition():
+                return True
+            time.sleep(2)
+        return False
+
+    def installed(pkg):
+        query = {"fedora": f"rpm -q {pkg}", "opensuse": f"rpm -q {pkg}", "arch": f"pacman -Q {pkg}",
+                 "debian": f"dpkg-query -W -f='${{db:Status-Status}}' {pkg} | grep -qx installed"}[distro]
+        return inside(query).returncode == 0
+
+    def ca_files():
+        # Plain ls, as not every image has find.
+        dirs = ("/etc/pki/ca-trust/source/anchors", "/etc/ca-certificates/trust-source/anchors",
+                "/etc/pki/trust/anchors", "/usr/local/share/ca-certificates")
+        return inside("ls " + " ".join(f"{d}/hauswart-home.crt" for d in dirs) + " 2>/dev/null").stdout.split()
+
+    def state():
+        _, view = admin.call("GET", f"/api/groups/{group}/policy")
+        return next(d for d in view["devices"] if d["id"] == device)
+
+    try:
+        inside(setup)
+        install = {"fedora": "dnf5 install -y nano", "opensuse": "zypper --non-interactive install nano",
+                   "arch": "pacman -S --noconfirm nano", "debian": "apt-get install -y nano"}[distro]
+        check(name, "forbidden package is there at first", inside(install).returncode == 0 and installed("nano"))
+
+        fingerprint = re.search(r"--ca-fingerprint (\w+)", admin.call("POST", "/api/enroll-tokens")[1]["command"]).group(1)
+        tool.run("login", "--server", URL, "--ca-fingerprint", fingerprint, "--user", "admin", input=password + "\n")
+        tool.run("keys", "add", f"{home}/primary.pub")
+        tool.run("keys", "add", f"{home}/offline.pub")
+        enrolled = inside(tool.run("enroll-command").stdout.strip().replace("sudo ", "", 1))
+        check(name, "enrollment", enrolled.returncode == 0, enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        seen.add(device)  # later tests look for the newest device they have not seen
+        start_agent()
+        report = wait_report(admin, device, lambda r: r.get("protected"), 30)
+        check(name, "device reports protection", report.get("protected"), str(report))
+        tool.run("name", device, f"{distro}-laptop")
+
+        code, out = admin.call("POST", "/api/groups", {"name": name})
+        check(name, "group created", code == 201, out)
+        group = out["id"]
+        admin.call("PUT", f"/api/groups/{group}/devices", {"devices": [device]})
+
+        policy = {
+            "required_packages": [package],
+            "forbidden_packages": ["nano"],
+            "files": [{"path": POLICY_FILE, "content": "wanted\n", "mode": "0640"}],
+            "cas": [{"name": "home", "pem": ca_pem}],
+        }
+        code, out = admin.call("PUT", f"/api/groups/{group}/policy", policy)
+        check(name, "policy saved", code == 204, out)
+        check(name, "it waits for a signature", state()["state"] == "signature", str(state()))
+        check(name, "nothing changed before the signature", installed("nano") and not installed(package))
+
+        task = attack(device, policy)
+        check(name, "ATTACK unsigned policy refused", task["status"] == "failed" and "signature" in task["output"], task["output"])
+        check(name, "the unsigned policy did nothing", installed("nano"))
+
+        shown = tool.run("approve", input="n\n")
+        check(name, "approve shows the rules",
+              f"required package {package}" in shown.stdout and "forbidden package nano" in shown.stdout
+              and "TRUSTED CA home" in shown.stdout and "wanted" in shown.stdout, shown.stdout + shown.stderr)
+        check(name, "the first policy is all new", "all of it is new" in shown.stdout, shown.stdout)
+        # The agent pauses, so that the signature can be read the way a server
+        # sees it. It is gone from the database once the task has run.
+        inside("kill -STOP $(cat /run/agent.pid)")
+        signed = tool.run("approve", input="y\n")
+        check(name, "approve signs", "Signed." in signed.stdout, signed.stdout + signed.stderr)
+        with sqlite3.connect(db_path, timeout=10) as db:
+            # A waiting long poll may have claimed it already, for the paused agent.
+            captured = db.execute("SELECT signed FROM tasks WHERE type = 'policy.set' AND status IN ('pending','running') "
+                                  "AND signed != '' AND device_id = ?", (device,)).fetchone()[0]
+        inside("kill -CONT $(cat /run/agent.pid)")
+
+        check(name, "required package arrives", until(lambda: installed(package)))
+        check(name, "forbidden package goes", until(lambda: not installed("nano")))
+        check(name, "file arrives", until(lambda: inside(f"cat {POLICY_FILE}").stdout == "wanted\n"))
+        check(name, "file has its mode", inside(f"stat -c %a {POLICY_FILE}").stdout.strip() == "640")
+        check(name, "CA is in the trust store", until(lambda: ca_files()), inside("cat /var/log/agent.log | tail -5").stdout)
+        print(f"       CA files: {ca_files()}", flush=True)
+        check(name, "the dashboard says up to date", until(lambda: state()["state"] == "current"), str(state()))
+
+        task = attack(device, policy, captured)
+        check(name, "ATTACK replayed policy refused", task["status"] == "failed" and "counter" in task["output"], task["output"])
+        document = json.loads(captured)
+        envelope = json.loads(base64.b64decode(document["envelope"]))
+        envelope["payload"]["required_packages"] = ["nano"]
+        envelope["payload"]["forbidden_packages"] = []
+        document["envelope"] = base64.b64encode(json.dumps(envelope).encode()).decode()
+        task = attack(device, policy, json.dumps(document))
+        check(name, "ATTACK changed policy refused", task["status"] == "failed" and "signature" in task["output"], task["output"])
+
+        # The device is on its own from here on.
+        stop_server()
+        inside(f"kill $(cat /run/agent.pid); echo changed >{POLICY_FILE}; chmod 666 {POLICY_FILE}")
+        sh("podman", "exec", container, "sh", "-c", install, check_rc=False, timeout=600)
+        check(name, "drift is real", installed("nano") and inside(f"cat {POLICY_FILE}").stdout == "changed\n")
+        start_agent()
+        check(name, "offline: file restored", until(lambda: inside(f"cat {POLICY_FILE}").stdout == "wanted\n", 60))
+        check(name, "offline: mode restored", inside(f"stat -c %a {POLICY_FILE}").stdout.strip() == "640")
+        check(name, "offline: forbidden package removed", until(lambda: not installed("nano"), 120))
+        restart_server()
+        admin.call("POST", "/api/login", {"username": "admin", "password": password})
+        report = wait_report(admin, device, lambda r: "policy" in r and r["policy"].get("corrected"), 90)
+        check(name, "the report says what was corrected",
+              any(POLICY_FILE in item for item in report.get("policy", {}).get("corrected", [])), str(report.get("policy")))
+
+        policy["required_packages"] = [package, "hw-no-such-package"]
+        admin.call("PUT", f"/api/groups/{group}/policy", policy)
+        shown = tool.run("approve", input="y\n")
+        check(name, "the diff shows the change",
+              "+ required package hw-no-such-package" in shown.stdout and "- " not in shown.stdout.split("Changes since")[1].split("Sign?")[0],
+              shown.stdout)
+        check(name, "an impossible rule shows as a deviation",
+              until(lambda: state()["state"] == "deviation" and "hw-no-such-package" in str(state()["deviations"]), 150), str(state()))
+
+        admin.call("PUT", f"/api/groups/{group}/devices", {"devices": []})
+        shown = tool.run("approve", input="y\n")
+        check(name, "leaving the group needs a signature too", "REMOVE THE POLICY" in shown.stdout, shown.stdout + shown.stderr)
+        check(name, "the CA is no longer trusted", until(lambda: len(ca_files()) == 0))
+        check(name, "what the policy installed stays", installed(package))
+        report = wait_report(admin, device, lambda r: "policy" not in r, 90)
+        check(name, "no policy in the report any more", "policy" not in report, str(report.get("policy")))
+    finally:
+        tool.close()
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 NTFY_IMAGE = "docker.io/binwiederhier/ntfy:latest"
 MAILPIT_IMAGE = "docker.io/axllent/mailpit:latest"
 NTFY_PORT, SMTP_PORT, MAILPIT_PORT = 18481, 18482, 18483
@@ -832,12 +997,12 @@ def test_notify(admin, work, restart_server):
         with open(f"{service}/mail-users", "w") as f:
             f.write("hauswart:mail-secret\n")
         os.chmod(f"{service}/mail-users", 0o644)
-        sh("podman", "run", "-d", "--name", containers[0], "--network", "host", "-v", f"{service}:/tls:ro,Z",
+        sh("podman", "run", "-d", "--name", containers[0], "--network", "host", "-v", f"{service}:/tls:ro,z",
            "-e", "NTFY_BASE_URL=https://" + SERVICE_IP, "-e", f"NTFY_LISTEN_HTTP=-", "-e", f"NTFY_LISTEN_HTTPS={SERVICE_IP}:{NTFY_PORT}",
            "-e", "NTFY_KEY_FILE=/tls/key.pem", "-e", "NTFY_CERT_FILE=/tls/cert.pem",
            "-e", "NTFY_AUTH_FILE=/tmp/auth.db", "-e", "NTFY_AUTH_DEFAULT_ACCESS=deny-all",
            "-e", "NTFY_CACHE_FILE=/tmp/cache.db", NTFY_IMAGE, "serve", timeout=300)
-        sh("podman", "run", "-d", "--name", containers[1], "--network", "host", "-v", f"{service}:/tls:ro,Z",
+        sh("podman", "run", "-d", "--name", containers[1], "--network", "host", "-v", f"{service}:/tls:ro,z",
            MAILPIT_IMAGE, "--smtp", f"{SERVICE_IP}:{SMTP_PORT}", "--listen", f"{SERVICE_IP}:{MAILPIT_PORT}",
            "--smtp-tls-cert", "/tls/cert.pem", "--smtp-tls-key", "/tls/key.pem", "--smtp-require-starttls",
            "--smtp-auth-file", "/tls/mail-users", timeout=300)
@@ -1008,7 +1173,7 @@ seen = set()
 
 def main():
     # Short lifetimes apply to the whole server, so this runs on its own.
-    names = sys.argv[1:] or [*DISTROS, *(f"journal-{d}" for d in DISTROS), "systemd", "signing"]
+    names = sys.argv[1:] or [*DISTROS, *(f"journal-{d}" for d in DISTROS), *(f"policy-{d}" for d in DISTROS), "systemd", "signing"]
     extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
     if names == ["notify"]:  # the CA scope is fixed when the CA is made
         extra_args = ["-ca-scope", "home.test,127.0.0.0/8"]
@@ -1030,6 +1195,10 @@ def main():
                 stderr=log, stdout=log)
 
     server = start_server()
+
+    def stop_server():
+        server.terminate()
+        server.wait()
 
     def restart_server():
         nonlocal server
@@ -1069,6 +1238,8 @@ def main():
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             elif name.startswith("journal-"):
                 test_journal(name.removeprefix("journal-"), admin, agent_bin)
+            elif name.startswith("policy-"):
+                test_policy(name.removeprefix("policy-"), admin, agent_bin, work, password, admin_bin, ca_pem, stop_server, restart_server)
             else:
                 test_distro(name, admin, agent_bin, ca_pem)
     finally:

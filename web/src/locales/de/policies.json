@@ -1,0 +1,98 @@
+{
+  "policies": {
+    "title": "Policy",
+    "empty": "Diese Gruppe hat keine Policy.",
+    "create": "Policy anlegen",
+    "edit": "Policy bearbeiten",
+    "delete": "Policy entfernen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "remove": "Entfernen",
+    "saved": "Gespeichert. Auf den Geräten ändert sich erst etwas, wenn du mit hauswart-admin approve signierst.",
+    "conflict": "{{item}} widerspricht sich zwischen: {{groups}}",
+    "corrected": "Letzte Prüfung hat korrigiert: {{items}}",
+    "software": "Software",
+    "requiredPackages": "Pflichtpakete",
+    "forbiddenPackages": "Verbotene Pakete",
+    "forbiddenHint": "Beim Entfernen eines Pakets kann auch das verschwinden, was davon abhängt.",
+    "requiredFlatpaks": "Pflicht-Flatpaks",
+    "forbiddenFlatpaks": "Verbotene Flatpaks",
+    "files": "Dateien",
+    "filesHint": "Nur Pfade, die das Gerät in seiner agent.json erlaubt. Alles andere erscheint als Abweichung.",
+    "path": "Pfad",
+    "mode": "Rechte",
+    "content": "Inhalt",
+    "addFile": "Datei hinzufügen",
+    "cas": "Zertifizierungsstellen",
+    "casHint": "Ein Gerät vertraut ihnen, solange sie in seiner Policy stehen.",
+    "caName": "Name",
+    "caPem": "Zertifikat (PEM)",
+    "addCA": "Zertifizierungsstelle hinzufügen",
+    "updates": "Automatische Updates",
+    "updatesOn": "Updates im Wartungsfenster installieren",
+    "days": "Tage",
+    "start": "Von",
+    "end": "Bis",
+    "reboot": "Neustart",
+    "rebootRule": {
+      "never": "Nie von selbst neu starten",
+      "window": "Bei Bedarf im Fenster neu starten"
+    },
+    "security": "Sicherheit",
+    "firewall": "Firewall eingeschaltet halten",
+    "diskEncryption": "Festplattenverschlüsselung prüfen (nur Meldung)",
+    "screenLock": "Bildschirmsperre prüfen (nur Meldung)",
+    "screenTime": "Bildschirmzeit",
+    "screenTimeHint": "Außerhalb dieser Zeiten endet die Sitzung, und Ungespeichertes geht verloren. Ein Tag ohne Zeit heißt: an diesem Tag keine Sitzung.",
+    "timeZone": "Zeitzone",
+    "linuxUser": "Linux-Benutzer",
+    "addWindow": "Zeit hinzufügen",
+    "addRule": "Benutzer hinzufügen",
+    "day": {
+      "mon": "Montag",
+      "tue": "Dienstag",
+      "wed": "Mittwoch",
+      "thu": "Donnerstag",
+      "fri": "Freitag",
+      "sat": "Samstag",
+      "sun": "Sonntag"
+    },
+    "states": {
+      "none": "Keine Policy",
+      "current": "Aktuell",
+      "signature": "Wartet auf Signatur",
+      "pending": "Unterwegs",
+      "outdated": "Nicht aktuell",
+      "deviation": "Abweichung",
+      "conflict": "Widerspruch",
+      "unprotected": "Keine Signaturschlüssel"
+    },
+    "checks": {
+      "disk_encryption": "Festplattenverschlüsselung",
+      "screen_lock": "Bildschirmsperre",
+      "firewall": "Firewall"
+    },
+    "checkState": {
+      "on": "an",
+      "off": "aus",
+      "unknown": "unbekannt"
+    }
+  },
+  "errors": {
+    "policy_too_large": "Die Policy hat zu viele Einträge oder ist größer als {{value}} KiB.",
+    "package_protected": "{{value}} kann nicht verboten werden, das Gerät hängt davon ab.",
+    "invalid_time_zone": "Die Zeitzone fehlt oder ist ungültig: {{value}}",
+    "invalid_reboot": "Die Neustart-Regel ist ungültig: {{value}}",
+    "invalid_window": "Das Zeitfenster ist ungültig: {{value}}",
+    "policy_conflict": "Die Policy widerspricht sich selbst: {{value}}",
+    "invalid_extension": "Eine Verlängerung braucht ein Ende höchstens {{value}} von jetzt."
+  },
+  "fields": {
+    "extend_minutes": "Mehr Zeit in Minuten"
+  },
+  "taskTypes": {
+    "screen_extend": "Bildschirmzeit verlängern",
+    "policy_set": "Policy setzen",
+    "policy_clear": "Policy entfernen"
+  }
+}

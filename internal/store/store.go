@@ -182,6 +182,12 @@ var migrations = []string{
 	ALTER TABLE devices ADD COLUMN passkey_counter INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE tasks ADD COLUMN passkey_envelope BLOB NOT NULL DEFAULT '';
 	ALTER TABLE tasks ADD COLUMN passkey_counter INTEGER NOT NULL DEFAULT 0;`,
+	`CREATE TABLE group_policies (
+		group_id INTEGER PRIMARY KEY REFERENCES device_groups(id) ON DELETE CASCADE,
+		document TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {

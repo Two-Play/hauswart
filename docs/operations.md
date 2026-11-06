@@ -277,7 +277,9 @@ Removing `pkg.remove` and `flatpak.install` is a sensible first step. An empty l
 turns passkeys off on that device. Restart the agent after a change. Types beyond
 the default stay refused, so the list can only get shorter. The default is
 `pkg.install`, `pkg.remove`, `pkg.upgrade`, `flatpak.install`, `power.reboot`,
-`power.shutdown`, `power.cancel` and `notify.send`.
+`power.shutdown`, `power.cancel`, `notify.send` and `screen.extend`. A device
+enrolled before `screen.extend` existed has the older list in its file, so add it
+there to extend screen time with a passkey.
 
 To see what passkeys approved on a device:
 
@@ -401,6 +403,75 @@ desktop, or to one Linux user. The task fails if no session took it, which is no
 the same as someone reading it: GNOME shows one banner at a time and keeps it up
 until the user is active. A device that is off or offline for more than an hour
 does not show it later. The fixed warnings about restarts are in English.
+
+## Keep devices in a defined state
+
+A policy belongs to a group and applies to its members, which need pinned signing
+keys. Under **Groups**, choose **Create policy** on a group. Nothing changes on a
+device until you sign:
+
+```bash
+hauswart-admin approve
+```
+
+`approve` shows the whole policy and what changed since you last signed for that
+device. The last signed policies stay on your computer, in `policies` next to
+`admin.json`. If the same policy waits for several devices, `a` signs it for all of
+them.
+
+The group page shows where each device stands:
+
+| State | Meaning |
+| --- | --- |
+| Up to date | The device has this policy and nothing differs. |
+| Waiting for signature | Run `hauswart-admin approve`. |
+| On its way | Signed, the device has not picked it up yet. |
+| Not up to date | The device has something else, for example after a rejected signature. Save the policy again. |
+| Deviation | The device has the policy, but could not do all of it. The reason is listed. |
+| Contradiction | The groups of this device disagree. The device keeps what it has until you change one of them. |
+| No signing keys | Pin signing keys on this device first. |
+
+A device applies a policy at start, right after receiving it and every 15 minutes,
+with or without the server.
+
+A device in several groups gets all their rules. Lists add up, and the stricter
+security rule wins.
+
+When an entry leaves a policy, packages and files stay on the device. CAs are
+removed. Removing a device from its group needs a signature as well.
+
+A CA in a policy takes over a CA of the same name that was installed by hand, and
+leaves with the policy.
+
+A device can stay **Not up to date** after you rejected a signature, or when the
+signed task expired or failed. Saving the policy again queues it anew.
+
+### Updates
+
+With a maintenance window, a device installs updates once per window, in the time
+zone of the policy or else its own. A device that was off for a window waits for the
+next one. With the restart rule, it restarts in the window if an update needs that,
+after a warning of 10 minutes.
+
+### Security rules
+
+- **Firewall:** firewalld or ufw is kept on. If neither is installed, this shows as
+  a deviation. Add `firewalld` to the required packages to fix that.
+- **Disk encryption and screen lock** are only checked. Neither can be forced on a
+  running system. The screen lock can only be seen in a running GNOME or Plasma
+  session, and otherwise says unknown.
+
+### Screen time
+
+Each rule names a Linux user and their times per day. A day without a time means no
+session on that day. Warnings come 15, 5 and 1 minutes before the end. At the end
+the session locks, and a minute later it ends. **Unsaved work is lost then.**
+
+To give someone more time today, choose **Extend screen time** on the device. This
+is possible with a passkey, at most four hours ahead and until midnight.
+
+Policies with screen time need a time zone. The dashboard fills in that of your
+browser, and warnings use the language you were using when you saved.
 
 ## Notifications about requests
 

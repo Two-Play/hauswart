@@ -350,6 +350,20 @@ func TestGuardAdmitsPasskeyTask(t *testing.T) {
 	}
 }
 
+// A parent has to be able to give more time from a phone.
+func TestGuardAdmitsPasskeyExtension(t *testing.T) {
+	a := passkeytest.New(t)
+	env := passkeyEnvelope(1)
+	env.Type = api.TaskScreenExtend
+	got, err := passkeyGuard(t, a).Admit(approved(t, a, env), guardDevice, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != api.TaskScreenExtend {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestGuardRejectsPasskeyTasks(t *testing.T) {
 	envelopeWith := func(change func(*sign.Envelope)) sign.Envelope {
 		env := passkeyEnvelope(1)
@@ -369,7 +383,9 @@ func TestGuardRejectsPasskeyTasks(t *testing.T) {
 		"file":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskFilePut }),
 		"user":           envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskUserCreate }),
 		"limit":          envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskLimitSet }),
-		"unknown future": envelopeWith(func(e *sign.Envelope) { e.Type = "policy.set" }),
+		"unknown future": envelopeWith(func(e *sign.Envelope) { e.Type = "some.future" }),
+		"policy":         envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskPolicySet }),
+		"policy removal": envelopeWith(func(e *sign.Envelope) { e.Type = api.TaskPolicyClear }),
 	}
 	for name, env := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -14,6 +14,14 @@ const (
 	ErrCertServerName   = "cert_server_name"
 	ErrCANotConstrained = "ca_not_constrained"
 	ErrInvalidCertDays  = "invalid_cert_days"
+
+	ErrPolicyTooLarge   = "policy_too_large"
+	ErrPackageProtected = "package_protected"
+	ErrInvalidTimeZone  = "invalid_time_zone"
+	ErrInvalidReboot    = "invalid_reboot"
+	ErrInvalidWindow    = "invalid_window"
+	ErrPolicyConflict   = "policy_conflict"
+	ErrInvalidExtension = "invalid_extension"
 )
 
 func init() {
@@ -28,5 +36,13 @@ func init() {
 		ErrCertServerName:   "%s belongs to the Hauswart server itself",
 		ErrCANotConstrained: "this CA has no name constraints, so it must not issue service certificates",
 		ErrInvalidCertDays:  "validity must be 1 to %s days",
+
+		ErrPolicyTooLarge:   "policy has too many entries or is larger than %s KiB",
+		ErrPackageProtected: "%s cannot be forbidden, the device depends on it",
+		ErrInvalidTimeZone:  "invalid or missing time zone %s",
+		ErrInvalidReboot:    "invalid reboot rule %s",
+		ErrInvalidWindow:    "invalid time window %s",
+		ErrPolicyConflict:   "the policy contradicts itself: %s",
+		ErrInvalidExtension: "an extension needs an end at most %s from now",
 	})
 }

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
 import { buildPayload, taskKey } from '../tasks';
 import { Loaded, showError } from '../ui';
+import { PolicyPanel } from './PolicyPanel';
 
 interface DeviceGroup {
   id: number;
@@ -86,6 +87,7 @@ function GroupCard({ group, devices, reload }: { group: DeviceGroup; devices: De
             </Button>
           </Group>
         </form>
+        <PolicyPanel groupId={group.id} devices={devices} />
       </Stack>
     </Paper>
   );

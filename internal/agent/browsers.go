@@ -111,3 +111,47 @@ func (e *Executor) chromiumPolicies(name, certPEM string) error {
 	}
 	return errors.Join(errs...)
 }
+
+// untrustInBrowsers undoes trustInBrowsers. Other settings in the Firefox
+// policies stay, like everything that was not added here.
+func (e *Executor) untrustInBrowsers(name string) error {
+	errs := []error{e.removeFirefoxPolicy(name)}
+	for _, dir := range chromiumPolicyDirs {
+		err := os.Remove(e.path(filepath.Join(dir, "hauswart-"+name+".json")))
+		if !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (e *Executor) removeFirefoxPolicy(name string) error {
+	certPath := filepath.Join(firefoxPolicyDir, "hauswart-"+name+".crt")
+	if err := os.Remove(e.path(certPath)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	file := e.path(filepath.Join(firefoxPolicyDir, "policies.json"))
+	raw, err := os.ReadFile(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	doc := map[string]any{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("%s is not valid JSON, leaving it alone: %w", firefoxPolicyDir, err)
+	}
+	policies, _ := doc["policies"].(map[string]any)
+	certificates, _ := policies["Certificates"].(map[string]any)
+	install, _ := certificates["Install"].([]any)
+	if !slices.Contains(install, any(certPath)) {
+		return nil
+	}
+	certificates["Install"] = slices.DeleteFunc(install, func(entry any) bool { return entry == any(certPath) })
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomic(file, out, 0o644)
+}

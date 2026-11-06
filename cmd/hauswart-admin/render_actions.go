@@ -19,6 +19,11 @@ func actionDeadline(taskType string, payload []byte) (time.Time, bool) {
 		if json.Unmarshal(payload, &p) == nil {
 			return p.ExpiresAt, true
 		}
+	case api.TaskScreenExtend:
+		var extension api.ScreenExtendPayload
+		if json.Unmarshal(payload, &extension) == nil {
+			return extension.Until, true
+		}
 	}
 	return time.Time{}, false
 }

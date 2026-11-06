@@ -1,0 +1,98 @@
+{
+  "policies": {
+    "title": "Policy",
+    "empty": "This group has no policy.",
+    "create": "Create policy",
+    "edit": "Edit policy",
+    "delete": "Remove policy",
+    "save": "Save",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "saved": "Saved. Nothing changes on a device until you sign it with hauswart-admin approve.",
+    "conflict": "{{item}} contradicts itself between: {{groups}}",
+    "corrected": "Last check put right: {{items}}",
+    "software": "Software",
+    "requiredPackages": "Required packages",
+    "forbiddenPackages": "Forbidden packages",
+    "forbiddenHint": "Removing a package can take what depends on it along.",
+    "requiredFlatpaks": "Required Flatpaks",
+    "forbiddenFlatpaks": "Forbidden Flatpaks",
+    "files": "Files",
+    "filesHint": "Only paths the device allows in its agent.json. Anything else shows up as a deviation.",
+    "path": "Path",
+    "mode": "Mode",
+    "content": "Content",
+    "addFile": "Add file",
+    "cas": "Certificate authorities",
+    "casHint": "A device trusts these for as long as they are in its policy.",
+    "caName": "Name",
+    "caPem": "Certificate (PEM)",
+    "addCA": "Add certificate authority",
+    "updates": "Automatic updates",
+    "updatesOn": "Install updates in a maintenance window",
+    "days": "Days",
+    "start": "From",
+    "end": "To",
+    "reboot": "Restart",
+    "rebootRule": {
+      "never": "Never restart on its own",
+      "window": "Restart in the window when needed"
+    },
+    "security": "Security",
+    "firewall": "Keep the firewall on",
+    "diskEncryption": "Check disk encryption (report only)",
+    "screenLock": "Check the screen lock (report only)",
+    "screenTime": "Screen time",
+    "screenTimeHint": "Outside these times the session ends, and unsaved work is lost. A day without a time means no session on that day.",
+    "timeZone": "Time zone",
+    "linuxUser": "Linux user",
+    "addWindow": "Add time",
+    "addRule": "Add user",
+    "day": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "states": {
+      "none": "No policy",
+      "current": "Up to date",
+      "signature": "Waiting for signature",
+      "pending": "On its way",
+      "outdated": "Not up to date",
+      "deviation": "Deviation",
+      "conflict": "Contradiction",
+      "unprotected": "No signing keys"
+    },
+    "checks": {
+      "disk_encryption": "Disk encryption",
+      "screen_lock": "Screen lock",
+      "firewall": "Firewall"
+    },
+    "checkState": {
+      "on": "on",
+      "off": "off",
+      "unknown": "unknown"
+    }
+  },
+  "errors": {
+    "policy_too_large": "The policy has too many entries or is larger than {{value}} KiB.",
+    "package_protected": "{{value}} cannot be forbidden, the device depends on it.",
+    "invalid_time_zone": "The time zone is missing or not valid: {{value}}",
+    "invalid_reboot": "The restart rule is not valid: {{value}}",
+    "invalid_window": "The time window is not valid: {{value}}",
+    "policy_conflict": "The policy contradicts itself: {{value}}",
+    "invalid_extension": "An extension needs an end at most {{value}} from now."
+  },
+  "fields": {
+    "extend_minutes": "More time in minutes"
+  },
+  "taskTypes": {
+    "screen_extend": "Extend screen time",
+    "policy_set": "Set policy",
+    "policy_clear": "Remove policy"
+  }
+}

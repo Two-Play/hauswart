@@ -15,6 +15,9 @@ var DefaultPasskeyTypes = []string{
 	"power.shutdown",
 	"power.cancel",
 	"notify.send",
+	// At most a few hours of today, and a parent has to be able to give them
+	// from a phone.
+	TaskScreenExtend,
 }
 
 // PasskeyEligible says whether a type can be approved with a passkey at all.

@@ -109,9 +109,21 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 	s.recordInsight(r, id, &rep)
+	before, err := s.store.DeviceReport(r.Context(), id)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
 	if err := s.store.SaveReport(r.Context(), id, rep); err != nil {
 		s.internal(w, err)
 		return
+	}
+	// A device that just became protected can receive its policy from now on.
+	if rep.Protected && !before.Protected {
+		if err := s.syncPolicies(r, "agent:"+id, []string{id}); err != nil {
+			s.internal(w, err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

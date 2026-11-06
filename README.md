@@ -33,6 +33,10 @@ in containers, not on physical machines or over a real VPN. See
 - Optional approval with a passkey from a browser or phone, limited per device
   to a list of task types and weaker than a signature
 - Roles for admins, parents who approve, and members with their own devices
+- Signed policies per group that devices enforce on their own, also without the
+  server: required and forbidden software, files, CAs, updates in a maintenance
+  window, firewall, and reports on disk encryption and the screen lock
+- Screen time per user with warnings, and more time for today from a phone
 - Audit log of every action
 - Backup and restore
 
@@ -92,8 +96,8 @@ GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See
 ## Limitations
 
 - Not yet tried on real hardware or over a real VPN.
-- Popups are tested in GNOME on Wayland only. Other desktops should work, but
-  are not tested.
+- Popups and screen time are tested in GNOME and Plasma on Wayland only. Other
+  desktops should work, but are not tested.
 - Atomic Fedora is tested on CoreOS, not on Silverblue or Kinoite, and Flatpak
   installs are tested on a server image, without starting the app.
 - On Debian, browsers ignore the system store, so the CA has to be imported by

@@ -20,12 +20,17 @@ export const ACTION_FIELDS: Record<string, TaskField[]> = {
   ],
   'group.add': [user, group],
   'group.remove': [user, group],
+  'screen.extend': [user, { name: 'extend_minutes', kind: 'number', required: true }],
 };
 
 /** Adds what these tasks need beyond the form. */
 export function addActionPayload(type: string, payload: Record<string, unknown>): Record<string, unknown> {
   if (type === 'power.reboot' || type === 'power.shutdown' || type === 'notify.send') {
     payload.expires_at = new Date(Date.now() + VALID_MINUTES * 60_000).toISOString();
+  }
+  if (payload.extend_minutes !== undefined) {
+    payload.until = new Date(Date.now() + Number(payload.extend_minutes) * 60_000).toISOString();
+    delete payload.extend_minutes;
   }
   if (payload.delay_minutes !== undefined) {
     payload.delay_minutes = Number(payload.delay_minutes);

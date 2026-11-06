@@ -566,6 +566,8 @@ func approve(_ []string) error {
 		return err
 	}
 	input := bufio.NewReader(os.Stdin)
+	// Policies that were accepted for every device they are queued for.
+	acceptedPolicies := map[string]bool{}
 	for i, task := range queue {
 		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
 		known := cfg.Devices[task.DeviceID]
@@ -578,12 +580,32 @@ func approve(_ []string) error {
 			fmt.Printf("  Skipped, cannot sign this: %v\n", err)
 			continue
 		}
-		fmt.Printf("  Device: %s (%s)\n  %s\nSign? [y/N/r to reject] ", known.Name, task.DeviceID, text)
-		answer, err := input.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+		answer := "y"
+		fingerprint := policyFingerprint(task.Type, payload)
+		if fingerprint != "" && acceptedPolicies[fingerprint] {
+			fmt.Printf("  Device: %s (%s)\n  Same policy as accepted above.\n", known.Name, task.DeviceID)
+		} else {
+			fmt.Printf("  Device: %s (%s)\n  %s\n", known.Name, task.DeviceID, text)
+			prompt := "Sign? [y/N/r to reject] "
+			if fingerprint != "" {
+				fmt.Println(policyChanges(task.DeviceID, task.Type, payload))
+				if others := identicalPolicies(cfg, queue[i+1:], fingerprint); len(others) > 0 {
+					fmt.Printf("  The same policy waits for other devices:\n%s\n", strings.Join(others, "\n"))
+					prompt = "Sign? [y/N/a for all of these/r to reject] "
+				}
+			}
+			fmt.Print(prompt)
+			line, err := input.ReadString('\n')
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			answer = strings.ToLower(strings.TrimSpace(line))
 		}
-		switch strings.ToLower(strings.TrimSpace(answer)) {
+		if answer == "a" && fingerprint != "" {
+			acceptedPolicies[fingerprint] = true
+			answer = "y"
+		}
+		switch answer {
 		case "y":
 			signed, err := seal(cfg, key, task.DeviceID, list[task.DeviceID].Report, task.Type, payload, signedUntil(task.Type, payload))
 			if err != nil {
@@ -591,6 +613,11 @@ func approve(_ []string) error {
 			}
 			if err := cfg.call("POST", "/api/tasks/"+task.ID+"/signature", signed, nil); err != nil {
 				return err
+			}
+			if fingerprint != "" {
+				if err := rememberPolicy(task.DeviceID, task.Type, payload); err != nil {
+					return err
+				}
 			}
 			fmt.Println("Signed.")
 		case "r":

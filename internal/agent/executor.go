@@ -22,6 +22,8 @@ const (
 	maxOutput   = 64 << 10
 	minUserUID  = 1000
 	flathubURL  = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+
+	commandWaitDelay = 5 * time.Second
 )
 
 // Executor applies tasks to the system. Root is prepended to every path it
@@ -36,6 +38,9 @@ type Executor struct {
 	// RunInput is Run with data on stdin, for values that must stay out of
 	// the process list.
 	RunInput func(ctx context.Context, input, name string, args ...string) (string, error)
+	// Has looks for a program. Platform is from the start of the agent, and a
+	// policy can install what was missing then. Tests leave it empty.
+	Has func(name string) bool
 
 	insight insightState
 }
@@ -123,7 +128,7 @@ func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, json.RawMe
 func (e *Executor) packages(ctx context.Context, taskType string, names []string) (string, error) {
 	defer e.lockPackages()()
 	if taskType == api.TaskFlatpakInstall {
-		if !e.Platform.Flatpak {
+		if !e.flatpakInstalled() {
 			return "", errors.New("flatpak is not installed")
 		}
 		// Fresh systems often have no Flathub remote yet.
@@ -457,6 +462,13 @@ func RunCommandInput(ctx context.Context, input, name string, args ...string) (s
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive")
 	cmd.Stdin = strings.NewReader(input)
+	// Killing a command does not reach what it started. Without this, anything
+	// that keeps the pipe open would block the agent forever, and commands that
+	// run as a user can be stopped by that user.
+	cmd.WaitDelay = commandWaitDelay
 	out, err := cmd.CombinedOutput()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil // the command itself succeeded
+	}
 	return string(out), err
 }

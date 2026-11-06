@@ -128,6 +128,9 @@ type Report struct {
 	DiskUsed     uint64   `json:"disk_used"`
 
 	Insight
+
+	// Policy is empty on a device without one.
+	Policy *PolicyStatus `json:"policy,omitempty"`
 }
 
 type EnrollRequest struct {

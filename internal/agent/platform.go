@@ -23,7 +23,15 @@ type Backend struct {
 	Install func(pkgs []string) []string
 	Remove  func(pkgs []string) []string
 	Upgrade func() []string
+	// Query asks whether a package is there, and Present reads the answer. A
+	// name can be what another package provides, as vim is on Fedora.
+	Query   func(pkg string) []string
+	Present func(out string, err error) bool
 }
+
+func rpmQuery(pkg string) []string { return []string{"rpm", "-q", "--whatprovides", pkg} }
+
+func exitedCleanly(_ string, err error) bool { return err == nil }
 
 // Trust describes how a distribution manages its system CA store.
 type Trust struct {
@@ -39,6 +47,8 @@ type Platform struct {
 	Backend *Backend
 	Flatpak bool
 	Trust   *Trust
+	// Firewall is firewalld, ufw, or empty if neither is installed.
+	Firewall string
 }
 
 func simpleBackend(name string, install, remove, upgrade []string) *Backend {
@@ -53,6 +63,8 @@ func simpleBackend(name string, install, remove, upgrade []string) *Backend {
 		Install: withPkgs(install),
 		Remove:  withPkgs(remove),
 		Upgrade: func() []string { return upgrade },
+		Query:   rpmQuery,
+		Present: exitedCleanly,
 	}
 }
 
@@ -85,6 +97,11 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			Install: func(p []string) []string { return append([]string{"apt-get", "install", "-y", "--"}, p...) },
 			Remove:  func(p []string) []string { return append([]string{"apt-get", "remove", "-y", "--"}, p...) },
 			Upgrade: func() []string { return []string{"sh", "-c", "apt-get update && apt-get upgrade -y"} },
+			// A removed package stays known to dpkg, so the exit code says nothing.
+			Query: func(pkg string) []string { return []string{"dpkg-query", "-W", "-f=${db:Status-Status}", pkg} },
+			Present: func(out string, err error) bool {
+				return err == nil && strings.TrimSpace(out) == "installed"
+			},
 		}
 	case has("zypper"):
 		return simpleBackend("zypper",
@@ -92,10 +109,12 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			[]string{"zypper", "--non-interactive", "remove", "--"},
 			[]string{"zypper", "--non-interactive", "update"})
 	case has("pacman"):
-		return simpleBackend("pacman",
+		backend := simpleBackend("pacman",
 			[]string{"pacman", "-S", "--noconfirm", "--needed", "--"},
 			[]string{"pacman", "-R", "--noconfirm", "--"},
 			[]string{"pacman", "-Syu", "--noconfirm"})
+		backend.Query = func(pkg string) []string { return []string{"pacman", "-Q", pkg} }
+		return backend
 	}
 	return nil
 }
@@ -130,11 +149,22 @@ func Detect() Platform {
 	}
 	_, err := os.Stat("/run/ostree-booted")
 	return Platform{
-		Distro:  distroName(),
-		Backend: detectBackend(has, err == nil),
-		Flatpak: has("flatpak"),
-		Trust:   detectTrust(has, dirExists),
+		Distro:   distroName(),
+		Backend:  detectBackend(has, err == nil),
+		Flatpak:  has("flatpak"),
+		Trust:    detectTrust(has, dirExists),
+		Firewall: detectFirewall(has),
 	}
+}
+
+func detectFirewall(has func(string) bool) string {
+	switch {
+	case has("firewall-cmd"):
+		return firewallD
+	case has("ufw"):
+		return firewallUFW
+	}
+	return ""
 }
 
 func distroName() string {

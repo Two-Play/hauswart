@@ -76,7 +76,12 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request, u sto
 	if !ok {
 		return
 	}
-	err := s.store.DeleteGroup(r.Context(), id)
+	members, err := s.store.GroupDevices(r.Context(), id)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	err = s.store.DeleteGroup(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusNotFound, api.ErrNoSuchGroup)
 		return
@@ -86,6 +91,10 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request, u sto
 		return
 	}
 	s.audit(r, u.Username, "group.deleted", r.PathValue("id"))
+	if err := s.syncPolicies(r, u.Username, members); err != nil {
+		s.internal(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -100,7 +109,12 @@ func (s *Server) handleSetGroupDevices(w http.ResponseWriter, r *http.Request, u
 	if !readJSON(w, r, &in) {
 		return
 	}
-	err := s.store.SetGroupDevices(r.Context(), id, in.Devices)
+	before, err := s.store.GroupDevices(r.Context(), id)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	err = s.store.SetGroupDevices(r.Context(), id, in.Devices)
 	if errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusNotFound, api.ErrNoSuchGroup)
 		return
@@ -110,6 +124,11 @@ func (s *Server) handleSetGroupDevices(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	s.audit(r, u.Username, "group.devices", r.PathValue("id"))
+	// Who left needs the policy without this group as much as who joined.
+	if err := s.syncPolicies(r, u.Username, append(before, in.Devices...)); err != nil {
+		s.internal(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

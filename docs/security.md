@@ -166,6 +166,40 @@ services, but not other websites: real browsers refuse such certificates, which
 `test/browsers.py` proves. Impersonating the server to an agent gains nothing
 beyond control of the server itself.
 
+### Policies
+
+A policy is signed like any other task, and a passkey cannot approve one, so a
+hacked server cannot change or remove one. Its limits:
+
+- **A server decides when a policy arrives.** It can hold back a new one, and it can
+  deliver an older signed one that has not expired yet, up to 30 days after signing,
+  as long as nothing newer reached the device. A device shows what it has in its
+  report, but a hacked server can fake the dashboard.
+- **A policy repeats itself.** What you sign, a device applies again and again. So a
+  CA or a package in a policy is a decision for as long as the policy lasts, and
+  removing a package by hand does not last.
+- **A forbidden package can take others with it.** Package managers remove what
+  depends on it. Hauswart refuses to forbid packages a device cannot do without, but
+  that list is short. Read the diff before you sign.
+- **The merge happens on the server,** so review what `approve` shows and not what
+  the dashboard says the groups contain.
+
+### Screen time
+
+Screen time is meant for children who have no root rights. Its limits:
+
+- **Anyone with sudo can get around all of it,** by stopping the agent or changing
+  the clock. That includes a running sudo grant from Hauswart.
+- **It controls sessions, not apps or websites.** Forbidding a package works for
+  classic packages. A Flatpak in a home directory, a portable program or a web app
+  remains possible during allowed times.
+- **It needs the agent.** There are no PAM rules behind it. Up to 15 seconds in a
+  session outside the allowed time remain possible.
+- **The clock is the device's.** Changing the time zone does not help, but changing
+  the time does, for whoever has the right to. Check that children do not.
+- **An extension by passkey can be abused by a hacked server** like any passkey
+  approval, for up to four hours until midnight, within the daily limit of approvals.
+
 ### With control of a device
 
 - Act as that one device: send false reports and results for its own tasks.

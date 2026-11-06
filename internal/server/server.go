@@ -47,6 +47,9 @@ type Server struct {
 	publicURL string
 	log       *slog.Logger
 
+	// policyMu keeps policy changes for a device one after the other.
+	policyMu sync.Mutex
+
 	mu       sync.Mutex
 	waiters  map[string]chan struct{}
 	failures map[string]*loginFailure

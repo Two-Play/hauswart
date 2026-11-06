@@ -128,18 +128,39 @@ func (e *Executor) popup(ctx context.Context, only, message, urgency string) (sh
 // desktopUsers finds the people with a graphical session. The login screen has
 // its own class and is left out, like system accounts and remote sessions.
 func (e *Executor) desktopUsers(ctx context.Context) ([]*user.User, error) {
+	sessions, err := e.graphicalSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var people []*user.User
+	for _, session := range sessions {
+		if !slices.ContainsFunc(people, func(u *user.User) bool { return u.Uid == session.person.Uid }) {
+			people = append(people, session.person)
+		}
+	}
+	return people, nil
+}
+
+// graphicalSession is a graphical session of an ordinary account.
+type graphicalSession struct {
+	person *user.User
+	// desktop is what the session calls itself, such as gnome or KDE.
+	desktop string
+}
+
+func (e *Executor) graphicalSessions(ctx context.Context) ([]graphicalSession, error) {
 	out, err := e.Run(ctx, "loginctl", "list-sessions", "--no-legend")
 	if err != nil {
 		return nil, errors.New("loginctl failed, is this a systemd device?")
 	}
-	var people []*user.User
+	var sessions []graphicalSession
 	for line := range strings.Lines(out) {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || !sessionIDRe.MatchString(fields[0]) {
 			continue
 		}
 		shown, err := e.Run(ctx, "loginctl", "show-session", fields[0],
-			"-p", "Name", "-p", "Type", "-p", "Class", "-p", "State", "-p", "Remote")
+			"-p", "Name", "-p", "Type", "-p", "Class", "-p", "State", "-p", "Remote", "-p", "Desktop")
 		if err != nil {
 			continue // the session ended in the meantime
 		}
@@ -154,11 +175,9 @@ func (e *Executor) desktopUsers(ctx context.Context) ([]*user.User, error) {
 		if uid, _ := strconv.Atoi(person.Uid); uid < minUserUID {
 			continue
 		}
-		if !slices.ContainsFunc(people, func(u *user.User) bool { return u.Uid == person.Uid }) {
-			people = append(people, person)
-		}
+		sessions = append(sessions, graphicalSession{person: person, desktop: session["Desktop"]})
 	}
-	return people, nil
+	return sessions, nil
 }
 
 func graphical(session map[string]string) bool {

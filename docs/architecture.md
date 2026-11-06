@@ -176,6 +176,57 @@ device. Missing means the default, an empty list means none. The agent reads it 
 start, no task changes it, and `keys.set` leaves it alone. It can only narrow
 `DefaultPasskeyTypes` in `internal/api/passkeys.go`, which is also the ceiling.
 
+## Policies
+
+A policy is the state a device keeps on its own: required and forbidden packages
+and Flatpaks, files, CAs, a maintenance window, security rules and screen time.
+
+Groups hold policies, and devices receive one document. `api.MergePolicies` builds
+it from the policies of a device's groups: lists add up, and the stricter security
+rule wins. Anything else that disagrees, such as a package that is both required
+and forbidden, is a conflict. A device with a conflict receives nothing and keeps
+what it has, until an admin settles it.
+
+The merge runs on the server, and that needs no trust: an admin signs the result.
+`policy.set` and `policy.clear` are signed tasks that a passkey can never approve,
+and a device without pinned keys refuses both. Every change of a policy or of a
+group's members queues them for the devices it touches, replacing what nobody
+signed yet. `hauswart-admin approve` shows the whole policy, compares it with the
+last one signed from that computer, and offers to sign identical policies for
+several devices at once.
+
+The agent stores the policy in `policy.json` and works from it alone:
+
+- `PolicyEngine.Enforce` runs at start, after a new policy and every 15 minutes.
+  One entry that fails costs only that entry. Only a second look at the device
+  counts as success, because a package manager can succeed and change nothing.
+- Files stay bound to the allowed paths of the device. A CA leaves the trust store
+  with the policy, and everything else stays when an entry is dropped.
+- Updates run once per maintenance window, and a window a device missed is not made
+  up for. The start is stored first, so that a reboot in the window cannot repeat
+  the run.
+- An unreadable `policy.json` is reported and changes nothing, because treating it
+  like no policy would remove CAs.
+
+The report carries the hash, what differs, what was corrected and the results of
+the checks. The server compares the hash with the merge to show each device's state.
+
+### Screen time
+
+`PolicyEngine.ScreenLoop` looks at `loginctl` every 15 seconds. Someone inside
+their time gets warnings 15, 5 and 1 minutes before the end. At the end the session
+locks, and a minute later `loginctl terminate-user` ends it. Someone who logs in
+outside their time is out at the next check, without a warning or a grace period,
+so that logging in again earns nothing.
+
+There are no PAM changes on purpose: a mistake there locks everyone out, and this
+works the same for accounts that come from elsewhere later. The time zone is part
+of the policy, so that changing the zone of a device moves nothing.
+
+`screen.extend` gives more time for today. It holds a moment and not a duration, so
+that a late task gives no more than was meant. A passkey may approve it, and the
+agent limits it to four hours and to midnight.
+
 ## Roles
 
 | Role | May do |

@@ -4,7 +4,7 @@ real reboots and popups in a real desktop session.
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop]
+directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy]
 """
 import hashlib
 import json
@@ -530,6 +530,228 @@ AutomaticLogin=anna
 GNOME_PACKAGES = "gdm gnome-shell gnome-session-wayland-session gnome-settings-daemon mesa-dri-drivers dbus-tools kernel-modules"
 
 
+# A hand picked set starts a session that is not a working desktop.
+KDE_PACKAGES = "@kde-desktop mesa-dri-drivers dbus-tools kernel-modules"
+SDDM_CONFIG = """[Autologin]
+User=anna
+Session=plasma
+"""
+
+
+def desktop_session(vm, group, kde):
+    """Brings up a real desktop with automatic login for anna."""
+    check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+    vm.ssh("cloud-init status --wait; useradd anna")
+    packages = KDE_PACKAGES if kde else GNOME_PACKAGES
+    weak = "" if kde else "--setopt=install_weak_deps=False"
+    installed = vm.ssh(f"dnf5 install -y {weak} {packages} firewalld", timeout=2400)
+    check(group, "desktop installed", installed.returncode == 0, installed.stderr[-800:])
+    if kde:
+        vm.ssh(f"mkdir -p /etc/sddm.conf.d; cat >/etc/sddm.conf.d/autologin.conf <<'CONF'\n{SDDM_CONFIG}CONF\n"
+               "systemctl set-default graphical.target")
+        # Fedora starts a first run wizard under its own user, and its own login
+        # manager, instead of the configured automatic login.
+        vm.ssh("dnf5 remove -y plasma-setup; dnf5 install -y sddm; systemctl disable plasmalogin; systemctl enable --force sddm", timeout=600)
+    else:
+        vm.ssh(f"cat >/etc/gdm/custom.conf <<'CONF'\n{GDM_CONFIG}CONF\nsystemctl set-default graphical.target; systemctl enable gdm")
+    vm.ssh("systemctl disable --now firewalld")
+    vm.ssh("systemctl reboot", timeout=30)
+    time.sleep(15)
+    check(group, "VM comes back with a desktop", vm.wait_ssh())
+    return "sddm" if kde else "gdm"
+
+
+def graphical_session(vm):
+    """The ID of anna's graphical session, or an empty string."""
+    ids = vm.ssh("loginctl list-sessions --no-legend | awk '$3 == \"anna\" {print $1}'").stdout.split()
+    for session in ids:
+        shown = vm.ssh(f"loginctl show-session {session} -p Type").stdout
+        if "wayland" in shown or "x11" in shown:
+            return session
+    return ""
+
+
+def midday():
+    """A fixed zone where it is around noon, so that no test reaches midnight."""
+    now = datetime.now(timezone.utc)
+    hours = 12 - now.hour
+    if hours > 12:
+        hours -= 24
+    # The sign of these names is the other way around.
+    return f"Etc/GMT{-hours:+d}" if hours else "UTC", now + timedelta(hours=hours)
+
+
+def wait_for(condition, wait=180, step=3):
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if condition():
+            return True
+        time.sleep(step)
+    return False
+
+
+def test_atomic_policy(admin, agent_bin, work, public_key):
+    """A policy on rpm-ostree: layering a package and an update window."""
+    group = "atomic-policy"
+    print("\n== atomic-policy (Fedora CoreOS VM)", flush=True)
+    tool = signing_tool(admin, work)
+    ignition = {
+        "ignition": {"version": "3.4.0"},
+        "passwd": {"users": [{"name": "core", "sshAuthorizedKeys": [public_key]}]},
+        "systemd": {"units": [{"name": "zincati.service", "mask": True}]},
+    }
+    with open(f"{work}/config-policy.ign", "w") as f:
+        json.dump(ignition, f)
+    vm = VM(work, group, previous_coreos_image(), "core", 2238,
+            ["-fw_cfg", f"name=opt/com.coreos/config,file={work}/config-policy.ign"])
+    try:
+        check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+        vm.copy(agent_bin, "/tmp/hauswart-agent")
+        vm.ssh("install -m755 /tmp/hauswart-agent /usr/local/bin/hauswart-agent")
+        command = tool.run("enroll-command").stdout.strip().replace("sudo ", "", 1).replace(e2e.URL, GUEST_URL)
+        command = command.replace("hauswart-agent", "/usr/local/bin/hauswart-agent", 1)
+        enrolled = vm.ssh(command)
+        check(group, "enrollment", enrolled.returncode == 0, enrolled.stdout + enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        tool.run("name", device, group)
+        vm.ssh("systemd-run --unit=hauswart-agent /usr/local/bin/hauswart-agent run")
+        check(group, "device reports protection", wait_for(lambda: report_of(admin, device).get("protected"), 60, 1))
+        report = e2e.wait_report(admin, device, lambda r: r.get("updates", {}).get("pending"), 420)
+        check(group, "a newer image is pending", report, str(report_of(admin, device).get("updates")))
+
+        code, out = admin.call("POST", "/api/groups", {"name": group})
+        path = f"/api/groups/{out['id']}"
+        admin.call("PUT", f"{path}/devices", {"devices": [device]})
+        zone, now = midday()
+        window = {"days": [now.strftime("%a").lower()], "start": "00:00", "end": "24:00"}
+        policy = {"required_packages": ["tree"], "time_zone": zone, "updates": {"window": window, "reboot": "never"}}
+        code, out = admin.call("PUT", f"{path}/policy", policy)
+        check(group, "policy saved", code == 204, out)
+        shown = tool.run("approve", input="y\n")
+        check(group, "approve signs", "Signed." in shown.stdout, shown.stdout + shown.stderr)
+
+        check(group, "required package is layered", wait_for(lambda: vm.ssh("command -v tree").returncode == 0, 900, 10),
+              vm.ssh("journalctl -u hauswart-agent --no-pager | tail -20").stdout)
+        report = e2e.wait_report(admin, device, lambda r: r.get("updates", {}).get("reboot") == "required", 1200)
+        check(group, "the window stages the update", report, str(report_of(admin, device).get("updates")))
+        check(group, "the rule keeps the device from rebooting", vm.ssh("test -e /run/systemd/shutdown/scheduled").returncode != 0)
+
+        def state():
+            view = admin.call("GET", f"{path}/policy")[1]
+            return view["devices"][0]
+        check(group, "the dashboard says up to date", wait_for(lambda: state()["state"] == "current", 150), str(state()))
+    finally:
+        vm.stop()
+
+
+def test_screentime(admin, agent_bin, work, public_key, kde=False):
+    """A real session runs out of time on a protected device, and the security
+    rules meet a real firewall and a real desktop."""
+    group = "kde" if kde else "screentime"
+    print(f"\n== {group} (Fedora Cloud 44 VM, {'Plasma' if kde else 'GNOME'}, automatic login)", flush=True)
+    tool = signing_tool(admin, work)
+    vm = VM(work, group, cloud_image(), "fedora", 2237 if kde else 2236,
+            [*cloud_seed(work, group, public_key), "-vga", "virtio"])
+
+    def notifications():
+        return vm.ssh("cat /tmp/notifications.log").stdout
+
+    try:
+        manager = desktop_session(vm, group, kde)
+        check(group, "anna has a graphical session", wait_for(lambda: graphical_session(vm)),
+              vm.ssh(f"loginctl list-sessions; journalctl -b -u {manager} --no-pager | tail -15").stdout)
+        time.sleep(20)  # the shell needs a moment before it owns the service
+        uid = vm.ssh("id -u anna").stdout.strip()
+        device = protected_agent(vm, admin, tool, agent_bin, group)
+        bus = f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus"
+        vm.ssh(f"systemd-run --unit=notifications --uid=anna --setenv={bus} "
+               "sh -c \"exec dbus-monitor --session \\\"interface='org.freedesktop.Notifications',member='Notify'\\\" >/tmp/notifications.log\"")
+
+        code, out = admin.call("POST", "/api/groups", {"name": group})
+        check(group, "group created", code == 201, out)
+        path = f"/api/groups/{out['id']}"
+        admin.call("PUT", f"{path}/devices", {"devices": [device]})
+        zone, now = midday()
+        end = (now + timedelta(minutes=4)).strftime("%H:%M")
+        today = now.strftime("%a").lower()
+        policy = {
+            "security": {"firewall": True, "disk_encryption": True, "screen_lock": True},
+            "time_zone": zone,
+            "language": "de",
+            "screen_time": [{"user": "anna", "windows": [{"days": [today], "start": "00:00", "end": end}]}],
+        }
+        code, out = admin.call("PUT", f"{path}/policy", policy)
+        check(group, "policy saved", code == 204, out)
+
+        task = attack(admin, work, device, "screen.extend", {"user": "anna", "until": valid_for(60)})
+        check(group, "ATTACK unsigned extension refused", task["status"] == "failed" and "signature" in task["output"], task["output"])
+
+        shown = tool.run("approve", input="y\n")
+        check(group, "the rule is shown before signing", f"user anna may be logged in: {today} 00:00-{end}" in shown.stdout, shown.stdout + shown.stderr)
+
+        check(group, "firewall comes on", wait_for(lambda: vm.ssh("systemctl is-active firewalld").stdout.strip() == "active", 60))
+        check(group, "warning in the chosen language", wait_for(lambda: "Bildschirmzeit" in notifications(), 60), notifications())
+
+        report = {}
+
+        def checks_arrived():
+            nonlocal report
+            report = report_of(admin, device).get("policy", {})
+            return report.get("checks", {}).get("firewall") == "on"
+        check(group, "the report has the checks", wait_for(checks_arrived, 150), str(report))
+        check(group, "the cloud image counts as unencrypted", report["checks"].get("disk_encryption") == "off", str(report))
+        session = graphical_session(vm)
+        print(vm.ssh(f"loginctl show-session {session} -p Desktop -p Type -p Class -p State -p Remote; "
+                     f"runuser -u anna -- env {bus} gsettings get org.gnome.desktop.screensaver lock-enabled 2>&1; "
+                     f"runuser -u anna -- env {bus} gsettings get org.gnome.desktop.session idle-delay 2>&1; "
+                     f"runuser -u anna -- env {bus} busctl --user status org.freedesktop.Notifications 2>&1 | grep -E '^(Comm|Exe)=';"
+                     "ps -u anna -o comm= | sort -u | tr '\\n' ' '; echo").stdout, flush=True)
+        check(group, "a real session has a screen lock", report["checks"].get("screen_lock") == "on", str(report))
+
+        check(group, "last warning", wait_for(lambda: "Noch 1 Minute" in notifications(), 240), notifications())
+        session = graphical_session(vm)
+        check(group, "the session is locked at the end",
+              wait_for(lambda: "LockedHint=yes" in vm.ssh(f"loginctl show-session {session} -p LockedHint").stdout, 120, 2),
+              vm.ssh(f"loginctl show-session {session}").stdout)
+        check(group, "the user is told", "vorbei" in notifications(), notifications())
+        check(group, "the session ends a minute later", wait_for(lambda: not graphical_session(vm), 100, 2),
+              vm.ssh("loginctl list-sessions").stdout)
+
+        vm.ssh(f"systemctl restart {manager}", timeout=60)
+        appeared = wait_for(lambda: graphical_session(vm), 90, 1)
+        ended = wait_for(lambda: not graphical_session(vm), 40, 1)
+        check(group, "a new login appears", appeared, vm.ssh(f"loginctl list-sessions; systemctl status {manager} --no-pager | tail").stdout)
+        check(group, "and ends within seconds", ended, vm.ssh("loginctl list-sessions").stdout)
+
+        until = (datetime.now(timezone.utc) + timedelta(minutes=10))
+        task, shown = signed_task(admin, tool, device, "screen.extend", {"user": "anna", "until": until.isoformat()})
+        check(group, "the extension is shown", "Let anna stay logged in" in shown, shown)
+        check(group, "the extension runs", task["status"] == "done", task["output"])
+        vm.ssh(f"systemctl restart {manager}", timeout=60)
+        check(group, "with an extension the session comes back", wait_for(lambda: graphical_session(vm), 90, 2),
+              vm.ssh("loginctl list-sessions").stdout)
+        time.sleep(40)
+        check(group, "and it stays", graphical_session(vm), vm.ssh("loginctl list-sessions").stdout)
+
+        if kde:
+            vm.ssh("mkdir -p /home/anna/.config; printf '[Daemon]\\nAutolock=false\\n' >/home/anna/.config/kscreenlockerrc; "
+                   "chown -R anna: /home/anna/.config; systemctl restart hauswart-agent")
+
+            def lock_off():
+                return report_of(admin, device).get("policy", {}).get("checks", {}).get("screen_lock") == "off"
+            check(group, "Plasma without a lock is reported", wait_for(lock_off, 150), str(report_of(admin, device).get("policy")))
+
+        vm.ssh("systemctl stop firewalld; systemctl restart hauswart-agent")
+        check(group, "a stopped firewall comes back",
+              wait_for(lambda: vm.ssh("systemctl is-active firewalld").stdout.strip() == "active", 60))
+    finally:
+        vm.stop()
+
+
+def test_kde(admin, agent_bin, work, public_key):
+    test_screentime(admin, agent_bin, work, public_key, kde=True)
+
+
 def screendump(monitor, path):
     """Saves what the VM's screen shows, through the QEMU monitor."""
     with socket.socket(socket.AF_UNIX) as conn:
@@ -636,7 +858,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -663,7 +885,8 @@ def main():
         assert code == 200, code
         for name in names:
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
-                     "power": test_power, "desktop": test_desktop}
+                     "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
+                     "atomic-policy": test_atomic_policy}
             tests[name](admin, f"{work}/agent", work, public_key)
     finally:
         if signing:
