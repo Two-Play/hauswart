@@ -442,7 +442,9 @@ Serial numbers, MAC addresses and lists of software are personal data once a dev
 belongs to someone, as are the names you add yourself. They stay on the server and in
 its backups, only admins can see them, and devices are never deleted, so neither are
 they. The inventory only reads, and changes nothing on a device. What a device reports
-is unproven, so it should not decide anything.
+is unproven, so it should not decide anything. A hacked device can use it against
+whoever reads it, which is why text is limited, and why a CSV export neutralises formulas.
+Do not turn that off when you import the file.
 
 ## Reporting a problem
 

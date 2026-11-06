@@ -358,10 +358,11 @@ means the device has been off for months or cannot reach the server. See
 ## Keep an inventory
 
 **Inventory** in the dashboard lists every device, for admins only. A device sends its
-hardware, installed packages and Flatpaks, network cards and security state at start,
-every six hours and after a package task, but only if something changed. All of it
-comes from the device, so a hacked device can lie, and it can be up to six hours old,
-IP addresses included. Details show when it was taken.
+hardware, installed packages, system-wide Flatpaks, network cards and security state
+at start, every six hours and after a package task. Flatpaks a person installed for
+themselves and snaps are not listed. All of it comes from the device, so a hacked device
+can lie. It is as old as the time shown in the details, usually up to six hours, and
+longer for a device that was off. If a device cannot list its packages, the last list stays.
 
 Open a device to add what only you know: inventory number, person, location, purchase
 date, warranty and a note. A warranty shows a warning from 30 days before its end until
@@ -369,7 +370,9 @@ date, warranty and a note. A warranty shows a warning from 30 days before its en
 versions. A revoked device keeps its details, marked as such.
 
 **Export CSV** gives one line per device, and the audit log records it. A value that a
-spreadsheet would read as a formula starts with `'`, as a device picks its own name.
+spreadsheet would read as a formula starts with `'` and every field is quoted, as a
+device picks its own name. Excel with German settings may show all of a line in one column
+at first. Import the file with a comma as separator.
 Devices without an agent, such as printers, are not listed.
 
 ## Certificates
@@ -714,6 +717,8 @@ sudo systemctl start hauswart-server
 
 Enrolled devices keep working, because the CA is the same. Without a backup, the
 CA is lost and every device has to be enrolled again.
+
+Devices send their inventory again within six hours, so it catches up by itself.
 
 ## Development
 

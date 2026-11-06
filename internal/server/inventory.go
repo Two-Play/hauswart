@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +17,9 @@ const (
 	minSoftwareQuery = 2
 	maxSoftwareQuery = 128
 )
+
+// minInventoryGap is below the pace of an agent, which looks once a minute.
+var minInventoryGap = 30 * time.Second
 
 func init() {
 	addRoutes(func(s *Server, mux *http.ServeMux) {
@@ -43,7 +45,6 @@ type inventoryDevice struct {
 	DiskTotal    uint64                 `json:"disk_total,omitempty"`
 	AgentVersion string                 `json:"agent_version,omitempty"`
 	Updates      *api.UpdateStatus      `json:"updates,omitempty"`
-	InventoryAt  *time.Time             `json:"inventory_at,omitempty"`
 	Inventory    *store.StoredInventory `json:"inventory,omitempty"`
 	Asset        api.Asset              `json:"asset"`
 	Warnings     []api.Warning          `json:"warnings,omitempty"`
@@ -52,6 +53,16 @@ type inventoryDevice struct {
 }
 
 func (s *Server) handleAgentInventory(w http.ResponseWriter, r *http.Request, id string) {
+	// The database has one connection, which reports need as well.
+	last, err := s.store.InventoryUpdated(r.Context(), id)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if time.Since(last) < minInventoryGap {
+		fail(w, http.StatusTooManyRequests, api.ErrInventoryTooOften)
+		return
+	}
 	var inventory api.Inventory
 	if !readJSON(w, r, &inventory) {
 		return
@@ -87,7 +98,7 @@ func (s *Server) inventoryDevices(ctx context.Context) ([]inventoryDevice, error
 		if report := d.Report; report != nil {
 			entry.Distro, entry.Kernel, entry.CPUs = report.Distro, report.Kernel, report.CPUs
 			entry.MemTotal, entry.DiskTotal, entry.AgentVersion = report.MemTotal, report.DiskTotal, report.AgentVersion
-			entry.Updates, entry.InventoryAt = report.Updates, report.InventoryAt
+			entry.Updates = report.Updates
 		}
 		if stored, ok := inventories[d.ID]; ok {
 			entry.Inventory = &stored
@@ -166,16 +177,31 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request, u store.Use
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// formulaStarts are what a spreadsheet reads as the start of a formula, also in
+// their wide forms.
+const formulaStarts = "=+-@\t\r\n＝＋－＠"
+
 // csvSafe keeps a spreadsheet from reading a value as a formula. A device chooses
 // its own name, and the person who opens the file trusts it.
 func csvSafe(value string) string {
-	if value != "" && strings.ContainsRune("=+-@\t\r\n", rune(value[0])) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && strings.ContainsRune(formulaStarts, []rune(trimmed)[0]) {
 		return "'" + value
 	}
 	return value
 }
 
-var inventoryColumns = []string{"id", "hostname", "status", "last_seen", "inventory_at", "tag", "person", "location", "purchased", "warranty_until", "note",
+// csvLine quotes every field. A German spreadsheet separates at a semicolon, which
+// encoding/csv leaves bare, so a name could start a cell of its own.
+func csvLine(fields []string) string {
+	quoted := make([]string, len(fields))
+	for i, field := range fields {
+		quoted[i] = `"` + strings.ReplaceAll(field, `"`, `""`) + `"`
+	}
+	return strings.Join(quoted, ",") + "\r\n"
+}
+
+var inventoryColumns = []string{"id", "hostname", "status", "last_seen", "inventory_updated", "tag", "person", "location", "purchased", "warranty_until", "note",
 	"vendor", "model", "serial", "bios", "cpu", "cpus", "memory_bytes", "disks", "mac", "ip", "distro", "kernel", "agent_version",
 	"disk_encryption", "screen_lock", "firewall", "updates_pending", "packages"}
 
@@ -200,8 +226,8 @@ func inventoryRow(d inventoryDevice) []string {
 	if d.LastSeen > 0 {
 		lastSeen = time.Unix(d.LastSeen, 0).UTC().Format(time.RFC3339)
 	}
-	if d.InventoryAt != nil {
-		taken = d.InventoryAt.UTC().Format(time.RFC3339)
+	if d.Inventory != nil {
+		taken = time.Unix(d.Inventory.UpdatedAt, 0).UTC().Format(time.RFC3339)
 	}
 	if d.Updates != nil && d.Updates.CheckedAt != nil {
 		pending = strconv.Itoa(d.Updates.Pending)
@@ -229,14 +255,12 @@ func (s *Server) handleInventoryCSV(w http.ResponseWriter, r *http.Request, u st
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="hauswart-inventory.csv"`)
 	// Without the mark, Excel reads the file as an old code page.
-	w.Write([]byte("\xef\xbb\xbf"))
-	out := csv.NewWriter(w)
-	out.Write(inventoryColumns)
+	var out strings.Builder
+	out.WriteString("\xef\xbb\xbf" + csvLine(inventoryColumns))
 	for _, d := range list {
-		out.Write(inventoryRow(d))
+		out.WriteString(csvLine(inventoryRow(d)))
 	}
-	out.Flush()
-	if err := out.Error(); err != nil {
+	if _, err := w.Write([]byte(out.String())); err != nil {
 		s.log.Warn("writing the inventory failed", "err", err)
 	}
 }

@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -21,25 +23,56 @@ type StoredInventory struct {
 	UpdatedAt    int64 `json:"updated_at"`
 }
 
-// SaveInventory replaces what a device said before, all at once.
+// SaveInventory takes what a device said. The packages are by far the biggest part
+// and rarely change, so they are only written when they did.
 func (s *Store) SaveInventory(ctx context.Context, id string, inventory api.Inventory) error {
-	packages := inventory.Packages
-	inventory.Packages = nil
+	packages, keep := inventory.Packages, inventory.KeepPackages
+	inventory.Packages, inventory.KeepPackages = nil, false
 	raw, err := json.Marshal(inventory)
 	if err != nil {
 		return err
 	}
+	list, err := json.Marshal(packages)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(list)
+	hash := hex.EncodeToString(sum[:])
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO device_inventory (device_id, document, updated_at) VALUES (?,?,?)
-		ON CONFLICT (device_id) DO UPDATE SET document = excluded.document, updated_at = excluded.updated_at`,
-		id, string(raw), time.Now().Unix()); err != nil {
+	var before string
+	count := len(packages)
+	err = tx.QueryRowContext(ctx, `SELECT package_hash, package_count FROM device_inventory WHERE device_id = ?`, id).Scan(&before, &count)
+	if errors.Is(err, sql.ErrNoRows) {
+		count = len(packages)
+	} else if err != nil {
 		return err
 	}
+	if keep {
+		hash = before
+	} else {
+		count = len(packages)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO device_inventory (device_id, document, updated_at, package_hash, package_count) VALUES (?,?,?,?,?)
+		ON CONFLICT (device_id) DO UPDATE SET document = excluded.document, updated_at = excluded.updated_at,
+			package_hash = excluded.package_hash, package_count = excluded.package_count`,
+		id, string(raw), time.Now().Unix(), hash, count); err != nil {
+		return err
+	}
+	if hash != before {
+		if err := replacePackages(ctx, tx, id, packages); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func replacePackages(ctx context.Context, tx *sql.Tx, id string, packages []api.Package) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM device_packages WHERE device_id = ?`, id); err != nil {
 		return err
 	}
@@ -53,15 +86,22 @@ func (s *Store) SaveInventory(ctx context.Context, id string, inventory api.Inve
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
+}
+
+// InventoryUpdated says when a device last sent its inventory, zero if never.
+func (s *Store) InventoryUpdated(ctx context.Context, id string) (time.Time, error) {
+	var at int64
+	err := s.db.QueryRowContext(ctx, `SELECT updated_at FROM device_inventory WHERE device_id = ?`, id).Scan(&at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	return time.Unix(at, 0), err
 }
 
 // Inventories returns the inventory of every device that sent one.
 func (s *Store) Inventories(ctx context.Context) (map[string]StoredInventory, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT i.device_id, i.document, i.updated_at,
-			(SELECT COUNT(*) FROM device_packages p WHERE p.device_id = i.device_id)
-		FROM device_inventory i`)
+	rows, err := s.db.QueryContext(ctx, `SELECT device_id, document, updated_at, package_count FROM device_inventory`)
 	if err != nil {
 		return nil, err
 	}

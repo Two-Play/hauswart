@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
 )
@@ -68,6 +68,8 @@ func TestDisksLeaveOutWhatIsNoBuiltInDisk(t *testing.T) {
 		"/sys/block/sdb/removable":            "1\n",
 		"/sys/block/sdb/device/model":         "Stick\n",
 		"/sys/block/loop0/size":               "100\n",
+		"/sys/block/mmcblk0boot0/size":        "100\n",
+		"/sys/block/mmcblk0boot0/device/name": "x\n",
 		"/sys/block/sr0/size":                 "0\n",
 	})
 	got := e.disks()
@@ -78,15 +80,17 @@ func TestDisksLeaveOutWhatIsNoBuiltInDisk(t *testing.T) {
 }
 
 func TestParseInstalled(t *testing.T) {
-	got := parseInstalled("bash 5.2-1\ninstalled vim 2:9.1\nconfig-files old 1.0\nwarning: something odd went wrong here\n")
-	want := []api.Package{{Kind: api.PackageSystem, Name: "bash", Version: "5.2-1"}, {Kind: api.PackageSystem, Name: "vim", Version: "2:9.1"}}
+	got := parseInstalled("bash 5.2-1\ninstalled vim 2:9.1\nconfig-files old 1.0\nnot-installed foo \nconfig-files bar \n" +
+		"triggers-pending man-db 2.12\nerror: cannot\nwarning: something odd went wrong here\ngpg-pubkey 5-1\n")
+	want := []api.Package{{Kind: api.PackageSystem, Name: "bash", Version: "5.2-1"}, {Kind: api.PackageSystem, Name: "vim", Version: "2:9.1"},
+		{Kind: api.PackageSystem, Name: "man-db", Version: "2.12"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %+v", got)
 	}
 }
 
 func TestParseFlatpaks(t *testing.T) {
-	got := parseFlatpaks("org.gnome.Calculator\t46.1\nio.mpv.Mpv\t\nnot an id\t1\n")
+	got := parseFlatpaks("org.gnome.Calculator\t46.1\nio.mpv.Mpv\t\nnot an id\t1\nwarning\n")
 	want := []api.Package{{Kind: api.PackageFlatpak, Name: "org.gnome.Calculator", Version: "46.1"}, {Kind: api.PackageFlatpak, Name: "io.mpv.Mpv"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %+v", got)
@@ -112,9 +116,9 @@ func TestSoftwareIsSortedAndLimited(t *testing.T) {
 	}
 	e := &Executor{Platform: Platform{Backend: &Backend{List: []string{"list"}}}}
 	e.Run = func(context.Context, string, ...string) (string, error) { return lines.String(), nil }
-	got, truncated := e.software(context.Background())
-	if len(got) != api.MaxInventoryPackages || !truncated {
-		t.Fatalf("%d %v", len(got), truncated)
+	got, truncated, err := e.software(context.Background())
+	if err != nil || len(got) != api.MaxInventoryPackages || !truncated {
+		t.Fatalf("%d %v %v", len(got), truncated, err)
 	}
 	if !slices.IsSortedFunc(got, func(a, b api.Package) int { return strings.Compare(a.Name, b.Name) }) {
 		t.Fatal("not sorted")
@@ -135,6 +139,10 @@ func TestFirewallIsOnlyAskedAbout(t *testing.T) {
 	if !slices.Equal(calls, []string{"firewall-cmd --state"}) {
 		t.Fatalf("got %v", calls)
 	}
+	e.Run = func(context.Context, string, ...string) (string, error) { return "", context.DeadlineExceeded }
+	if got := e.firewallState(context.Background()); got != api.CheckUnknown {
+		t.Fatal(got)
+	}
 	e.Platform.Firewall = firewallUFW
 	e.Run = func(context.Context, string, ...string) (string, error) { return "Status: active\n", nil }
 	if got := e.firewallState(context.Background()); got != api.CheckOn {
@@ -146,28 +154,60 @@ func TestFirewallIsOnlyAskedAbout(t *testing.T) {
 	}
 }
 
-func TestOnlyAChangeIsSent(t *testing.T) {
-	sends := 0
-	post := func(api.Inventory) error { sends++; return nil }
-	inventory := api.Inventory{Hardware: api.Hardware{Model: "x"}}
-	sent, err := sendInventory(inventory, "", post)
-	if err != nil {
-		t.Fatal(err)
+func TestLongListsStayBelowTheLimitOfARequest(t *testing.T) {
+	var lines strings.Builder
+	for i := range 12000 {
+		fmt.Fprintf(&lines, "p%s%d 1%s\n", strings.Repeat("x", 100), i, strings.Repeat("y", 100))
 	}
-	if sent, err = sendInventory(inventory, sent, post); err != nil || sends != 1 {
-		t.Fatalf("%d %v", sends, err)
+	e := &Executor{Platform: Platform{Backend: &Backend{List: []string{"list"}}}}
+	e.Run = func(context.Context, string, ...string) (string, error) { return lines.String(), nil }
+	got, truncated, err := e.software(context.Background())
+	if err != nil || !truncated {
+		t.Fatalf("%v %v", truncated, err)
 	}
-	inventory.Hardware.Model = "y"
-	if _, err = sendInventory(inventory, sent, post); err != nil || sends != 2 {
-		t.Fatalf("%d %v", sends, err)
+	raw, err := json.Marshal(api.Inventory{Packages: got})
+	if err != nil || len(raw) > 2<<20 {
+		t.Fatalf("%d %v", len(raw), err)
 	}
 }
 
-func TestAFailedSendIsTriedAgain(t *testing.T) {
-	inventory := api.Inventory{Hardware: api.Hardware{Model: "x"}}
-	sent, err := sendInventory(inventory, "", func(api.Inventory) error { return errors.New("down") })
-	if err == nil || sent != "" {
-		t.Fatalf("%q %v", sent, err)
+// A list that failed says nothing. Sent as empty, it would wipe what the server knows.
+func TestAFailedListKeepsWhatTheServerKnows(t *testing.T) {
+	for _, failing := range []string{"rpm", "flatpak"} {
+		e := &Executor{Root: t.TempDir(), Platform: Platform{Flatpak: true, Backend: &Backend{List: []string{"rpm", "-qa"}}}}
+		e.Run = func(_ context.Context, name string, _ ...string) (string, error) {
+			if name == failing {
+				return "", errors.New("exit status 1")
+			}
+			return "bash 5.2\n", nil
+		}
+		got := e.collectInventory(context.Background(), quiet())
+		if !got.KeepPackages || len(got.Packages) != 0 {
+			t.Fatalf("%s: %+v", failing, got)
+		}
+	}
+}
+
+func TestNothingIsSentThatTheServerWouldRefuse(t *testing.T) {
+	sent := false
+	err := sendInventory(api.Inventory{Hardware: api.Hardware{Model: "a\nb"}}, func(api.Inventory) error { sent = true; return nil })
+	if err == nil || sent {
+		t.Fatalf("%v %v", err, sent)
+	}
+}
+
+func TestOddTextIsCleaned(t *testing.T) {
+	e := &Executor{Root: t.TempDir()}
+	writeFiles(t, e.Root, map[string]string{
+		dmiDir + "/sys_vendor":   "Foo\tBar\u202eevil\n",
+		dmiDir + "/product_name": strings.Repeat("ä", 150),
+	})
+	got := api.Inventory{Hardware: e.hardware()}
+	if err := got.Check(); err != nil {
+		t.Fatalf("%v %+v", err, got)
+	}
+	if got.Hardware.Vendor != "Foo Barevil" {
+		t.Fatalf("got %q", got.Hardware.Vendor)
 	}
 }
 
@@ -177,8 +217,13 @@ func TestAPackageTaskAsksForANewInventory(t *testing.T) {
 	if !e.inventoryDue() {
 		t.Fatal("not due")
 	}
-	e.inventoryTaken(time.Now())
-	if e.inventoryDue() || e.insight.inventoryAt == nil {
-		t.Fatal("not taken")
+	e.inventoryStarted()
+	if e.inventoryDue() {
+		t.Fatal("still due")
+	}
+	// It ends while the list is being read, so the list may be too old.
+	e.lockPackages()()
+	if !e.inventoryDue() {
+		t.Fatal("lost")
 	}
 }

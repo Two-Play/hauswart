@@ -199,7 +199,9 @@ var migrations = []string{
 	`CREATE TABLE device_inventory (
 		device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
 		document TEXT NOT NULL,
-		updated_at INTEGER NOT NULL
+		updated_at INTEGER NOT NULL,
+		package_hash TEXT NOT NULL,
+		package_count INTEGER NOT NULL
 	);
 	CREATE TABLE device_packages (
 		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,

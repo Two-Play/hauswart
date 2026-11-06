@@ -15,6 +15,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconDownload } from '@tabler/icons-react';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -24,6 +25,7 @@ import { useWarningText } from './DeviceInsight';
 
 const REFRESH_MS = 60_000;
 const MIN_QUERY = 2;
+const SEARCH_DELAY_MS = 300;
 // A device can have thousands of packages, and nobody reads them all at once.
 const MAX_SHOWN_PACKAGES = 300;
 
@@ -166,8 +168,8 @@ function Details({ id, onSaved }: { id: string; onSaved: () => void }) {
               }}
             />
             <Text size="sm" c="dimmed">
-              {device.inventory_at
-                ? t('inventory.reportedAt', { time: formatTime(new Date(device.inventory_at).getTime() / 1000) })
+              {inventory
+                ? t('inventory.reportedAt', { time: formatTime(inventory.updated_at) })
                 : t('inventory.reported')}
             </Text>
             {!inventory && <Text c="dimmed">{t('inventory.none')}</Text>}
@@ -328,7 +330,7 @@ function Devices() {
 function Software() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const wanted = query.trim();
+  const [wanted] = useDebouncedValue(query.trim(), SEARCH_DELAY_MS);
   return (
     <Stack>
       <TextInput
@@ -337,7 +339,7 @@ function Software() {
         value={query}
         onChange={(e) => setQuery(e.currentTarget.value)}
       />
-      {wanted.length >= MIN_QUERY && <SoftwareResults query={wanted} />}
+      {wanted.length >= MIN_QUERY && <SoftwareResults key={wanted} query={wanted} />}
     </Stack>
   );
 }

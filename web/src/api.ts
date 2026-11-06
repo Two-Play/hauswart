@@ -218,7 +218,6 @@ export interface InventoryDevice {
   disk_total?: number;
   agent_version?: string;
   updates?: UpdateStatus;
-  inventory_at?: string;
   inventory?: StoredInventory;
   asset: Asset;
   warnings?: Warning[];

@@ -11,6 +11,8 @@ import (
 	"github.com/Two-Play/hauswart/internal/api"
 )
 
+func init() { minInventoryGap = 0 }
+
 func sampleInventory() api.Inventory {
 	return api.Inventory{
 		Hardware: api.Hardware{Vendor: "LENOVO", Model: "T14", Serial: "PF1", CPU: "AMD"},
@@ -57,6 +59,55 @@ func TestInventoryArrives(t *testing.T) {
 	e.do(agent, "POST", "/agent/inventory", next)
 	if got := inventoryOf(t, e, admin)[0].Inventory.PackageCount; got != 1 {
 		t.Fatalf("got %d", got)
+	}
+}
+
+// A list that failed on the device must not read as an empty device.
+func TestFailedListKeepsThePackages(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	e.do(agent, "POST", "/agent/inventory", sampleInventory())
+	failed := sampleInventory()
+	failed.Packages, failed.KeepPackages, failed.Hardware.Model = nil, true, "new"
+	if code, data := e.do(agent, "POST", "/agent/inventory", failed); code != http.StatusNoContent {
+		t.Fatalf("got %d %s", code, data)
+	}
+	admin := e.login("admin")
+	entry := inventoryOf(t, e, admin)[0]
+	if entry.Inventory.PackageCount != 2 || entry.Inventory.Hardware.Model != "new" {
+		t.Fatalf("got %+v", entry.Inventory)
+	}
+	_, data := e.do(admin, "GET", "/api/inventory/"+id, nil)
+	if !strings.Contains(string(data), "firefox") {
+		t.Fatalf("got %s", data)
+	}
+	// And the next good list still counts, also if it is the one from before.
+	e.do(agent, "POST", "/agent/inventory", sampleInventory())
+	if got := inventoryOf(t, e, admin)[0].Inventory.PackageCount; got != 2 {
+		t.Fatalf("got %d", got)
+	}
+}
+
+func TestADeviceCannotKeepTheServerBusy(t *testing.T) {
+	e := setup(t)
+	_, agent := e.enroll()
+	minInventoryGap = time.Hour
+	t.Cleanup(func() { minInventoryGap = 0 })
+	if code, data := e.do(agent, "POST", "/agent/inventory", sampleInventory()); code != http.StatusNoContent {
+		t.Fatalf("got %d %s", code, data)
+	}
+	if code, _ := e.do(agent, "POST", "/agent/inventory", sampleInventory()); code != http.StatusTooManyRequests {
+		t.Fatalf("got %d", code)
+	}
+}
+
+func TestReportTextIsLimited(t *testing.T) {
+	e := setup(t)
+	_, agent := e.enroll()
+	e.do(agent, "POST", "/agent/report", api.Report{Hostname: "a\nb\u202e" + strings.Repeat("x", 1<<20), Kernel: strings.Repeat("y", 1<<20)})
+	entry := inventoryOf(t, e, e.login("admin"))[0]
+	if len(entry.Hostname) > 300 || len(entry.Kernel) > 300 || strings.ContainsAny(entry.Hostname, "\n\u202e") {
+		t.Fatalf("got %d %d", len(entry.Hostname), len(entry.Kernel))
 	}
 }
 
@@ -202,10 +253,11 @@ func TestRevokedDevicesStayInTheInventory(t *testing.T) {
 func TestCSVCannotCarryFormulas(t *testing.T) {
 	e := setup(t)
 	id, agent := e.enroll()
-	e.do(agent, "POST", "/agent/report", api.Report{Hostname: `=cmd|' /C calc'!A0`})
+	e.do(agent, "POST", "/agent/report", api.Report{Hostname: `=cmd|' /C calc'!A0`, Kernel: `pc;=cmd|' /C calc'!A0;x`, Distro: "＝1+1"})
 	inventory := sampleInventory()
 	inventory.Hardware.Model = "@SUM(1+1)"
 	inventory.Hardware.Vendor = `-2+3,"x"`
+	inventory.Hardware.BIOS = " =1+1"
 	e.do(agent, "POST", "/agent/inventory", inventory)
 	admin := e.login("admin")
 	e.do(admin, "PUT", "/api/inventory/"+id+"/asset", api.Asset{Note: "+1\nzweite Zeile"})
@@ -221,8 +273,17 @@ func TestCSVCannotCarryFormulas(t *testing.T) {
 		t.Fatalf("got %v", rows)
 	}
 	for i, value := range rows[1] {
-		if value != "" && strings.ContainsRune("=+-@\t\r\n", rune(value[0])) {
+		if trimmed := strings.TrimSpace(value); trimmed != "" && strings.ContainsRune(formulaStarts, []rune(trimmed)[0]) {
 			t.Errorf("%s: %q", inventoryColumns[i], value)
+		}
+	}
+	// Read with a semicolon as a German spreadsheet does, nothing may start a cell.
+	for _, line := range strings.Split(string(data), "\r\n") {
+		german := csv.NewReader(strings.NewReader(line))
+		german.Comma, german.LazyQuotes, german.FieldsPerRecord = ';', true, -1
+		cells, _ := german.Read()
+		for _, cell := range cells[min(1, len(cells)):] {
+			t.Errorf("a semicolon started a cell: %q", cell)
 		}
 	}
 	got := map[string]string{}

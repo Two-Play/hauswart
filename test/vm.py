@@ -264,7 +264,7 @@ def test_inventory(admin, agent_bin, work, public_key):
         check(group, "and asking does not start it", vm.ssh("systemctl is-active firewalld").stdout.strip() != "active")
         count = int(vm.ssh("rpm -qa | sort -u | wc -l").stdout.strip())
         check(group, "the whole package list arrives", abs(inventory["package_count"] - count) < 5, f'{inventory["package_count"]} of {count}')
-        check(group, "the report says how fresh it is", wait_for(lambda: entry().get("inventory_at"), 90), str(entry())[:200])
+        check(group, "and says how fresh it is", inventory.get("updated_at", 0) > 0, str(inventory)[:200])
 
         csv_data = vm_csv(admin)
         check(group, "the export has the serial number", "HW-0042" in csv_data, csv_data[:300])

@@ -23,18 +23,19 @@ const (
 	ErrPolicyConflict   = "policy_conflict"
 	ErrInvalidExtension = "invalid_extension"
 
-	ErrManagedElsewhere = "managed_elsewhere"
-	ErrOIDCFailed       = "oidc_failed"
-	ErrOIDCNotAllowed   = "oidc_not_allowed"
-	ErrOIDCBadName      = "oidc_bad_name"
-	ErrOIDCNameTaken    = "oidc_name_taken"
-	ErrInvalidDirectory = "invalid_directory"
-	ErrInvalidMount     = "invalid_mount"
-	ErrInvalidRequest   = "invalid_request"
-	ErrSharedAccount    = "shared_account"
-	ErrInvalidAppRule   = "invalid_app_rule"
-	ErrInvalidInventory = "invalid_inventory"
-	ErrInvalidAsset     = "invalid_asset"
+	ErrManagedElsewhere  = "managed_elsewhere"
+	ErrOIDCFailed        = "oidc_failed"
+	ErrOIDCNotAllowed    = "oidc_not_allowed"
+	ErrOIDCBadName       = "oidc_bad_name"
+	ErrOIDCNameTaken     = "oidc_name_taken"
+	ErrInvalidDirectory  = "invalid_directory"
+	ErrInvalidMount      = "invalid_mount"
+	ErrInvalidRequest    = "invalid_request"
+	ErrSharedAccount     = "shared_account"
+	ErrInvalidAppRule    = "invalid_app_rule"
+	ErrInvalidInventory  = "invalid_inventory"
+	ErrInvalidAsset      = "invalid_asset"
+	ErrInventoryTooOften = "inventory_too_often"
 )
 
 func init() {
@@ -58,17 +59,18 @@ func init() {
 		ErrPolicyConflict:   "the policy contradicts itself: %s",
 		ErrInvalidExtension: "an extension needs an end at most %s from now",
 
-		ErrManagedElsewhere: "this account is managed in Authentik",
-		ErrOIDCFailed:       "the login through Authentik failed, please try again",
-		ErrOIDCNotAllowed:   "this account may not use Hauswart",
-		ErrOIDCBadName:      "this user name cannot be a Linux account",
-		ErrOIDCNameTaken:    "a local account already has this name",
-		ErrInvalidDirectory: "the directory settings are not valid: %s",
-		ErrInvalidMount:     "the share is not valid: %s",
-		ErrInvalidRequest:   "the request is empty, too long or has characters that are not allowed",
-		ErrSharedAccount:    "several accounts use this Linux account, so please ask in the dashboard",
-		ErrInvalidAppRule:   "the app rule is not valid: %s",
-		ErrInvalidInventory: "the inventory is not valid: %s",
-		ErrInvalidAsset:     "this value is too long or not valid: %s",
+		ErrManagedElsewhere:  "this account is managed in Authentik",
+		ErrOIDCFailed:        "the login through Authentik failed, please try again",
+		ErrOIDCNotAllowed:    "this account may not use Hauswart",
+		ErrOIDCBadName:       "this user name cannot be a Linux account",
+		ErrOIDCNameTaken:     "a local account already has this name",
+		ErrInvalidDirectory:  "the directory settings are not valid: %s",
+		ErrInvalidMount:      "the share is not valid: %s",
+		ErrInvalidRequest:    "the request is empty, too long or has characters that are not allowed",
+		ErrSharedAccount:     "several accounts use this Linux account, so please ask in the dashboard",
+		ErrInvalidAppRule:    "the app rule is not valid: %s",
+		ErrInvalidInventory:  "the inventory is not valid: %s",
+		ErrInvalidAsset:      "this value is too long or not valid: %s",
+		ErrInventoryTooOften: "this device sends its inventory too often",
 	})
 }

@@ -10,15 +10,18 @@ import (
 )
 
 const (
-	// MaxInventoryPackages is far above a desktop, and keeps a report below the
-	// limit of a request.
-	MaxInventoryPackages = 15000
-	maxInventoryDisks    = 64
-	maxInventoryNICs     = 64
-	maxNICAddresses      = 32
-	maxInventoryText     = 256
-	maxAssetText         = 128
-	maxAssetNote         = 2000
+	// MaxInventoryPackages is far above a desktop. MaxInventoryPackageBytes keeps
+	// a list below the limit of a request, whatever its entries look like.
+	MaxInventoryPackages     = 15000
+	MaxInventoryPackageBytes = 1500 << 10
+	// PackageOverhead is what an entry adds to its name and version in JSON.
+	PackageOverhead   = 40
+	maxInventoryDisks = 64
+	maxInventoryNICs  = 64
+	maxNICAddresses   = 32
+	maxInventoryText  = 256
+	maxAssetText      = 128
+	maxAssetNote      = 2000
 
 	PackageSystem  = "package"
 	PackageFlatpak = "flatpak"
@@ -39,6 +42,9 @@ type Inventory struct {
 	Packages []Package     `json:"packages,omitempty"`
 	// Truncated says that the device had more packages than it may send.
 	Truncated bool `json:"truncated,omitempty"`
+	// KeepPackages says that the device could not list them this time. An empty
+	// list would mean that nothing is installed.
+	KeepPackages bool `json:"keep_packages,omitempty"`
 }
 
 type Hardware struct {
@@ -92,8 +98,37 @@ func validText(s string, limit int, lines bool) bool {
 		return false
 	}
 	return !strings.ContainsFunc(s, func(r rune) bool {
-		return unicode.IsControl(r) && !(lines && r == '\n')
+		// Format characters can turn text around, so that a name reads as another.
+		return unicode.IsControl(r) && !(lines && r == '\n') || unicode.Is(unicode.Cf, r)
 	})
+}
+
+// CleanText makes text from a device fit to show: one line, within a limit, and
+// without anything that changes how the text around it reads.
+func CleanText(s string, limit int) string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsControl(r):
+			return ' '
+		case unicode.Is(unicode.Cf, r):
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(s, ""))
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "")
+	}
+	return strings.TrimSpace(s)
+}
+
+const maxReportText = 253
+
+// Clean limits what a report shows as text. Unlike an inventory it is not refused,
+// as the device would drop out of the dashboard.
+func (r *Report) Clean() {
+	for _, field := range []*string{&r.Hostname, &r.Distro, &r.Kernel, &r.AgentVersion} {
+		*field = CleanText(*field, maxReportText)
+	}
 }
 
 // Check keeps out what would hurt the server or a reader. A device can still lie.

@@ -109,6 +109,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 	if !readJSON(w, r, &rep) {
 		return
 	}
+	rep.Clean()
 	s.recordInsight(r, id, &rep)
 	before, err := s.store.DeviceReport(r.Context(), id)
 	if err != nil {
