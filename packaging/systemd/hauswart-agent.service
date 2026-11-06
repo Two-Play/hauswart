@@ -13,6 +13,10 @@ RestartSec=10
 # kill the package manager that is doing it, so only the agent itself stops.
 KillMode=process
 
+# Holds the socket for the desktop app of each person.
+RuntimeDirectory=hauswart
+RuntimeDirectoryMode=0755
+
 # No sandboxing beyond this: the agent exists to change the system as root.
 
 [Install]

@@ -785,6 +785,55 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+def test_socket(admin, agent_bin):
+    """Everyone on a device talks to the agent as root runs it, and sees only themselves."""
+    name = "socket"
+    print(f"\n== {name} (two people at the socket of a real agent)", flush=True)
+    container = f"{PREFIX}-socket{SUFFIX}"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "600")
+
+    def inside(cmd):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=300)
+
+    def as_user(user, path, body=None):
+        send = f"-X POST -d '{body}'" if body else ""
+        return inside(f"runuser -u {user} -- curl -s -o /dev/stdout -w ' %{{http_code}}' --unix-socket /run/hauswart/user.sock {send} http://agent{path}")
+
+    try:
+        inside(DISTROS["fedora"][1] + " util-linux curl && useradd anna && useradd ben")
+        _, enroll = admin.call("POST", "/api/enroll-tokens")
+        check(name, "enrollment", inside(enroll["command"].replace("sudo ", "", 1)).returncode == 0)
+        sh("podman", "exec", "-d", container, "sh", "-c", "hauswart-agent run >/var/log/agent.log 2>&1")
+        time.sleep(3)
+        check(name, "the socket is there", inside("test -S /run/hauswart/user.sock").returncode == 0, inside("tail -5 /var/log/agent.log").stdout)
+
+        anna, ben = as_user("anna", "/status"), as_user("ben", "/status")
+        check(name, "anna is anna", '"user":"anna"' in anna.stdout and " 200" in anna.stdout, anna.stdout + anna.stderr)
+        check(name, "ben is ben", '"user":"ben"' in ben.stdout, ben.stdout)
+
+        device = next(d["id"] for d in admin.call("GET", "/api/devices")[1] if d["id"] not in seen and d["report"].get("distro"))
+        seen.add(device)
+        code, out = admin.call("POST", "/api/users", {"username": "anna-socket", "linux_user": "anna", "password": "long enough password", "role": "member"})
+        check(name, "account for anna", code == 201, str(out))
+        account = next(u for u in admin.call("GET", "/api/users")[1] if u["username"] == "anna-socket")
+        admin.call("PUT", f"/api/users/{account['id']}/devices", {"devices": [device]})
+
+        sent = as_user("anna", "/request", '{"kind":"software","detail":"vim","reason":"school"}')
+        check(name, "a request goes out", sent.stdout.strip().endswith("201"), sent.stdout)
+        _, requests = admin.call("GET", "/api/requests")
+        filed = [r for r in requests if r["detail"] == "vim" and r["device_id"] == device]
+        check(name, "and arrives as anna's", len(filed) == 1 and filed[0]["username"] == "anna-socket", str(requests))
+
+        forged = as_user("ben", "/request", '{"kind":"software","detail":"vim","user":"anna"}')
+        check(name, "ATTACK ben cannot speak for anna", forged.stdout.strip().endswith("400"), forged.stdout)
+        unknown = as_user("ben", "/request", '{"kind":"software","detail":"vim"}')
+        check(name, "someone without an account gets nowhere", not unknown.stdout.strip().endswith("201"), unknown.stdout)
+    finally:
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 POLICY_FILE = "/etc/hauswart.d/policy-test"
 
 
@@ -1173,7 +1222,7 @@ seen = set()
 
 def main():
     # Short lifetimes apply to the whole server, so this runs on its own.
-    names = sys.argv[1:] or [*DISTROS, *(f"journal-{d}" for d in DISTROS), *(f"policy-{d}" for d in DISTROS), "systemd", "signing"]
+    names = sys.argv[1:] or [*DISTROS, *(f"journal-{d}" for d in DISTROS), *(f"policy-{d}" for d in DISTROS), "systemd", "signing", "socket"]
     extra_args = ["-device-cert-validity", f"{RENEWAL_VALIDITY}s"] if names == ["renewal"] else []
     if names == ["notify"]:  # the CA scope is fixed when the CA is made
         extra_args = ["-ca-scope", "home.test,127.0.0.0/8"]
@@ -1234,6 +1283,8 @@ def main():
                 test_renewal(admin, agent_bin)
             elif name == "notify":
                 test_notify(admin, work, restart_server)
+            elif name == "socket":
+                test_socket(admin, agent_bin)
             elif name == "signing":
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             elif name.startswith("journal-"):

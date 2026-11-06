@@ -137,6 +137,20 @@ func (s *Store) DirectorySubjects(ctx context.Context) ([]string, error) {
 	return subjects, rows.Err()
 }
 
+// UserByLinuxName finds who a Linux account on a device belongs to. Two accounts
+// can share one, and the older one counts then.
+func (s *Store) UserByLinuxName(ctx context.Context, linuxUser string) (User, error) {
+	var u User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, username, linux_user, role FROM users
+		WHERE linux_user = ? AND disabled = 0 ORDER BY id LIMIT 1`, linuxUser).
+		Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return u, ErrNotFound
+	}
+	return u, err
+}
+
 // UserSource says where an account is managed.
 func (s *Store) UserSource(ctx context.Context, id int64) (string, error) {
 	var source string

@@ -18,6 +18,7 @@ func init() {
 		mux.Handle("POST /api/requests", s.user(s.handleCreateRequest))
 		mux.Handle("POST /api/requests/{id}/approve", s.approver(s.handleApprove))
 		mux.Handle("POST /api/requests/{id}/deny", s.approver(s.handleDeny))
+		mux.Handle("POST /agent/requests", s.agent(s.handleDeviceRequest))
 	})
 }
 
@@ -71,6 +72,50 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
+// handleDeviceRequest takes a request someone filed on the device itself. The
+// device says who it was, which a hacked device can make up. That only gives it a
+// request for itself, which someone still has to approve.
+func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, device string) {
+	var in api.DeviceRequest
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if err := api.CheckUserRequest(in.UserRequest); err != nil {
+		failErr(w, http.StatusBadRequest, err)
+		return
+	}
+	u, err := s.store.UserByLinuxName(r.Context(), in.User)
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
+		return
+	}
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if _, _, err := requestTask(in.Kind, in.Detail, u.LinuxUser); err != nil {
+		failErr(w, http.StatusBadRequest, err)
+		return
+	}
+	allowed, err := s.store.DeviceAllowed(r.Context(), u.ID, device)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if !allowed {
+		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
+		return
+	}
+	id, err := s.store.CreateRequest(r.Context(), u.ID, device, in.Kind, in.Detail, in.Reason)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, "agent:"+device, "request.created", u.Username+" "+in.Kind+" "+in.Detail)
+	s.notifyRequest(r.Context(), id)
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
 // requestTask converts a request into the task it causes once approved. A
 // sudo grant's expiry counts from this call, so from approval when approving.
 func requestTask(kind, detail, linuxUser string) (string, []byte, error) {
@@ -90,6 +135,13 @@ func requestTask(kind, detail, linuxUser string) (string, []byte, error) {
 		}
 		taskType = api.TaskSudoGrant
 		payload = api.SudoGrantPayload{User: linuxUser, ExpiresAt: time.Now().Add(time.Duration(minutes) * time.Minute)}
+	case api.RequestScreen:
+		minutes, err := strconv.Atoi(strings.TrimSpace(detail))
+		if limit := int(api.MaxExtension / time.Minute); err != nil || minutes < 1 || minutes > limit {
+			return "", nil, api.Fail(api.ErrInvalidDuration, strconv.Itoa(limit))
+		}
+		taskType = api.TaskScreenExtend
+		payload = api.ScreenExtendPayload{User: linuxUser, Until: time.Now().Add(time.Duration(minutes) * time.Minute)}
 	default:
 		return "", nil, api.Fail(api.ErrUnknownRequestKind, kind)
 	}

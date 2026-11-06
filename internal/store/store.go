@@ -191,6 +191,11 @@ var migrations = []string{
 	`ALTER TABLE users ADD COLUMN oidc_subject TEXT NOT NULL DEFAULT '';
 	ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
 	CREATE UNIQUE INDEX users_oidc_subject ON users(oidc_subject) WHERE oidc_subject != '';`,
+	// As with the roles: SQLite cannot change a CHECK constraint.
+	`ALTER TABLE requests ADD COLUMN kind_new TEXT NOT NULL DEFAULT 'software' CHECK (kind_new IN ('software','flatpak','sudo','screen'));
+	UPDATE requests SET kind_new = kind;
+	ALTER TABLE requests DROP COLUMN kind;
+	ALTER TABLE requests RENAME COLUMN kind_new TO kind;`,
 }
 
 func migrate(db *sql.DB) error {

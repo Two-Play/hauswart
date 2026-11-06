@@ -30,6 +30,7 @@ const (
 	ErrOIDCNameTaken    = "oidc_name_taken"
 	ErrInvalidDirectory = "invalid_directory"
 	ErrInvalidMount     = "invalid_mount"
+	ErrInvalidRequest   = "invalid_request"
 )
 
 func init() {
@@ -60,5 +61,6 @@ func init() {
 		ErrOIDCNameTaken:    "a local account already has this name",
 		ErrInvalidDirectory: "the directory settings are not valid: %s",
 		ErrInvalidMount:     "the share is not valid: %s",
+		ErrInvalidRequest:   "the request is empty, too long or has characters that are not allowed",
 	})
 }

@@ -278,13 +278,52 @@ func (pe *PolicyEngine) endScreenUser(ctx context.Context, user string, ids []st
 	return nil
 }
 
+// ScreenStatus says how someone stands with their screen time, nil without a rule.
+func (pe *PolicyEngine) ScreenStatus(uid string, now time.Time) *api.ScreenStatus {
+	pe.mu.Lock()
+	var rules []api.ScreenTimeRule
+	zone := time.Local
+	if pe.policy != nil {
+		rules, zone = pe.policy.ScreenTime, zoneOf(*pe.policy)
+	}
+	extensions := maps.Clone(pe.state.Extensions)
+	pe.mu.Unlock()
+	for _, rule := range rules {
+		if !slices.Contains(pe.screenAccounts(rule), uid) {
+			continue
+		}
+		end, allowed := sessionEnd(rule, now.In(zone), extensions[rule.User].In(zone))
+		status := &api.ScreenStatus{Allowed: allowed}
+		if allowed {
+			status.Until = end
+		}
+		return status
+	}
+	return nil
+}
+
 // Extend lets a user stay until a moment today. The device checks this itself,
 // because a passkey approval can be for something else than was shown.
 func (pe *PolicyEngine) Extend(ctx context.Context, p api.ScreenExtendPayload, now time.Time) (string, error) {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
-	if pe.policy == nil || !slices.ContainsFunc(pe.policy.ScreenTime, func(r api.ScreenTimeRule) bool { return r.User == p.User }) {
+	if pe.policy == nil {
 		return "", fmt.Errorf("no screen time rule for %s on this device", p.User)
+	}
+	// The request may come from someone who renamed their account since.
+	ruleUser := p.User
+	if !slices.ContainsFunc(pe.policy.ScreenTime, func(r api.ScreenTimeRule) bool { return r.User == p.User }) {
+		ruleUser = ""
+		if person, err := pe.exec.lookupUser(p.User); err == nil {
+			for name, uid := range pe.state.ScreenUIDs {
+				if uid == person.Uid {
+					ruleUser = name
+				}
+			}
+		}
+		if ruleUser == "" {
+			return "", fmt.Errorf("no screen time rule for %s on this device", p.User)
+		}
 	}
 	if !now.Before(p.Until) {
 		return "", errors.New("this extension has already ended")
@@ -304,7 +343,7 @@ func (pe *PolicyEngine) Extend(ctx context.Context, p api.ScreenExtendPayload, n
 			extensions[user] = end
 		}
 	}
-	extensions[p.User] = p.Until
+	extensions[ruleUser] = p.Until
 	before := pe.state.Extensions
 	pe.state.Extensions = extensions
 	if err := pe.saveState(); err != nil {

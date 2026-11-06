@@ -13,7 +13,8 @@
     "oidc_bad_name": "This user name cannot be a Linux account.",
     "oidc_name_taken": "A local account already has this name.",
     "invalid_directory": "The directory settings are not valid: {{value}}",
-    "invalid_mount": "The share is not valid: {{value}}"
+    "invalid_mount": "The share is not valid: {{value}}",
+    "invalid_request": "The request is empty, too long or has characters that are not allowed."
   },
   "policies": {
     "directory": "Accounts from a directory",
@@ -42,5 +43,10 @@
     },
     "directoryCa": "CA of the directory (PEM)",
     "directoryCaHint": "Only this CA is trusted for the directory. Do not use the Hauswart CA: a hacked server could then log in as anyone."
+  },
+  "requests": {
+    "kinds": {
+      "screen": "More screen time"
+    }
   }
 }

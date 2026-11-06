@@ -84,7 +84,7 @@ export interface AccessRequest {
   id: string;
   username: string;
   hostname: string;
-  kind: 'software' | 'flatpak' | 'sudo';
+  kind: 'software' | 'flatpak' | 'sudo' | 'screen';
   detail: string;
   reason: string;
   status: 'open' | 'approved' | 'denied';

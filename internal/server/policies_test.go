@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -347,5 +348,57 @@ func TestMergeThatGrowsTooLargeIsNamed(t *testing.T) {
 	}
 	if state := groupPolicy(t, e, admin, first).Devices[0]; state.State != policyConflict {
 		t.Fatalf("got %+v", state)
+	}
+}
+
+func TestRequestFromADevice(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	admin := e.login("admin")
+	if code, data := e.do(agent, "POST", "/agent/requests", api.DeviceRequest{User: "nobody", UserRequest: api.UserRequest{Kind: "software", Detail: "vim"}}); code != http.StatusNotFound {
+		t.Fatalf("%d %s", code, data)
+	}
+	// anna is a member, and this device is not hers yet.
+	in := api.DeviceRequest{User: "anna", UserRequest: api.UserRequest{Kind: api.RequestScreen, Detail: "30", Reason: "homework"}}
+	if code, data := e.do(agent, "POST", "/agent/requests", in); code != http.StatusForbidden {
+		t.Fatalf("%d %s", code, data)
+	}
+	users, _ := e.store.ListUsers(context.Background())
+	var anna int64
+	for _, u := range users {
+		if u.Username == "anna" {
+			anna = u.ID
+		}
+	}
+	if err := e.store.SetUserDevices(context.Background(), anna, []string{id}); err != nil {
+		t.Fatal(err)
+	}
+	if code, data := e.do(agent, "POST", "/agent/requests", in); code != http.StatusCreated {
+		t.Fatalf("%d %s", code, data)
+	}
+	_, data := e.do(admin, "GET", "/api/requests", nil)
+	if !strings.Contains(string(data), `"kind":"screen"`) {
+		t.Fatalf("got %s", data)
+	}
+	var requests []struct{ ID string }
+	json.Unmarshal(data, &requests)
+	if code, data := e.do(admin, "POST", "/api/requests/"+requests[0].ID+"/approve", nil); code != http.StatusNoContent {
+		t.Fatalf("%d %s", code, data)
+	}
+	_, data = e.do(admin, "GET", "/api/tasks", nil)
+	if !strings.Contains(string(data), api.TaskScreenExtend) {
+		t.Fatalf("got %s", data)
+	}
+
+	for name, bad := range map[string]api.DeviceRequest{
+		"too long a stay": {User: "anna", UserRequest: api.UserRequest{Kind: api.RequestScreen, Detail: "9999"}},
+		"unknown kind":    {User: "anna", UserRequest: api.UserRequest{Kind: "shell", Detail: "x"}},
+	} {
+		if code, data := e.do(agent, "POST", "/agent/requests", bad); code != http.StatusBadRequest {
+			t.Errorf("%s: %d %s", name, code, data)
+		}
+	}
+	if code, _ := e.do(e.client(), "POST", "/agent/requests", in); code != http.StatusUnauthorized {
+		t.Fatalf("got %d", code)
 	}
 }

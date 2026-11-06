@@ -42,7 +42,8 @@ export function RequestsView({ user }: { user: User }) {
   }
 
   function describe(r: AccessRequest) {
-    const detailText = r.kind === 'sudo' ? t('requests.sudoDetail', { minutes: r.detail }) : r.detail;
+    const timed = r.kind === 'sudo' || r.kind === 'screen';
+    const detailText = timed ? t('requests.sudoDetail', { minutes: r.detail }) : r.detail;
     return `${t(`requests.kinds.${r.kind}`)}: ${detailText}`;
   }
 
@@ -67,11 +68,11 @@ export function RequestsView({ user }: { user: User }) {
                 allowDeselect={false}
                 value={kind}
                 onChange={(next) => setKind(next ?? kind)}
-                data={['software', 'flatpak', 'sudo'].map((k) => ({ value: k, label: t(`requests.kinds.${k}`) }))}
+                data={['software', 'flatpak', 'sudo', 'screen'].map((k) => ({ value: k, label: t(`requests.kinds.${k}`) }))}
               />
               <TextInput
-                label={t(kind === 'sudo' ? 'requests.minutes' : 'requests.packages')}
-                type={kind === 'sudo' ? 'number' : 'text'}
+                label={t(kind === 'sudo' || kind === 'screen' ? 'requests.minutes' : 'requests.packages')}
+                type={kind === 'sudo' || kind === 'screen' ? 'number' : 'text'}
                 required
                 value={detail}
                 onChange={(e) => setDetail(e.currentTarget.value)}
