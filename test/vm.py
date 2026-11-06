@@ -27,6 +27,8 @@ import browsers  # noqa: E402
 import e2e  # noqa: E402
 
 PORT = int(os.environ.get("VM_PORT", "18450"))
+# Added to every SSH port, so that tests can run next to each other.
+SSH_OFFSET = int(os.environ.get("VM_SSH_OFFSET", "0"))
 LDAPS_PORT = 16636
 CLOUD_PORT, CLOUD_HTTP_PORT = 16443, 18080
 NEXTCLOUD_IMAGE = "docker.io/library/nextcloud:stable-apache"
@@ -55,9 +57,10 @@ def fetch(url, path):
     if os.path.exists(path):
         return
     print(f"downloading {url}", flush=True)
-    with urllib.request.urlopen(url) as resp, open(path + ".part", "wb") as out:
+    part = f"{path}.{os.getpid()}.part"  # another run may fetch the same file
+    with urllib.request.urlopen(url) as resp, open(part, "wb") as out:
         shutil.copyfileobj(resp, out)
-    os.rename(path + ".part", path)
+    os.rename(part, path)
 
 
 def sha256(path):
@@ -148,6 +151,7 @@ def debian_image():
 class VM:
     def __init__(self, work, name, image, user, ssh_port, extra):
         self.user = user
+        ssh_port += SSH_OFFSET
         self.port = ssh_port
         self.key = f"{work}/id"
         self.log = f"{work}/{name}.log"
@@ -771,7 +775,7 @@ def test_directory(admin, agent_bin, work, public_key, debian=False):
         check(group, "the device applies it", applied, vm.ssh("journalctl -u hauswart-agent --no-pager | tail -5").stdout)
         known = wait_for(lambda: vm.ssh("getent passwd lena").returncode == 0, 60)
         if not known:
-            print(vm.ssh(f"echo | timeout 10 openssl s_client -connect ldap.home.test:{LDAPS_PORT} 2>&1 | grep -E 'Verif|verify|CONNECTED|errno|alert' | head -8; "
+            print(vm.ssh(f"echo | timeout 10 openssl s_client -connect ldap.home.test:{LDAPS_PORT} 2>&1 | grep -E 'Verif|verify|CONNECTED|errno|alert' | head -8; " +
                          ("apt-get install -q -y ldap-utils >/dev/null 2>&1; " if debian else "dnf5 install -q -y openldap-clients >/dev/null 2>&1; ") +
                          f"LDAPTLS_REQCERT=demand ldapsearch -LLL -H ldaps://ldap.home.test:{LDAPS_PORT} -x -D 'cn=ldapreader,ou=users,{base_dn}' "
                          f"-w '{password}' -b '{base_dn}' '(cn=lena)' 2>&1 | head -30; "
@@ -813,7 +817,7 @@ def test_directory(admin, agent_bin, work, public_key, debian=False):
         os.chmod(askpass, 0o700)
 
         def as_lena(command):
-            return subprocess.run(["ssh", "-p", "2239", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+            return subprocess.run(["ssh", "-p", str(vm.port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                                    "-o", "PreferredAuthentications=password,keyboard-interactive", "lena@127.0.0.1", command],
                                   env={**os.environ, "SSH_ASKPASS": askpass, "SSH_ASKPASS_REQUIRE": "force"},
                                   capture_output=True, text=True, timeout=120)
@@ -924,7 +928,7 @@ def test_directory(admin, agent_bin, work, public_key, debian=False):
               vm.ssh("getent passwd free-at-last; tail -5 /var/log/sssd/sssd_hauswart.log").stdout)
         check(group, "ATTACK the new name does not lead out of the application rule",
               vm.ssh("cd /tmp; runuser -u free-at-last -- /tmp/lenas").returncode != 0)
-        child = subprocess.Popen(["ssh", "-p", "2239", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+        child = subprocess.Popen(["ssh", "-p", str(vm.port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                                   "-o", "PreferredAuthentications=password,keyboard-interactive", "free-at-last@127.0.0.1", "sleep 300"],
                                  env={**os.environ, "SSH_ASKPASS": askpass, "SSH_ASKPASS_REQUIRE": "force"},
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1396,8 +1400,16 @@ def test_desktop(admin, agent_bin, work, public_key):
         vm.stop()
 
 
+TESTS = ["flatpak", "atomic", "ubuntu", "inventory", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
+
+
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "inventory", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
+    names = sys.argv[1:] or TESTS
+    if names == ["images"]:  # so that parallel runs do not fetch them all at once
+        os.makedirs(CACHE, exist_ok=True)
+        for image in (cloud_image, previous_coreos_image, ubuntu_image, debian_image):
+            image()
+        return
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}

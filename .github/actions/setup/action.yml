@@ -1,0 +1,27 @@
+name: Set up the test machine
+description: Toolchains and system packages that the suites need.
+inputs:
+  packages:
+    description: Additional packages to install through apt
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: |
+          go.sum
+          gui/go.sum
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends rpm socat libnss3-tools \
+          gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev $PACKAGES
+        # Ubuntu blocks the user namespaces that rootless Podman needs.
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

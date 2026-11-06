@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      suites: ${{ steps.list.outputs.suites }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: list
+        run: echo "suites=$(python3 test/regression.py --fast --list)" >>"$GITHUB_OUTPUT"
+      - run: cd gui && go mod download
+      - run: make packages
+      # A tar file, because artifacts lose the executable bit.
+      - run: tar -czf build.tar.gz dist web/dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build
+          path: build.tar.gz
+          retention-days: 3
+
+  suite:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.build.outputs.suites) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build
+      - run: tar -xzf build.tar.gz
+      - if: matrix.suite == 'types'
+        run: npm ci --no-audit --no-fund
+        working-directory: web
+      - run: python3 test/regression.py --no-prep "$SUITE"
+        env:
+          SUITE: ${{ matrix.suite }}
+          CHROMIUM: google-chrome
+          REGRESSION_LOGS: ${{ runner.temp }}/logs
+      - if: failure()
+        run: tail -n 80 "$RUNNER_TEMP"/logs/*.log
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-${{ matrix.suite }}
+          path: ${{ runner.temp }}/logs/*.log
+          retention-days: 7
+
+  # The one check that branch protection looks at, whatever the suites are.
+  ci-ok:
+    if: always()
+    needs: [build, suite]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          BUILD: ${{ needs.build.result }}
+          SUITE: ${{ needs.suite.result }}
+        run: test "$BUILD" = success && test "$SUITE" = success
