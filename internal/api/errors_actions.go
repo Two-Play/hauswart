@@ -33,6 +33,8 @@ const (
 	ErrInvalidRequest   = "invalid_request"
 	ErrSharedAccount    = "shared_account"
 	ErrInvalidAppRule   = "invalid_app_rule"
+	ErrInvalidInventory = "invalid_inventory"
+	ErrInvalidAsset     = "invalid_asset"
 )
 
 func init() {
@@ -66,5 +68,7 @@ func init() {
 		ErrInvalidRequest:   "the request is empty, too long or has characters that are not allowed",
 		ErrSharedAccount:    "several accounts use this Linux account, so please ask in the dashboard",
 		ErrInvalidAppRule:   "the app rule is not valid: %s",
+		ErrInvalidInventory: "the inventory is not valid: %s",
+		ErrInvalidAsset:     "this value is too long or not valid: %s",
 	})
 }

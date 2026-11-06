@@ -15,6 +15,7 @@ func init() {
 		mux.HandleFunc("GET /ca.pem", s.handleCA)
 		mux.HandleFunc("POST /agent/enroll", s.handleEnroll)
 		mux.Handle("POST /agent/report", s.agent(s.handleReport))
+		mux.Handle("POST /agent/inventory", s.agent(s.handleAgentInventory))
 		mux.Handle("POST /agent/renew", s.agent(s.handleRenew))
 		mux.Handle("GET /agent/tasks", s.agent(s.handlePoll))
 		mux.Handle("POST /agent/tasks/{id}/result", s.agent(s.handleResult))

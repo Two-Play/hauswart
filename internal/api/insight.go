@@ -9,6 +9,9 @@ type Insight struct {
 	CertExpires *time.Time    `json:"cert_expires,omitempty"`
 	Accounts    []Account     `json:"accounts,omitempty"`
 	Updates     *UpdateStatus `json:"updates,omitempty"`
+	// InventoryAt says how fresh the inventory is, which changes less often than
+	// it is taken.
+	InventoryAt *time.Time `json:"inventory_at,omitempty"`
 }
 
 // Account is one login account of a device, with UID 1000 or above.
@@ -63,6 +66,8 @@ const (
 	// WarnCertExpiring carries the days left, which are negative once the
 	// certificate has expired.
 	WarnCertExpiring = "cert_expiring"
+	// WarnWarrantyEnding carries the days left, which are negative once it ended.
+	WarnWarrantyEnding = "warranty_ending"
 
 	diskFullPercent = 90
 	// Agents renew long before this, so a device that gets here is either

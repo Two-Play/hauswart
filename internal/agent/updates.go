@@ -40,6 +40,10 @@ type insightState struct {
 	updates *api.UpdateStatus
 	// stale says that a package task ran since the last check.
 	stale bool
+	// inventoryStale is the same for the inventory, and inventoryAt says when it
+	// was last taken.
+	inventoryStale bool
+	inventoryAt    *time.Time
 }
 
 // lockPackages reserves the package manager. The returned function releases it
@@ -49,6 +53,7 @@ func (e *Executor) lockPackages() func() {
 	return func() {
 		e.insight.mu.Lock()
 		e.insight.stale = true
+		e.insight.inventoryStale = true
 		e.insight.mu.Unlock()
 		e.insight.pkg.Unlock()
 	}
@@ -60,6 +65,7 @@ func (e *Executor) collectInsight(ctx context.Context) api.Insight {
 	e.insight.mu.Lock()
 	defer e.insight.mu.Unlock()
 	insight.Updates = e.insight.updates
+	insight.InventoryAt = e.insight.inventoryAt
 	return insight
 }
 
