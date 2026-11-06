@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hauswart
+Exec=hauswart-tray --background
+Icon=hauswart
+NoDisplay=true
+X-GNOME-Autostart-Delay=3

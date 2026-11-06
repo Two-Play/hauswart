@@ -588,6 +588,30 @@ Each person logs in to Nextcloud for themselves, so no policy holds a password.
   At the next login the drive is there. On a laptop without a connection it stays
   away and tries again, every minute.
 
+## Desktop apps
+
+**`hauswart-tray`** is for everyone on a device. It shows the screen time left and the
+connected shares, files requests, and takes the Nextcloud app password, which it
+keeps in the keyring. Install the package `hauswart-tray` on a device, or put it into
+the required packages of a policy. It starts at login.
+
+KDE shows it in the system tray. GNOME has no tray without an extension, so open
+**Hauswart** from the app menu there. Warnings arrive as notifications either way.
+
+A request needs a Hauswart account whose Linux user is the person at the device.
+
+**`hauswart-admin-gui`** does on your own computer what `hauswart-admin approve` does in
+a terminal, from the package `hauswart-admin-gui`. Log in once with `hauswart-admin
+login`, and pin keys there as well. Keys stay in your ssh-agent, so a security key
+asks for its touch as usual.
+
+The apps are built apart from everything else, as they link against graphics
+libraries:
+
+```bash
+make gui
+```
+
 ## Notifications about requests
 
 To hear about new requests, edit `/etc/hauswart/notify.env`. Everything is off until

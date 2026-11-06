@@ -53,6 +53,9 @@ func newApp(t *testing.T, items ...admintool.Item) (*App, *fakeBackend) {
 	a := New(test.NewTempApp(t), backend)
 	a.background = func(f func()) { f() }
 	a.Reload()
+	if len(items) > 0 {
+		a.list.Select(0)
+	}
 	return a, backend
 }
 
@@ -72,6 +75,7 @@ func TestSigningAndRejecting(t *testing.T) {
 	if len(backend.signed) != 1 || backend.signed[0] != "1" {
 		t.Fatalf("got %v", backend.signed)
 	}
+	a.list.Select(0)
 	test.Tap(a.reject)
 	if len(backend.rejected) != 1 {
 		t.Fatalf("got %v", backend.rejected)
@@ -86,6 +90,36 @@ func TestNothingCanBeSignedWithoutAReview(t *testing.T) {
 	a.signSelected()
 	if len(backend.signed) != 0 {
 		t.Fatal("signed nothing at all")
+	}
+}
+
+// A second click must not sign what comes next, unread.
+func TestNothingIsSelectedAfterSigning(t *testing.T) {
+	a, backend := newApp(t, admintool.Item{ID: "1", DeviceName: "laptop", Text: "x"}, admintool.Item{ID: "2", DeviceName: "tv", Text: "y"})
+	test.Tap(a.signOne)
+	test.Tap(a.signOne)
+	if len(backend.signed) != 1 {
+		t.Fatalf("got %v", backend.signed)
+	}
+	if a.status.Text == "" {
+		t.Fatal("the result is not on the screen")
+	}
+}
+
+func TestPickingDuringWorkChangesNothing(t *testing.T) {
+	a, backend := newApp(t, admintool.Item{ID: "1", DeviceName: "laptop", Text: "x"}, admintool.Item{ID: "2", DeviceName: "tv", Text: "y"})
+	var run func()
+	a.background = func(f func()) { run = f }
+	a.signSelected()
+	a.pick(1)
+	if !a.signOne.Disabled() || !a.reload.Disabled() || a.selected != 0 {
+		t.Fatal("something can be started during work")
+	}
+	a.signSelected()
+	a.background = func(f func()) { f() }
+	run()
+	if len(backend.signed) != 1 {
+		t.Fatalf("got %v", backend.signed)
 	}
 }
 

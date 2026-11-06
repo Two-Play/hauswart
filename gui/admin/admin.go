@@ -32,8 +32,11 @@ type App struct {
 
 	items    []admintool.Item
 	selected int
+	// busy says that an action runs, during which nothing else may start.
+	busy bool
 
 	list     *widget.List
+	reload   *widget.Button
 	head     *widget.Label
 	body     *widget.Label
 	warning  *widget.Label
@@ -78,7 +81,8 @@ func New(a fyne.App, backend Backend) *App {
 	t.status = widget.NewLabel("")
 	t.status.Wrapping = fyne.TextWrapWord
 
-	reload := widget.NewButton(lang.L("admin.reload"), t.Reload)
+	t.reload = widget.NewButton(lang.L("admin.reload"), t.Reload)
+	reload := t.reload
 	left := container.NewBorder(widget.NewLabel(lang.L("admin.queue")), reload, nil, nil, t.list)
 	actions := container.NewVBox(t.warning, t.nameRow, container.NewHBox(t.signOne, t.signAll, t.reject), t.status)
 	right := container.NewBorder(t.head, actions, nil, nil, container.NewVScroll(t.body))
@@ -115,15 +119,17 @@ func (t *App) Reload() {
 			t.selected = -1
 			t.list.UnselectAll()
 			t.list.Refresh()
+			// Nothing is selected on its own: the next signature takes a look and
+			// a click, and a second click on Sign lands on nothing.
 			t.show()
-			if len(items) > 0 {
-				t.list.Select(0)
-			}
 		})
 	})
 }
 
 func (t *App) pick(i widget.ListItemID) {
+	if t.busy {
+		return
+	}
 	t.selected = i
 	t.status.SetText("")
 	t.show()
@@ -152,7 +158,9 @@ func (t *App) show() {
 		t.body.SetText("")
 		return
 	}
-	t.reject.Enable()
+	if !t.busy {
+		t.reject.Enable()
+	}
 	t.head.SetText(lang.L("admin.device", map[string]any{"Name": item.DeviceName}))
 	var text strings.Builder
 	text.WriteString(lang.L("admin.from", map[string]any{"Who": item.CreatedBy}) + "\n\n")
@@ -171,14 +179,18 @@ func (t *App) show() {
 	if item.Changes != "" {
 		text.WriteString("\n\n" + item.Changes)
 	}
-	// All of this stays on the screen before anyone can sign for all of them.
+	// What the policy does on all the others is on the screen before anyone can
+	// sign for all of them. prepare lists every other device that waits for it.
 	if len(item.Others) > 0 {
 		text.WriteString("\n\n" + lang.L("admin.others") + "\n" + strings.Join(item.Others, "\n"))
 		t.signAll.Show()
 	}
 	t.body.SetText(text.String())
 	t.warning.SetText(item.Warning)
-	t.signOne.Enable()
+	if !t.busy {
+		t.signOne.Enable()
+		t.signAll.Enable()
+	}
 }
 
 func (t *App) failed(err error) {
@@ -197,9 +209,9 @@ func (t *App) signSelected() {
 	t.work(func() error { return t.backend.Sign(item) }, lang.L("admin.signed"))
 }
 
-// signGroup signs the same policy on all devices that wait for it. A device the
-// server added after the review changes the view on the way, so it is not in
-// this list, and the others are signed one by one with the same checks.
+// signGroup signs the same policy on the devices that were listed on the screen.
+// Each goes through the checks of Sign. A device the server adds later is not in
+// this list.
 func (t *App) signGroup() {
 	item, ok := t.current()
 	if !ok || item.Group == "" {
@@ -239,16 +251,23 @@ func (t *App) saveName() {
 	t.nameText.SetText("")
 }
 
-// work runs an action and shows the queue as it is afterwards. The buttons are off
-// meanwhile, as a second click would sign twice.
+// work runs an action and shows the queue as it is afterwards. Everything else is
+// off meanwhile, including picking another task: a touch of a security key can take
+// a while, and a second click would sign twice.
 func (t *App) work(action func() error, done string) {
+	if t.busy {
+		return
+	}
+	t.busy = true
 	t.signOne.Disable()
 	t.signAll.Disable()
 	t.reject.Disable()
+	t.reload.Disable()
 	t.background(func() {
 		err := action()
 		fyne.Do(func() {
-			t.signAll.Enable()
+			t.busy = false
+			t.reload.Enable()
 			if err != nil {
 				t.show()
 				t.failed(err)
@@ -272,8 +291,9 @@ func (t *App) askLogin() {
 		if !ok {
 			return
 		}
+		name, secret := user.Text, password.Text
 		t.background(func() {
-			err := t.backend.LogIn(user.Text, password.Text)
+			err := t.backend.LogIn(name, secret)
 			fyne.Do(func() {
 				if err != nil {
 					t.status.SetText(err.Error())

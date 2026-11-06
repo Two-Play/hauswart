@@ -14,7 +14,8 @@
     "oidc_name_taken": "Ein lokales Konto hat bereits diesen Namen.",
     "invalid_directory": "Die Verzeichnis-Einstellungen sind ungültig: {{value}}",
     "invalid_mount": "Die Freigabe ist ungültig: {{value}}",
-    "invalid_request": "Die Anfrage ist leer, zu lang oder enthält nicht erlaubte Zeichen."
+    "invalid_request": "Die Anfrage ist leer, zu lang oder enthält nicht erlaubte Zeichen.",
+    "shared_account": "Mehrere Konten nutzen dieses Linux-Konto, bitte frage im Dashboard an."
   },
   "policies": {
     "directory": "Konten aus einem Verzeichnis",

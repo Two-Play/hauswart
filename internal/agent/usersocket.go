@@ -1,12 +1,16 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -26,6 +30,14 @@ const (
 	userRequestsMax = 10
 	userRequestSpan = time.Hour
 	userTimeout     = 10 * time.Second
+	// Anyone on the device can reach this socket, and the agent has more important
+	// things to do. A child must not be able to starve it of processes or files,
+	// which is what the end of a session needs as well.
+	maxUserConns   = 16
+	maxUserPerUID  = 4
+	userStatusKeep = 5 * time.Second
+	userNameKeep   = time.Minute
+	lookupTimeout  = 5 * time.Second
 )
 
 type peerKey struct{}
@@ -33,6 +45,9 @@ type peerKey struct{}
 // peerUID asks the kernel who is on the other side. Nothing a client says about
 // itself counts.
 func peerUID(conn net.Conn) (uint32, error) {
+	if limited, ok := conn.(*limitedConn); ok {
+		conn = limited.Conn
+	}
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
 		return 0, errors.New("not a unix socket")
@@ -63,8 +78,76 @@ type userService struct {
 	send func(context.Context, api.DeviceRequest) error
 	now  func() time.Time
 
-	mu    sync.Mutex
-	asked map[uint32][]time.Time
+	mu     sync.Mutex
+	asked  map[uint32][]time.Time
+	active map[uint32]int
+	names  map[uint32]knownName
+	recent map[uint32]recentStatus
+}
+
+type knownName struct {
+	name string
+	at   time.Time
+}
+
+// recentStatus keeps an answer for a moment, so that asking in a loop costs nothing.
+type recentStatus struct {
+	status api.UserStatus
+	at     time.Time
+}
+
+// limitedListener holds new connections back while too many are open.
+type limitedListener struct {
+	net.Listener
+	slots chan struct{}
+}
+
+func (l *limitedListener) Accept() (net.Conn, error) {
+	l.slots <- struct{}{}
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		<-l.slots
+		return nil, err
+	}
+	return &limitedConn{Conn: conn, release: func() { <-l.slots }}, nil
+}
+
+type limitedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitedConn) Close() error {
+	c.once.Do(c.release)
+	return c.Conn.Close()
+}
+
+// perUser refuses someone who already has enough going on.
+func (u *userService) perUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value(peerKey{}).(uint32)
+		if !ok {
+			http.Error(w, "unknown user", http.StatusForbidden)
+			return
+		}
+		u.mu.Lock()
+		busy := u.active[uid] >= maxUserPerUID
+		if !busy {
+			u.active[uid]++
+		}
+		u.mu.Unlock()
+		if busy {
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+		defer func() {
+			u.mu.Lock()
+			defer u.mu.Unlock()
+			u.active[uid]--
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // allow is a sliding limit per person, as a loop on a desktop must not fill the
@@ -85,7 +168,7 @@ func (u *userService) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", u.handleStatus)
 	mux.HandleFunc("POST /request", u.handleRequest)
-	return http.MaxBytesHandler(mux, maxUserBody)
+	return u.perUser(http.MaxBytesHandler(mux, maxUserBody))
 }
 
 func (u *userService) peerName(r *http.Request) (uint32, string, bool) {
@@ -93,13 +176,31 @@ func (u *userService) peerName(r *http.Request) (uint32, string, bool) {
 	if !ok {
 		return 0, "", false
 	}
-	name, ok := u.exec.userName(strconv.FormatUint(uint64(uid), 10))
+	now := u.now()
+	u.mu.Lock()
+	known, found := u.names[uid]
+	u.mu.Unlock()
+	if found && now.Sub(known.at) < userNameKeep {
+		return uid, known.name, true
+	}
+	name, ok := u.exec.userName(r.Context(), strconv.FormatUint(uint64(uid), 10))
+	if ok {
+		u.mu.Lock()
+		u.names[uid] = knownName{name, now}
+		u.mu.Unlock()
+	}
 	return uid, name, ok
 }
 
-// userName finds an account by its ID, like lookupUser by its name.
-func (e *Executor) userName(uid string) (string, bool) {
-	out, err := e.Run(context.Background(), "getent", "passwd", uid)
+// userName finds an account by its ID, like lookupUser by its name. /etc/passwd
+// comes first, as that needs no process.
+func (e *Executor) userName(ctx context.Context, uid string) (string, bool) {
+	if u, err := user.LookupId(uid); err == nil {
+		return u.Username, true
+	}
+	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
+	defer cancel()
+	out, err := e.Run(ctx, "getent", "passwd", uid)
 	if err != nil {
 		return "", false
 	}
@@ -113,13 +214,24 @@ func (u *userService) handleStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown user", http.StatusForbidden)
 		return
 	}
-	status := api.UserStatus{
-		User:       name,
-		ScreenTime: u.policy.ScreenStatus(strconv.FormatUint(uint64(uid), 10), u.now()),
-		Shares:     u.exec.mountedShares(name),
-		Dashboard:  u.dashboard,
+	now := u.now()
+	u.mu.Lock()
+	recent, found := u.recent[uid]
+	u.mu.Unlock()
+	status := recent.status
+	if !found || now.Sub(recent.at) >= userStatusKeep {
+		id := strconv.FormatUint(uint64(uid), 10)
+		status = api.UserStatus{
+			User:       name,
+			ScreenTime: u.policy.ScreenStatus(id, now),
+			Shares:     u.exec.mountedShares(name, id),
+			Dashboard:  u.dashboard,
+		}
+		status.PolicyIssues, status.Nextcloud = u.policy.userView()
+		u.mu.Lock()
+		u.recent[uid] = recentStatus{status, now}
+		u.mu.Unlock()
 	}
-	status.PolicyIssues, status.Nextcloud = u.policy.userView()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
 }
@@ -145,15 +257,32 @@ func (u *userService) handleRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
-	if err := u.send(r.Context(), api.DeviceRequest{User: name, UserRequest: in}); err != nil {
+	err := u.send(r.Context(), api.DeviceRequest{User: name, UserRequest: in})
+	var refused *api.Error
+	switch {
+	case errors.As(err, &refused):
+		// A request the server refused did not bother anyone.
+		u.giveBack(uid)
+		http.Error(w, refused.Code, http.StatusUnprocessableEntity)
+	case err != nil:
+		u.giveBack(uid)
 		http.Error(w, "the server cannot be reached", http.StatusBadGateway)
-		return
+	default:
+		w.WriteHeader(http.StatusCreated)
 	}
-	w.WriteHeader(http.StatusCreated)
 }
 
-// mountedShares lists the shares of a person, by their folder in /media.
-func (e *Executor) mountedShares(name string) []string {
+func (u *userService) giveBack(uid uint32) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if asked := u.asked[uid]; len(asked) > 0 {
+		u.asked[uid] = asked[:len(asked)-1]
+	}
+}
+
+// mountedShares lists the shares of a person, by their folder in /media. The owner
+// comes from the mount options, as another name can start like this one.
+func (e *Executor) mountedShares(name, uid string) []string {
 	raw, err := os.ReadFile(e.path("/proc/mounts"))
 	if err != nil {
 		return nil
@@ -162,10 +291,12 @@ func (e *Executor) mountedShares(name string) []string {
 	var shares []string
 	for line := range strings.Lines(string(raw)) {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[2] == "cifs" {
-			if folder, ok := strings.CutPrefix(fields[1], prefix); ok {
-				shares = append(shares, folder)
-			}
+		if len(fields) < 4 || fields[2] != "cifs" {
+			continue
+		}
+		folder, ok := strings.CutPrefix(fields[1], prefix)
+		if ok && slices.Contains(strings.Split(fields[3], ","), "uid="+uid) {
+			shares = append(shares, folder)
 		}
 	}
 	return shares
@@ -203,6 +334,7 @@ func listenUsers(path string) (net.Listener, error) {
 }
 
 func (u *userService) serve(ctx context.Context, listener net.Listener) error {
+	listener = &limitedListener{Listener: listener, slots: make(chan struct{}, maxUserConns)}
 	server := &http.Server{
 		Handler:           u.handler(),
 		ReadHeaderTimeout: userTimeout,
@@ -217,6 +349,7 @@ func (u *userService) serve(ctx context.Context, listener net.Listener) error {
 			return context.WithValue(ctx, peerKey{}, uid)
 		},
 	}
+	server.SetKeepAlivesEnabled(false)
 	go func() {
 		<-ctx.Done()
 		server.Close()
@@ -225,6 +358,35 @@ func (u *userService) serve(ctx context.Context, listener net.Listener) error {
 		return err
 	}
 	return nil
+}
+
+// sendRequest hands a request to the server. An *api.Error says that it refused
+// the request, which is something else than not reaching it.
+func (a *Agent) sendRequest(ctx context.Context, r api.DeviceRequest) error {
+	body, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.Server+"/agent/requests", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 300 {
+		return nil
+	}
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	var answer struct {
+		Code string `json:"code"`
+	}
+	json.NewDecoder(io.LimitReader(resp.Body, maxUserBody)).Decode(&answer)
+	return api.Fail(answer.Code)
 }
 
 // serveUsers must never take the agent down: desktops are a convenience.
@@ -240,9 +402,10 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		dashboard: a.cfg.Server,
 		now:       time.Now,
 		asked:     map[uint32][]time.Time{},
-		send: func(ctx context.Context, r api.DeviceRequest) error {
-			return a.post(ctx, "/agent/requests", r)
-		},
+		active:    map[uint32]int{},
+		names:     map[uint32]knownName{},
+		recent:    map[uint32]recentStatus{},
+		send:      a.sendRequest,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

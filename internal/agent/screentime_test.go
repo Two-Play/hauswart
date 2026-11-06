@@ -355,6 +355,21 @@ func TestExtension(t *testing.T) {
 	}
 }
 
+func TestAShorterExtensionTakesNothingAway(t *testing.T) {
+	pe, _, name := newScreenEngine(t)
+	ctx := context.Background()
+	now := monday(19, 0)
+	if _, err := pe.Extend(ctx, api.ScreenExtendPayload{User: name, Until: monday(21, 0)}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pe.Extend(ctx, api.ScreenExtendPayload{User: name, Until: monday(20, 0)}, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := pe.state.Extensions[name]; !got.Equal(monday(21, 0)) {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestExtensionLimits(t *testing.T) {
 	pe, _, name := newScreenEngine(t)
 	ctx := context.Background()

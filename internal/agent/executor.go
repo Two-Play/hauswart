@@ -409,7 +409,10 @@ func (e *Executor) lookupUser(name string) (*user.User, error) {
 }
 
 func (e *Executor) directoryUser(name string) *user.User {
-	out, err := e.Run(context.Background(), "getent", "passwd", name)
+	// A directory that hangs must not take the checks of the agent with it.
+	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
+	defer cancel()
+	out, err := e.Run(ctx, "getent", "passwd", name)
 	if err != nil {
 		return nil
 	}

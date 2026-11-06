@@ -4,7 +4,7 @@ real reboots and popups in a real desktop session.
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory directory-debian]
+directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory directory-debian gui-kde gui-gnome]
 """
 import hashlib
 import json
@@ -1008,6 +1008,77 @@ def test_kde(admin, agent_bin, work, public_key):
     test_screentime(admin, agent_bin, work, public_key, kde=True)
 
 
+def test_gui(admin, agent_bin, work, public_key, kde=True):
+    """The packaged desktop app in a real session, started the way it is at login."""
+    group = "gui-kde" if kde else "gui-gnome"
+    print(f"\n== {group} (Fedora Cloud 44 VM, the package hauswart-tray)", flush=True)
+    package = f"{ROOT}/dist/hauswart-tray-0.1.0-1.x86_64.rpm"
+    if not os.path.exists(package):
+        sys.exit("run make packages first")
+    tool = signing_tool(admin, work)
+    shots = os.environ.get("VM_SHOTS", work)
+    os.makedirs(shots, exist_ok=True)
+    monitor = f"{work}/monitor-{group}"
+    vm = VM(work, group, cloud_image(), "fedora", 2240, [*cloud_seed(work, group, public_key), "-vga", "virtio",
+                                                         "-monitor", f"unix:{monitor},server,nowait"])
+
+    def user(command):
+        uid = vm.ssh("id -u anna").stdout.strip()
+        return vm.ssh(f"runuser -u anna -- env XDG_RUNTIME_DIR=/run/user/{uid} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus {command}")
+
+    try:
+        manager = desktop_session(vm, group, kde)
+        check(group, "anna has a graphical session", wait_for(lambda: graphical_session(vm)),
+              vm.ssh(f"journalctl -b -u {manager} --no-pager | tail -15").stdout)
+        device = protected_agent(vm, admin, tool, agent_bin, group)
+        vm.copy(package, "/tmp/tray.rpm")
+        installed = vm.ssh("dnf5 install -y /tmp/tray.rpm", timeout=600)
+        check(group, "the package installs", installed.returncode == 0, installed.stderr[-400:])
+        check(group, "nothing is missing", "not found" not in vm.ssh("ldd /usr/bin/hauswart-tray").stdout)
+
+        code, out = admin.call("POST", "/api/groups", {"name": group})
+        path = f"/api/groups/{out['id']}"
+        admin.call("PUT", f"{path}/devices", {"devices": [device]})
+        zone, now = midday()
+        policy = {"time_zone": zone, "language": "de",
+                  "screen_time": [{"user": "anna", "windows": [{"days": [now.strftime("%a").lower()], "start": "00:00", "end": "23:30"}]}]}
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        check(group, "the rule arrives", wait_for(lambda: "screen_time" in vm.ssh("cat /var/lib/hauswart/policy.json").stdout, 90))
+
+        vm.ssh("systemctl reboot", timeout=30)
+        time.sleep(15)
+        check(group, "VM comes back", vm.wait_ssh())
+        check(group, "anna has a session again", wait_for(lambda: graphical_session(vm)))
+        check(group, "the app starts at login", wait_for(lambda: vm.ssh("pgrep -x -u anna hauswart-tray").returncode == 0, 90, 2),
+              vm.ssh("ls -la /etc/xdg/autostart | head; journalctl -b --no-pager | grep -i hauswart-tray | tail -5").stdout)
+        time.sleep(20)  # the desktop needs a moment to draw it
+        screendump(monitor, f"{shots}/{group}-tray.png")
+        if kde:
+            items = user("busctl --user get-property org.kde.StatusNotifierWatcher /StatusNotifierWatcher org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems").stdout
+            names = re.findall(r'"(:[0-9.]+)/', items)
+            owners = [user(f"busctl --user status {name}").stdout for name in names]
+            check(group, "the tray symbol is registered", any("hauswart-tray" in owner for owner in owners), items)
+
+        answer = user("curl -s --unix-socket /run/hauswart/user.sock http://agent/status").stdout
+        print("       " + answer[:200], flush=True)
+        check(group, "anna's app can ask the agent", '"user":"anna"' in answer and '"allowed":true' in answer, answer)
+
+        before = open(f"{shots}/{group}-tray.png", "rb").read()
+        second = user("hauswart-tray")
+        check(group, "a second start ends at once", second.returncode == 0, second.stderr)
+        time.sleep(5)
+        screendump(monitor, f"{shots}/{group}-window.png")
+        check(group, "and opens the window of the first", open(f"{shots}/{group}-window.png", "rb").read() != before)
+        check(group, "there is still one app", vm.ssh("pgrep -c -x -u anna hauswart-tray").stdout.strip() == "1")
+    finally:
+        vm.stop()
+
+
+def test_gui_gnome(admin, agent_bin, work, public_key):
+    test_gui(admin, agent_bin, work, public_key, kde=False)
+
+
 def screendump(monitor, path):
     """Saves what the VM's screen shows, through the QEMU monitor."""
     with socket.socket(socket.AF_UNIX) as conn:
@@ -1114,7 +1185,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -1143,7 +1214,7 @@ def main():
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
                      "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
                      "atomic-policy": test_atomic_policy, "directory": test_directory,
-                     "directory-debian": test_directory_debian}
+                     "directory-debian": test_directory_debian, "gui-kde": test_gui, "gui-gnome": test_gui_gnome}
             tests[name](admin, f"{work}/agent", work, public_key)
     finally:
         if signing:

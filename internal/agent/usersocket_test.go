@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,7 +48,7 @@ func newUserEnv(t *testing.T) *userEnv {
 	env := &userEnv{system: system, name: name, uid: me.Uid}
 	env.service = &userService{
 		exec: pe.exec, policy: pe, dashboard: "https://hauswart.example", now: func() time.Time { return monday(16, 0) },
-		asked: map[uint32][]time.Time{},
+		asked: map[uint32][]time.Time{}, active: map[uint32]int{}, names: map[uint32]knownName{}, recent: map[uint32]recentStatus{},
 		send: func(_ context.Context, r api.DeviceRequest) error {
 			env.sent = append(env.sent, r)
 			return nil
@@ -133,7 +135,8 @@ func TestSharesOfOthersStayOut(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(mounts), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	text := "//nas/a /media/" + e.name + "-Family cifs rw 0 0\n//nas/b /media/other-Secret cifs rw 0 0\n/dev/x /media/" + e.name + "-Stick ext4 rw 0 0\n"
+	text := "//nas/a /media/" + e.name + "-Family cifs rw,uid=" + e.uid + ",gid=1 0 0\n//nas/b /media/other-Secret cifs rw,uid=99999 0 0\n" +
+		"//nas/c /media/" + e.name + "-marie-docs cifs rw,uid=99999 0 0\n/dev/x /media/" + e.name + "-Stick ext4 rw 0 0\n"
 	if err := os.WriteFile(mounts, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -213,4 +216,67 @@ func TestServerAwayIsSaidPlainly(t *testing.T) {
 	if code, body := e.post(t, `{"kind":"software","detail":"vim"}`); code != http.StatusBadGateway || strings.Contains(body, "route") {
 		t.Fatalf("%d %s", code, body)
 	}
+}
+
+func TestRefusalsSayWhyAndCostNothing(t *testing.T) {
+	e := newUserEnv(t)
+	e.service.send = func(context.Context, api.DeviceRequest) error { return api.Fail(api.ErrNoSuchUser) }
+	for range userRequestsMax + 3 {
+		code, body := e.post(t, `{"kind":"software","detail":"vim"}`)
+		if code != http.StatusUnprocessableEntity || !strings.Contains(body, api.ErrNoSuchUser) {
+			t.Fatalf("%d %s", code, body)
+		}
+	}
+}
+
+// A child in a loop must not reach the processes or files of the agent.
+func TestAskingInALoopCostsNothing(t *testing.T) {
+	e := newUserEnv(t)
+	var lookups atomic.Int64
+	base := e.service.exec.Run
+	e.service.exec.Run = func(ctx context.Context, name string, args ...string) (string, error) {
+		lookups.Add(1)
+		return base(ctx, name, args...)
+	}
+	var wg sync.WaitGroup
+	var refused atomic.Int64
+	for range 200 {
+		wg.Go(func() {
+			resp, err := e.client.Get("http://agent/status")
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusTooManyRequests {
+				refused.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	if got := lookups.Load(); got > 20 {
+		t.Fatalf("%d commands for 200 questions", got)
+	}
+}
+
+func TestAtMostSomeRequestsPerPersonAtOnce(t *testing.T) {
+	e := newUserEnv(t)
+	release := make(chan struct{})
+	started := make(chan struct{}, maxUserPerUID)
+	e.service.send = func(context.Context, api.DeviceRequest) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}
+	var wg sync.WaitGroup
+	for range maxUserPerUID {
+		wg.Go(func() { e.post(t, `{"kind":"software","detail":"vim"}`) })
+	}
+	for range maxUserPerUID {
+		<-started
+	}
+	if code, _ := e.post(t, `{"kind":"software","detail":"vim"}`); code != http.StatusTooManyRequests {
+		t.Fatalf("got %d", code)
+	}
+	close(release)
+	wg.Wait()
 }

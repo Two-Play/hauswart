@@ -1,7 +1,7 @@
 VERSION ?= 0.1.0
 LDFLAGS := -X github.com/Two-Play/hauswart/internal/agent.Version=$(VERSION)
 
-.PHONY: build web test e2e test-vm packages test-packages clean
+.PHONY: build web gui test test-gui e2e test-vm packages test-packages clean
 
 build: web
 	mkdir -p dist
@@ -9,12 +9,19 @@ build: web
 	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o dist/hauswart-agent ./cmd/hauswart-agent
 	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o dist/hauswart-admin ./cmd/hauswart-admin
 
+# The desktop apps link against graphics libraries, so they are built apart.
+gui:
+	packaging/build-gui.sh $(VERSION)
+
 web:
 	cd web && npm ci --no-audit --no-fund && npm run build
 
 test:
 	go vet ./...
 	go test ./...
+
+test-gui:
+	cd gui && go vet ./admin ./tray ./agentclient ./translations && go test ./...
 
 e2e:
 	python3 test/e2e.py
@@ -27,7 +34,7 @@ test-vm:
 test-packages: packages
 	VERSION=$(VERSION) python3 test/packages.py
 
-packages: build
+packages: build gui
 	rpmbuild -bb packaging/hauswart.spec \
 		--define '_topdir $(CURDIR)/dist/rpmbuild' \
 		--define '_rpmdir $(CURDIR)/dist' \
@@ -38,6 +45,8 @@ packages: build
 	packaging/build-deb.sh server $(VERSION)
 	packaging/build-deb.sh agent $(VERSION)
 	packaging/build-deb.sh admin $(VERSION)
+	packaging/build-deb.sh tray $(VERSION)
+	packaging/build-deb.sh admin-gui $(VERSION)
 	rm -rf dist/hauswart-$(VERSION)
 	mkdir -p dist/hauswart-$(VERSION)
 	cp dist/hauswart-server dist/hauswart-agent dist/hauswart-admin LICENSE packaging/install.sh packaging/server.env packaging/notify.env packaging/hauswart.sysusers packaging/systemd/*.service dist/hauswart-$(VERSION)/

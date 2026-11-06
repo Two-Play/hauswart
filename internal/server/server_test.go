@@ -39,6 +39,8 @@ type env struct {
 	ca    *pki.CA
 	// server is what ts runs, for tests that change its settings.
 	server *Server
+	// dbPath lets a test act like a hacked server, past every check.
+	dbPath string
 }
 
 func setup(t *testing.T) *env {
@@ -77,7 +79,7 @@ func setup(t *testing.T) *env {
 	if _, err := st.CreateUser(ctx, "anna", "anna", hash, "member"); err != nil {
 		t.Fatal(err)
 	}
-	return &env{t: t, ts: ts, store: st, ca: ca, server: srv}
+	return &env{t: t, ts: ts, store: st, ca: ca, server: srv, dbPath: filepath.Join(dir, "test.db")}
 }
 
 func (e *env) client(certs ...tls.Certificate) *http.Client {

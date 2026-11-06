@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/GehirnInc/crypt/sha512_crypt"
@@ -101,12 +102,54 @@ func loadConfig() (*config, error) {
 	return cfg, nil
 }
 
-func (c *config) save() error {
+// lockConfig keeps the terminal and the app from writing at once. A counter that
+// goes backwards gets the next signature refused.
+func lockConfig() (func(), error) {
 	path, err := configPath()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return func() { file.Close() }, nil
+}
+
+// updateConfig changes what is on disk now, and not what was read a while ago.
+func updateConfig(change func(*config)) error {
+	unlock, err := lockConfig()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	defer unlock()
+	fresh, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	change(fresh)
+	return fresh.write()
+}
+
+func (c *config) save() error {
+	unlock, err := lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return c.write()
+}
+
+func (c *config) write() error {
+	path, err := configPath()
+	if err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(c, "", "  ")
@@ -498,10 +541,20 @@ func seal(cfg *config, key ssh.Signer, id string, report *api.Report, taskType s
 	if err != nil {
 		return sign.Signed{}, fmt.Errorf("device %s (%s): %w", known.Name, id, err)
 	}
-	known.Counter = counter
-	if err := cfg.save(); err != nil {
+	// Only the counter is written, on top of what is on disk by now.
+	err = updateConfig(func(fresh *config) {
+		stored := fresh.Devices[id]
+		if stored == nil {
+			stored = &device{Name: known.Name}
+			fresh.Devices[id] = stored
+		}
+		counter = max(counter, stored.Counter+1)
+		stored.Counter = counter
+	})
+	if err != nil {
 		return sign.Signed{}, err
 	}
+	known.Counter = counter
 	return sign.Sign(key, sign.Envelope{
 		Type:     taskType,
 		Payload:  payload,

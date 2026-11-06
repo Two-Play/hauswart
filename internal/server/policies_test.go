@@ -402,3 +402,30 @@ func TestRequestFromADevice(t *testing.T) {
 		t.Fatalf("got %d", code)
 	}
 }
+
+func TestSharedLinuxAccountIsNotGuessed(t *testing.T) {
+	e := setup(t)
+	id, agent := e.enroll()
+	ctx := context.Background()
+	hash, _ := HashPassword(testPassword)
+	if _, err := e.store.CreateUser(ctx, "parent", "anna", hash, "parent"); err != nil {
+		t.Fatal(err)
+	}
+	in := api.DeviceRequest{User: "anna", UserRequest: api.UserRequest{Kind: "sudo", Detail: "30"}}
+	// anna is a member without this device, so only the parent is left.
+	if code, data := e.do(agent, "POST", "/agent/requests", in); code != http.StatusCreated {
+		t.Fatalf("%d %s", code, data)
+	}
+	users, _ := e.store.ListUsers(ctx)
+	for _, u := range users {
+		if u.Username == "anna" {
+			if err := e.store.SetUserDevices(ctx, u.ID, []string{id}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	code, data := e.do(agent, "POST", "/agent/requests", in)
+	if code != http.StatusConflict || !strings.Contains(string(data), api.ErrSharedAccount) {
+		t.Fatalf("%d %s", code, data)
+	}
+}

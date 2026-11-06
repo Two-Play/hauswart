@@ -84,26 +84,39 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, dev
 		failErr(w, http.StatusBadRequest, err)
 		return
 	}
-	u, err := s.store.UserByLinuxName(r.Context(), in.User)
-	if errors.Is(err, store.ErrNotFound) {
+	accounts, err := s.store.UsersByLinuxName(r.Context(), in.User)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if len(accounts) == 0 {
 		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
 		return
 	}
-	if err != nil {
-		s.internal(w, err)
+	var candidates []store.User
+	for _, account := range accounts {
+		allowed, err := s.store.DeviceAllowed(r.Context(), account.ID, device)
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		if allowed {
+			candidates = append(candidates, account)
+		}
+	}
+	if len(candidates) == 0 {
+		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
+	// Who approves goes by who asked. On a shared Linux account nobody can tell,
+	// and a child's request must not look like a parent's.
+	if len(candidates) > 1 {
+		fail(w, http.StatusConflict, api.ErrSharedAccount)
+		return
+	}
+	u := candidates[0]
 	if _, _, err := requestTask(in.Kind, in.Detail, u.LinuxUser); err != nil {
 		failErr(w, http.StatusBadRequest, err)
-		return
-	}
-	allowed, err := s.store.DeviceAllowed(r.Context(), u.ID, device)
-	if err != nil {
-		s.internal(w, err)
-		return
-	}
-	if !allowed {
-		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
 	id, err := s.store.CreateRequest(r.Context(), u.ID, device, in.Kind, in.Detail, in.Reason)

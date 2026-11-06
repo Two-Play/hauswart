@@ -235,6 +235,22 @@ A policy with a directory makes Authentik decide who can log in on a device, so:
 - **Shares get the login password** in the moment of the login, as the login does.
   It is kept in memory by pam_mount and is written nowhere.
 
+### The socket of the agent
+
+The agent runs as root and answers everyone on the device on `/run/hauswart/user.sock`.
+Who is asking comes from the kernel, so nobody can speak for someone else. It tells
+people about themselves, and it passes on requests, at most 10 an hour per person.
+A hacked device can make up requests in the name of anyone who may use it, and
+someone still has to approve them.
+
+### The admin app
+
+`hauswart-admin-gui` runs no server and opens no port. It shows what the command line
+shows, through the same code, and reads a task again right before it signs: a task
+that changed since it was on the screen is refused. Whatever runs as you can still
+ask your ssh-agent to sign, with either tool. Use a security key, or `ssh-add -c`, to
+have a say in that.
+
 ### With control of a device
 
 - Act as that one device: send false reports and results for its own tasks.

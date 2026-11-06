@@ -17,15 +17,15 @@ import (
 const refreshEvery = 30 * time.Second
 
 func main() {
+	if tray.Running() {
+		return
+	}
 	if err := translations.Load(); err != nil {
 		log.Fatal(err)
 	}
 	a := app.NewWithID("org.hauswart.tray")
 	t := tray.New(a, agentclient.New(agentclient.DefaultSocket), tray.SecretTool{})
-	show := func() { fyne.Do(t.Show) }
-	if !tray.Single(show) {
-		return
-	}
+	tray.Listen(func() { fyne.Do(t.Show) })
 	a.Lifecycle().SetOnStarted(func() {
 		t.Refresh()
 		// Started from the menu, someone wants to see something. Autostart stays quiet.

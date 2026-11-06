@@ -305,6 +305,8 @@ func (pe *PolicyEngine) ScreenStatus(uid string, now time.Time) *api.ScreenStatu
 // Extend lets a user stay until a moment today. The device checks this itself,
 // because a passkey approval can be for something else than was shown.
 func (pe *PolicyEngine) Extend(ctx context.Context, p api.ScreenExtendPayload, now time.Time) (string, error) {
+	// Outside the lock: the screen time check needs it, and this may take a while.
+	person, personErr := pe.exec.lookupUser(p.User)
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 	if pe.policy == nil {
@@ -314,7 +316,7 @@ func (pe *PolicyEngine) Extend(ctx context.Context, p api.ScreenExtendPayload, n
 	ruleUser := p.User
 	if !slices.ContainsFunc(pe.policy.ScreenTime, func(r api.ScreenTimeRule) bool { return r.User == p.User }) {
 		ruleUser = ""
-		if person, err := pe.exec.lookupUser(p.User); err == nil {
+		if personErr == nil {
 			for name, uid := range pe.state.ScreenUIDs {
 				if uid == person.Uid {
 					ruleUser = name
@@ -342,6 +344,11 @@ func (pe *PolicyEngine) Extend(ctx context.Context, p api.ScreenExtendPayload, n
 		if now.Before(end) {
 			extensions[user] = end
 		}
+	}
+	// A shorter extension must not take time away that someone already has.
+	if earlier := extensions[ruleUser]; earlier.After(p.Until) {
+		until = earlier.In(zone)
+		p.Until = earlier
 	}
 	extensions[ruleUser] = p.Until
 	before := pe.state.Extensions

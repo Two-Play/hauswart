@@ -25,9 +25,11 @@ RUN apt-get update && apt-get install -y systemd systemd-sysv curl ca-certificat
 """
 
 TARGETS = {
-    "rpm": (FEDORA, f"dnf5 install -y /pkgs/hauswart-server-{VERSION}-1.x86_64.rpm /pkgs/hauswart-agent-{VERSION}-1.x86_64.rpm",
+    "rpm": (FEDORA, f"dnf5 install -y /pkgs/hauswart-server-{VERSION}-1.x86_64.rpm /pkgs/hauswart-agent-{VERSION}-1.x86_64.rpm "
+                    f"/pkgs/hauswart-tray-{VERSION}-1.x86_64.rpm /pkgs/hauswart-admin-gui-{VERSION}-1.x86_64.rpm",
             "dnf5 remove -y hauswart-agent"),
-    "deb": (DEBIAN, f"apt-get install -y /pkgs/hauswart-server_{VERSION}_amd64.deb /pkgs/hauswart-agent_{VERSION}_amd64.deb",
+    "deb": (DEBIAN, f"apt-get install -y /pkgs/hauswart-server_{VERSION}_amd64.deb /pkgs/hauswart-agent_{VERSION}_amd64.deb "
+                    f"/pkgs/hauswart-tray_{VERSION}_amd64.deb /pkgs/hauswart-admin-gui_{VERSION}_amd64.deb",
             "apt-get remove -y hauswart-agent"),
     "tarball": (DEBIAN, f"cd /tmp && tar xzf /pkgs/hauswart-{VERSION}-linux-amd64.tar.gz && hauswart-{VERSION}/install.sh server && hauswart-{VERSION}/install.sh agent",
                 None),

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hauswart
+Comment=Screen time, shares and requests
+Exec=hauswart-tray
+Icon=hauswart
+Categories=System;

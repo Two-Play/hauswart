@@ -57,5 +57,11 @@
   "admin.password": "Password",
   "admin.loginbutton": "Log in",
   "admin.cancel": "Cancel",
-  "admin.notready": "Run hauswart-admin login once in a terminal first."
+  "admin.notready": "Run hauswart-admin login once in a terminal first.",
+  "request.badminutes": "Please enter the minutes as a number.",
+  "request.refused.no_such_user": "There is no Hauswart account for you yet. Ask a parent.",
+  "request.refused.device_not_assigned": "This device is not assigned to you. Ask a parent.",
+  "request.refused.shared_account": "Several people use this Linux account. Please ask in the dashboard.",
+  "request.refused.invalid_duration": "That is too much time for one request.",
+  "request.refused.invalid_package": "That does not look like the name of a package."
 }

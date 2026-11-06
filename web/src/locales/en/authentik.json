@@ -14,7 +14,8 @@
     "oidc_name_taken": "A local account already has this name.",
     "invalid_directory": "The directory settings are not valid: {{value}}",
     "invalid_mount": "The share is not valid: {{value}}",
-    "invalid_request": "The request is empty, too long or has characters that are not allowed."
+    "invalid_request": "The request is empty, too long or has characters that are not allowed.",
+    "shared_account": "Several accounts use this Linux account, so please ask in the dashboard."
   },
   "policies": {
     "directory": "Accounts from a directory",

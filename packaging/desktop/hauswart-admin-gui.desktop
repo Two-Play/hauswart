@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hauswart Admin
+Comment=Review and sign tasks
+Exec=hauswart-admin-gui
+Icon=hauswart
+Categories=System;

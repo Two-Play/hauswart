@@ -27,6 +27,11 @@ var ErrTooMany = errors.New("too many requests")
 // ErrUnreachable says that the agent or its server could not be reached.
 var ErrUnreachable = errors.New("not reachable")
 
+// Refused says that the server did not take a request, with its error code.
+type Refused struct{ Code string }
+
+func (r Refused) Error() string { return r.Code }
+
 // Client asks the agent. The agent knows who is asking from the kernel, so there
 // is nothing to log in with.
 type Client struct {
@@ -78,5 +83,8 @@ func (c *Client) Request(r api.UserRequest) error {
 		return ErrUnreachable
 	}
 	text, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return Refused{Code: strings.TrimSpace(string(text))}
+	}
 	return errors.New(strings.TrimSpace(string(text)))
 }

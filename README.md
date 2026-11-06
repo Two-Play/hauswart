@@ -41,6 +41,8 @@ in containers and virtual machines, not on physical machines or over a real VPN.
   accounts
 - Linux login with Authentik accounts on Fedora and Debian, also offline, with SMB
   shares at login and Nextcloud as a sync client or network drive
+- A desktop app for family members with their screen time, shares and requests, and one
+  for admins to review and sign tasks
 - Audit log of every action
 - Backup and restore
 
@@ -86,6 +88,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | Command | Checks |
 | --- | --- |
 | `make test` | `go vet` and unit tests |
+| `make test-gui` | The desktop apps, clicked through without a screen. Needs the headers of Fyne, or use `make gui` to build in a container |
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, certificate renewal, signed tasks against a simulated hacked server, and admin notifications |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
 | `make test-vm` | Flatpak, `rpm-ostree`, real reboots, popups and screen time in GNOME and Plasma sessions, and the login with a real Authentik, Samba and Nextcloud, in real virtual machines. Needs KVM and Podman, and downloads several GB |

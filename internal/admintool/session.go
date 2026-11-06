@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 
@@ -95,6 +97,17 @@ type Session struct {
 	devices func() (map[string]serverDevice, error)
 	sign    func(ssh.Signer, map[string]serverDevice, Item) error
 	signer  func() (ssh.Signer, error)
+
+	// mu keeps one thing going at a time, as all of it changes cfg.
+	mu sync.Mutex
+	// key stays, as every signer holds a connection to the ssh-agent.
+	key ssh.Signer
+}
+
+// others is the queue without one task. In a window, unlike in the terminal, any
+// task can be picked first, and all the others are still ahead.
+func others(queue []queued, i int) []queued {
+	return slices.Delete(slices.Clone(queue), i, i+1)
 }
 
 // Open reads the settings of this computer.
@@ -135,6 +148,8 @@ func (s *Session) Server() string { return s.cfg.Server }
 
 // Items lists what waits for a signature.
 func (s *Session) Items() ([]Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.reload(); err != nil {
 		return nil, err
 	}
@@ -148,7 +163,7 @@ func (s *Session) Items() ([]Item, error) {
 	}
 	items := make([]Item, 0, len(queue))
 	for i, task := range queue {
-		items = append(items, prepare(s.cfg, list, task, queue[i+1:]))
+		items = append(items, prepare(s.cfg, list, task, others(queue, i)))
 	}
 	return items, nil
 }
@@ -159,6 +174,8 @@ func (s *Session) Sign(shown Item) error {
 	if shown.Problem != "" {
 		return errors.New(shown.Problem)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.reload(); err != nil {
 		return err
 	}
@@ -174,21 +191,28 @@ func (s *Session) Sign(shown Item) error {
 		if task.ID != shown.ID {
 			continue
 		}
-		now := prepare(s.cfg, list, task, queue[i+1:])
+		now := prepare(s.cfg, list, task, others(queue, i))
 		if now.Problem != "" || now.digest() != shown.digest() {
 			return ErrChanged
 		}
-		key, err := s.signer()
-		if err != nil {
-			return err
+		if s.key == nil {
+			if s.key, err = s.signer(); err != nil {
+				return err
+			}
 		}
-		return s.sign(key, list, now)
+		err := s.sign(s.key, list, now)
+		if err != nil {
+			s.key = nil // the ssh-agent may have been restarted
+		}
+		return err
 	}
 	return ErrChanged
 }
 
 // Reject closes a task without signing it.
 func (s *Session) Reject(item Item) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.cfg.call("POST", "/api/tasks/"+item.ID+"/reject", struct{}{}, nil)
 }
 
@@ -197,14 +221,25 @@ func (s *Session) NameDevice(id, name string) error {
 	if !api.ValidText(name, 64) || name == "" {
 		return errors.New("that is not a usable name")
 	}
-	known := s.cfg.Devices[id]
-	if known == nil {
-		known = &device{}
-		s.cfg.Devices[id] = known
-	}
-	known.Name = name
-	return s.cfg.save()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return updateConfig(func(fresh *config) {
+		known := fresh.Devices[id]
+		if known == nil {
+			known = &device{}
+			fresh.Devices[id] = known
+		}
+		known.Name = name
+		*s.cfg = *fresh
+	})
 }
 
 // LogIn renews the session with the server this computer already trusts.
-func (s *Session) LogIn(user, password string) error { return s.cfg.logIn(user, password) }
+func (s *Session) LogIn(user, password string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.reload(); err != nil {
+		return err
+	}
+	return s.cfg.logIn(user, password)
+}

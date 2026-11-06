@@ -57,5 +57,11 @@
   "admin.password": "Passwort",
   "admin.loginbutton": "Anmelden",
   "admin.cancel": "Abbrechen",
-  "admin.notready": "Führe zuerst einmal hauswart-admin login im Terminal aus."
+  "admin.notready": "Führe zuerst einmal hauswart-admin login im Terminal aus.",
+  "request.badminutes": "Bitte gib die Minuten als Zahl ein.",
+  "request.refused.no_such_user": "Für dich gibt es noch kein Hauswart-Konto. Frag ein Elternteil.",
+  "request.refused.device_not_assigned": "Dieses Gerät ist dir nicht zugeordnet. Frag ein Elternteil.",
+  "request.refused.shared_account": "Mehrere Personen nutzen dieses Linux-Konto. Bitte frage im Dashboard an.",
+  "request.refused.invalid_duration": "Das ist zu viel Zeit für eine Anfrage.",
+  "request.refused.invalid_package": "Das sieht nicht nach einem Paketnamen aus."
 }

@@ -54,6 +54,7 @@ func newApp(t *testing.T, agent *fakeAgent) (*App, *fakeKeyring) {
 	keyring := &fakeKeyring{}
 	app := New(a, agent, keyring)
 	app.now = func() time.Time { return noon }
+	app.background = func(f func()) { f() }
 	return app, keyring
 }
 
@@ -147,6 +148,28 @@ func TestRefusalsAreSaidInPlainWords(t *testing.T) {
 			t.Error("the text was lost")
 		}
 		app.detail.SetText("")
+	}
+}
+
+func TestRefusalsOfTheServerSayWhy(t *testing.T) {
+	agent := &fakeAgent{}
+	app, _ := newApp(t, agent)
+	agent.refuse = agentclient.Refused{Code: api.ErrNoSuchUser}
+	test.Type(app.detail, "vim")
+	app.send()
+	if app.result.Text != lang.L("request.refused.no_such_user") {
+		t.Fatalf("got %q", app.result.Text)
+	}
+}
+
+func TestMinutesAreCheckedBeforeSending(t *testing.T) {
+	agent := &fakeAgent{}
+	app, _ := newApp(t, agent)
+	app.ShowRequest(api.RequestScreen)
+	test.Type(app.detail, "abc")
+	app.send()
+	if len(agent.sent) != 0 || app.result.Text != lang.L("request.badminutes") {
+		t.Fatalf("%v %q", agent.sent, app.result.Text)
 	}
 }
 

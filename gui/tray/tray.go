@@ -3,9 +3,11 @@
 package tray
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +32,11 @@ type Keyring interface {
 	StoreNextcloud(password string) error
 }
 
+//go:embed hauswart.svg
+var iconData []byte
+
+var icon = fyne.NewStaticResource("hauswart.svg", iconData)
+
 // kinds are the requests the form offers, in its order.
 var kinds = []string{"software", "flatpak", api.RequestScreen, "sudo"}
 
@@ -40,6 +47,8 @@ type App struct {
 	agent   Agent
 	keyring Keyring
 	now     func() time.Time
+	// background keeps waiting for the agent away from the window.
+	background func(func())
 
 	status api.UserStatus
 
@@ -64,7 +73,7 @@ type App struct {
 
 // New builds the app. Refresh fills it.
 func New(a fyne.App, agent Agent, keyring Keyring) *App {
-	t := &App{app: a, agent: agent, keyring: keyring, now: time.Now}
+	t := &App{app: a, agent: agent, keyring: keyring, now: time.Now, background: func(f func()) { go f() }}
 	t.window = a.NewWindow(lang.L("title"))
 	t.window.Resize(fyne.NewSize(420, 380))
 	// The window comes and goes, the app stays in the tray.
@@ -94,8 +103,10 @@ func New(a fyne.App, agent Agent, keyring Keyring) *App {
 		fyne.NewMenuItem(lang.L("menu.time"), func() { t.ShowRequest(api.RequestScreen) }),
 		fyne.NewMenuItem(lang.L("menu.dashboard"), t.openDashboard),
 	)
+	a.SetIcon(icon)
 	if tray, ok := a.(desktop.App); ok {
 		tray.SetSystemTrayMenu(t.menu)
+		tray.SetSystemTrayIcon(icon)
 		tray.SetSystemTrayWindow(t.window)
 	}
 	return t
@@ -141,11 +152,25 @@ func (t *App) showDetailHint() {
 }
 
 func (t *App) send() {
-	err := t.agent.Request(api.UserRequest{
+	request := api.UserRequest{
 		Kind:   t.selectedKind(),
 		Detail: strings.TrimSpace(t.detail.Text),
 		Reason: strings.TrimSpace(t.reason.Text),
+	}
+	if timed(request.Kind) {
+		if minutes, err := strconv.Atoi(request.Detail); err != nil || minutes < 1 {
+			t.result.SetText(lang.L("request.badminutes"))
+			return
+		}
+	}
+	t.background(func() {
+		err := t.agent.Request(request)
+		fyne.Do(func() { t.sent(err) })
 	})
+}
+
+func (t *App) sent(err error) {
+	var refused agentclient.Refused
 	switch {
 	case err == nil:
 		t.result.SetText(lang.L("request.sent"))
@@ -155,6 +180,8 @@ func (t *App) send() {
 		t.result.SetText(lang.L("request.toomany"))
 	case errors.Is(err, agentclient.ErrUnreachable):
 		t.result.SetText(lang.L("request.offline"))
+	case errors.As(err, &refused):
+		t.result.SetText(lang.L("request.refused." + refused.Code))
 	default:
 		t.result.SetText(lang.L("request.failed", map[string]any{"Reason": err.Error()}))
 	}
@@ -177,12 +204,17 @@ func (t *App) saveNextcloud() {
 	if secret == "" {
 		return
 	}
-	if err := t.keyring.StoreNextcloud(secret); err != nil {
-		t.saved.SetText(lang.L("nextcloud.failed", map[string]any{"Reason": err.Error()}))
-		return
-	}
-	t.password.SetText("")
-	t.saved.SetText(lang.L("nextcloud.saved"))
+	t.background(func() {
+		err := t.keyring.StoreNextcloud(secret)
+		fyne.Do(func() {
+			if err != nil {
+				t.saved.SetText(lang.L("nextcloud.failed", map[string]any{"Reason": err.Error()}))
+				return
+			}
+			t.password.SetText("")
+			t.saved.SetText(lang.L("nextcloud.saved"))
+		})
+	})
 }
 
 func (t *App) openDashboard() {
@@ -236,7 +268,13 @@ func (t *App) screenText() string {
 
 // Refresh asks the agent and shows the answer.
 func (t *App) Refresh() {
-	status, err := t.agent.Status()
+	t.background(func() {
+		status, err := t.agent.Status()
+		fyne.Do(func() { t.show(status, err) })
+	})
+}
+
+func (t *App) show(status api.UserStatus, err error) {
 	if err != nil {
 		t.screen.SetText(lang.L("unreachable"))
 		t.setMenuTime(lang.L("unreachable"))

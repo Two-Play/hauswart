@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds a .deb with ar and tar, so that packaging on Fedora needs no Debian
-# tools. Usage: packaging/build-deb.sh server|agent|admin VERSION
+# tools. Usage: packaging/build-deb.sh server|agent|admin|tray|admin-gui VERSION
 set -eu
 
 component=$1
@@ -11,9 +11,19 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/data/usr/bin" "$work/data/usr/lib/systemd/system" "$work/control"
 
 install -m755 "dist/hauswart-$component" "$work/data/usr/bin/"
-if [ "$component" != admin ]; then
+case $component in
+server | agent)
 	install -m644 "packaging/systemd/hauswart-$component.service" "$work/data/usr/lib/systemd/system/"
-fi
+	;;
+tray)
+	install -Dm644 packaging/desktop/hauswart-tray.desktop "$work/data/usr/share/applications/hauswart-tray.desktop"
+	install -Dm644 packaging/desktop/hauswart-tray-autostart.desktop "$work/data/etc/xdg/autostart/hauswart-tray.desktop"
+	install -Dm644 packaging/desktop/hauswart.svg "$work/data/usr/share/icons/hicolor/scalable/apps/hauswart.svg"
+	;;
+admin-gui)
+	install -Dm644 packaging/desktop/hauswart-admin-gui.desktop "$work/data/usr/share/applications/hauswart-admin-gui.desktop"
+	;;
+esac
 if [ "$component" = server ]; then
 	mkdir -p "$work/data/etc/hauswart" "$work/data/usr/lib/sysusers.d"
 	install -m644 packaging/server.env "$work/data/etc/hauswart/"
@@ -31,7 +41,15 @@ Section: admin
 Priority: optional
 Description: Linux management for families ($component)
 CONTROL
-if [ "$component" != admin ]; then
+case $component in
+tray | admin-gui)
+	echo "Depends: libgl1, libx11-6, libxcursor1, libxrandr2, libxinerama1, libxi6, libxxf86vm1, libwayland-client0" >>"$work/control/control"
+	;;
+esac
+if [ "$component" = tray ]; then
+	echo "Recommends: libsecret-tools" >>"$work/control/control"
+fi
+if [ "$component" = server ] || [ "$component" = agent ]; then
 	install -m755 packaging/deb/postinst "$work/control/postinst"
 	sed "s/@COMPONENT@/$component/" packaging/deb/prerm >"$work/control/prerm"
 	chmod 755 "$work/control/prerm"

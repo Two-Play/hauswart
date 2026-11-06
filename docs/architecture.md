@@ -244,6 +244,17 @@ authselect feature for it, so the agent keeps a custom profile based on `sssd`.
 The agent is a static binary, and Go's `os/user` only reads `/etc/passwd` then. So
 `lookupUser` asks `getent` for accounts it does not find.
 
+## Desktop apps
+
+The apps have a Go module of their own in `gui/`, built with [Fyne](https://fyne.io).
+Fyne needs CGO and links against graphics libraries, and the server, the agent and the
+admin tool stay static this way. `packaging/build-gui.sh` builds them on Debian, as what
+is built against a newer glibc does not start on an older one.
+
+`hauswart-tray` asks the agent over a Unix socket. `hauswart-admin-gui` uses
+`internal/admintool` like the command line tool, so both show the same text and sign
+through the same code.
+
 ## Roles
 
 | Role | May do |
