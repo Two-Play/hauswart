@@ -1,0 +1,16 @@
+{
+  "login": {
+    "or": "oder",
+    "oidc": "Mit Authentik anmelden"
+  },
+  "users": {
+    "disabled": "Deaktiviert"
+  },
+  "errors": {
+    "managed_elsewhere": "Dieses Konto wird in Authentik verwaltet.",
+    "oidc_failed": "Die Anmeldung über Authentik ist fehlgeschlagen. Bitte versuche es noch einmal.",
+    "oidc_not_allowed": "Dieses Konto darf Hauswart nicht nutzen.",
+    "oidc_bad_name": "Dieser Benutzername taugt nicht als Linux-Konto.",
+    "oidc_name_taken": "Ein lokales Konto hat bereits diesen Namen."
+  }
+}

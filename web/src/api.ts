@@ -6,6 +6,8 @@ export interface User {
   username: string;
   linux_user: string;
   role: 'admin' | 'parent' | 'member';
+  source?: string;
+  disabled?: boolean;
 }
 
 export interface Report {

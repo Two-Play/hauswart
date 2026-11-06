@@ -228,6 +228,9 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
+		`DROP INDEX users_oidc_subject`,
+		`ALTER TABLE users DROP COLUMN oidc_subject`,
+		`ALTER TABLE users DROP COLUMN disabled`,
 		`DROP TABLE group_policies`,
 		`DROP TABLE service_certs`,
 		`ALTER TABLE devices DROP COLUMN next_serial`,

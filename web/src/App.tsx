@@ -161,15 +161,17 @@ export function App() {
           <Text size="sm" c="dimmed" mb="xs" truncate>
             {user.username}
           </Text>
-          <Button
-            variant="default"
-            fullWidth
-            mb="xs"
-            leftSection={<IconKey size={16} />}
-            onClick={() => setChangingPassword(true)}
-          >
-            {t('nav.password')}
-          </Button>
+          {!user.source && (
+            <Button
+              variant="default"
+              fullWidth
+              mb="xs"
+              leftSection={<IconKey size={16} />}
+              onClick={() => setChangingPassword(true)}
+            >
+              {t('nav.password')}
+            </Button>
+          )}
           <Button
             variant="default"
             fullWidth

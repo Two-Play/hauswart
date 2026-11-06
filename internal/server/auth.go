@@ -167,6 +167,10 @@ func (s *Server) handleMe(w http.ResponseWriter, _ *http.Request, u store.User) 
 }
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, u store.User) {
+	if u.Source != "" {
+		fail(w, http.StatusConflict, api.ErrManagedElsewhere)
+		return
+	}
 	var in struct {
 		Current string `json:"current"`
 		New     string `json:"new"`

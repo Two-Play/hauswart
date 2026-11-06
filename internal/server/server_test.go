@@ -37,6 +37,8 @@ type env struct {
 	ts    *httptest.Server
 	store *store.Store
 	ca    *pki.CA
+	// server is what ts runs, for tests that change its settings.
+	server *Server
 }
 
 func setup(t *testing.T) *env {
@@ -75,7 +77,7 @@ func setup(t *testing.T) *env {
 	if _, err := st.CreateUser(ctx, "anna", "anna", hash, "member"); err != nil {
 		t.Fatal(err)
 	}
-	return &env{t: t, ts: ts, store: st, ca: ca}
+	return &env{t: t, ts: ts, store: st, ca: ca, server: srv}
 }
 
 func (e *env) client(certs ...tls.Certificate) *http.Client {

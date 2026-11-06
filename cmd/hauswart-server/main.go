@@ -55,6 +55,7 @@ func run(log *slog.Logger) error {
 	caScope := flag.String("ca-scope", "", "comma-separated domains and CIDR ranges a new CA may issue for, in addition to the server's own addresses; cannot be changed later")
 	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
 	notifyEnv := flag.String("notify-env", "/etc/hauswart/notify.env", "file with the credentials for admin notifications, mode 0600")
+	oidcEnv := flag.String("oidc-env", "/etc/hauswart/oidc.env", "file with the settings for login through Authentik, mode 0600")
 	flag.Parse()
 
 	if *devHTTP != "" && !isLoopback(*devHTTP) {
@@ -123,8 +124,9 @@ func run(log *slog.Logger) error {
 			dev.Close()
 		}()
 	}
-	go srv.Janitor(ctx)
 	srv.StartNotifications(ctx, *notifyEnv)
+	srv.StartOIDC(*oidcEnv)
+	go srv.Janitor(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)

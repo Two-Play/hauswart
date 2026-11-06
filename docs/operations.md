@@ -473,6 +473,50 @@ is possible with a passkey, at most four hours ahead and until midnight.
 Policies with screen time need a time zone. The dashboard fills in that of your
 browser, and warnings use the language you were using when you saved.
 
+## Log in through Authentik
+
+Accounts can come from [Authentik](https://goauthentik.io). The local admin stays as
+an emergency access for when Authentik is away, so keep its password.
+
+In Authentik, create an **OAuth2/OpenID provider** and an application for it:
+
+- Client type: confidential.
+- Redirect URI, strict: `https://hauswart.example/auth/oidc/callback`, with the name
+  from `-url`.
+- Grant types: authorization code.
+- Signing key: choose one. Hauswart refuses tokens that are only signed with the
+  client secret.
+- Scopes: `openid`, `profile` and `email`.
+
+Then write `/etc/hauswart/oidc.env` with mode 0600:
+
+```bash
+OIDC_ISSUER=https://auth.example/application/o/hauswart/
+OIDC_CLIENT_ID=...
+OIDC_CLIENT_SECRET=...
+OIDC_ADMIN_GROUP=hauswart-admins
+OIDC_PARENT_GROUP=hauswart-parents
+# Optional: only these people may log in.
+OIDC_ALLOWED_GROUP=family
+# Optional: a certificate from elsewhere. The Hauswart CA is always trusted.
+OIDC_CA_FILE=/etc/hauswart/authentik-ca.pem
+# Optional: bring all accounts over every 5 minutes, and end access for those who
+# are gone. The token needs read access to users.
+AUTHENTIK_URL=https://auth.example
+AUTHENTIK_TOKEN=...
+```
+
+Restart the server. The login page then offers **Log in with Authentik**.
+
+Roles come from the groups, at every login and sync. Such accounts cannot be changed
+in Hauswart, and they have no password here. The name becomes the Linux account, so
+it has to be one: lower case, without spaces. An account of the same name that was
+created here stays separate, and that person cannot log in through Authentik until
+one of the two is renamed.
+
+Without `AUTHENTIK_TOKEN`, an account only appears at its first login, and someone
+you deactivate stays logged in for up to 12 hours.
+
 ## Notifications about requests
 
 To hear about new requests, edit `/etc/hauswart/notify.env`. Everything is off until

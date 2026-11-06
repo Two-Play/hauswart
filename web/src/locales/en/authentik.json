@@ -1,0 +1,16 @@
+{
+  "login": {
+    "or": "or",
+    "oidc": "Log in with Authentik"
+  },
+  "users": {
+    "disabled": "Disabled"
+  },
+  "errors": {
+    "managed_elsewhere": "This account is managed in Authentik.",
+    "oidc_failed": "The login through Authentik failed. Please try again.",
+    "oidc_not_allowed": "This account may not use Hauswart.",
+    "oidc_bad_name": "This user name cannot be a Linux account.",
+    "oidc_name_taken": "A local account already has this name."
+  }
+}

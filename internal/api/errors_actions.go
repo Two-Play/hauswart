@@ -22,6 +22,12 @@ const (
 	ErrInvalidWindow    = "invalid_window"
 	ErrPolicyConflict   = "policy_conflict"
 	ErrInvalidExtension = "invalid_extension"
+
+	ErrManagedElsewhere = "managed_elsewhere"
+	ErrOIDCFailed       = "oidc_failed"
+	ErrOIDCNotAllowed   = "oidc_not_allowed"
+	ErrOIDCBadName      = "oidc_bad_name"
+	ErrOIDCNameTaken    = "oidc_name_taken"
 )
 
 func init() {
@@ -44,5 +50,11 @@ func init() {
 		ErrInvalidWindow:    "invalid time window %s",
 		ErrPolicyConflict:   "the policy contradicts itself: %s",
 		ErrInvalidExtension: "an extension needs an end at most %s from now",
+
+		ErrManagedElsewhere: "this account is managed in Authentik",
+		ErrOIDCFailed:       "the login through Authentik failed, please try again",
+		ErrOIDCNotAllowed:   "this account may not use Hauswart",
+		ErrOIDCBadName:      "this user name cannot be a Linux account",
+		ErrOIDCNameTaken:    "a local account already has this name",
 	})
 }

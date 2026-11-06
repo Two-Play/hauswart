@@ -188,6 +188,9 @@ var migrations = []string{
 		updated_by TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+	`ALTER TABLE users ADD COLUMN oidc_subject TEXT NOT NULL DEFAULT '';
+	ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
+	CREATE UNIQUE INDEX users_oidc_subject ON users(oidc_subject) WHERE oidc_subject != '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -246,7 +249,11 @@ type User struct {
 	Username  string `json:"username"`
 	LinuxUser string `json:"linux_user"`
 	Role      string `json:"role"`
-	hash      string
+	// Source is empty for a local account and authentik for one that belongs to
+	// the identity provider, where it is managed.
+	Source   string `json:"source,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+	hash     string
 }
 
 func (u User) PasswordHash() string { return u.hash }
@@ -270,8 +277,8 @@ func (s *Store) CreateUser(ctx context.Context, username, linuxUser, hash, role 
 func (s *Store) UserByName(ctx context.Context, username string) (User, error) {
 	var u User
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, username, linux_user, role, password_hash FROM users WHERE username = ?`, username).
-		Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role, &u.hash)
+		`SELECT id, username, linux_user, role, password_hash, `+userSource+`, disabled FROM users WHERE username = ?`, username).
+		Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role, &u.hash, &u.Source, &u.Disabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -326,7 +333,7 @@ func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, linux_user, role FROM users ORDER BY username`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, linux_user, role, `+userSource+`, disabled FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +341,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	users := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role, &u.Source, &u.Disabled); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -352,10 +359,10 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, ttl time.Durati
 func (s *Store) SessionUser(ctx context.Context, token string) (User, error) {
 	var u User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.linux_user, u.role FROM sessions s
+		SELECT u.id, u.username, u.linux_user, u.role, `+userSource+` FROM sessions s
 		JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), time.Now().Unix()).
-		Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role)
+		WHERE s.token_hash = ? AND s.expires_at > ? AND u.disabled = 0`, hashToken(token), time.Now().Unix()).
+		Scan(&u.ID, &u.Username, &u.LinuxUser, &u.Role, &u.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}

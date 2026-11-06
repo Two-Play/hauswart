@@ -200,6 +200,19 @@ Screen time is meant for children who have no root rights. Its limits:
 - **An extension by passkey can be abused by a hacked server** like any passkey
   approval, for up to four hours until midnight, within the daily limit of approvals.
 
+### With control of Authentik
+
+Whoever controls Authentik can log in to the dashboard as anyone, and give themselves
+the admin role. That is the same as a stolen admin password: **it does not reach
+protected devices**, because signatures come from your own computer. Passkeys do not
+help such an attacker either, but a passkey you registered earlier can be talked into
+an approval, as described above.
+
+An account is matched by its subject and never by its name, so a new account called
+`admin` in Authentik gets no access to the local `admin`. Keep the local admin's
+password: it works without Authentik. The client secret and the API token are in
+`/etc/hauswart/oidc.env`, and a hacked server has them.
+
 ### With control of a device
 
 - Act as that one device: send false reports and results for its own tasks.

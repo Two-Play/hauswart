@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Group,
   Modal,
@@ -140,9 +141,21 @@ export function UsersView({ user }: { user: User }) {
               rows={users.map((u) => ({
                 key: String(u.id),
                 cells: [
-                  u.username,
+                  <Group gap="xs" key="name">
+                    {u.username}
+                    {u.source && (
+                      <Badge size="xs" variant="light">
+                        Authentik
+                      </Badge>
+                    )}
+                    {u.disabled && (
+                      <Badge size="xs" variant="light" color="red">
+                        {t('users.disabled')}
+                      </Badge>
+                    )}
+                  </Group>,
                   u.linux_user,
-                  u.id === user.id ? (
+                  u.id === user.id || u.source ? (
                     t(`users.${u.role}`)
                   ) : (
                     <Select
@@ -158,7 +171,7 @@ export function UsersView({ user }: { user: User }) {
                   ) : (
                     t('users.allDevices')
                   ),
-                  u.id !== user.id && (
+                  u.id !== user.id && !u.source && (
                     <Button size="xs" variant="subtle" color="red" onClick={() => setRemoving(u)}>
                       {t('users.remove')}
                     </Button>

@@ -66,6 +66,8 @@ type Server struct {
 	notifier *notify.Notifier
 	// ownHosts are the names of this server, which no service may get.
 	ownHosts []string
+	// oidc logs people in through the identity provider, nil if not configured.
+	oidc *oidcLogin
 }
 
 type loginFailure struct {
@@ -134,6 +136,8 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Janitor(ctx context.Context) {
 	ticker := time.NewTicker(janitorInterval)
 	defer ticker.Stop()
+	// A restart should not leave accounts out of date for a whole interval.
+	s.syncDirectory(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -142,6 +146,7 @@ func (s *Server) Janitor(ctx context.Context) {
 			if err := s.store.Cleanup(ctx, staleTaskAfter); err != nil {
 				s.log.Error("cleanup failed", "err", err)
 			}
+			s.syncDirectory(ctx)
 		}
 	}
 }

@@ -3,39 +3,36 @@
 package notify
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/mail"
 	"net/smtp"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/philippe/hauswart/internal/envfile"
 )
 
 const (
-	title         = "Hauswart"
-	subject       = "New request in Hauswart"
-	queueSize     = 64
-	maxPerHour    = 30
-	sendTimeout   = 30 * time.Second
-	sendAttempts  = 3
-	defaultSMTP   = "587"
-	tlsStart      = "starttls"
-	tlsImplicit   = "tls"
-	tlsNone       = "none"
-	privateBits   = fs.FileMode(0o077)
-	maxConfigSize = 64 << 10
+	title        = "Hauswart"
+	subject      = "New request in Hauswart"
+	queueSize    = 64
+	maxPerHour   = 30
+	sendTimeout  = 30 * time.Second
+	sendAttempts = 3
+	defaultSMTP  = "587"
+	tlsStart     = "starttls"
+	tlsImplicit  = "tls"
+	tlsNone      = "none"
 )
 
 // retryDelay is a variable so tests need not wait.
@@ -60,52 +57,17 @@ type Config struct {
 // read.
 func Load(path string) (Config, error) {
 	var cfg Config
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return cfg, nil
-	}
+	found, err := envfile.Read(path, cfg.set)
 	if err != nil {
-		return cfg, err
-	}
-	if info.Mode().Perm()&privateBits != 0 {
-		return cfg, fmt.Errorf("%s has mode %04o, it must be 0600", path, info.Mode().Perm())
-	}
-	if info.Size() > maxConfigSize {
-		return cfg, fmt.Errorf("%s is too large", path)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, err
-	}
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	for line := 1; scanner.Scan(); line++ {
-		text := strings.TrimSpace(scanner.Text())
-		if text == "" || strings.HasPrefix(text, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(text, "=")
-		if !ok {
-			return Config{}, fmt.Errorf("%s:%d: expected KEY=value", path, line)
-		}
-		// The value is left out of every error, because it may be a secret.
-		if !cfg.set(strings.TrimSpace(key), unquote(strings.TrimSpace(value))) {
-			return Config{}, fmt.Errorf("%s:%d: unknown setting %q", path, line, strings.TrimSpace(key))
-		}
-	}
-	if err := scanner.Err(); err != nil {
 		return Config{}, err
+	}
+	if !found {
+		return cfg, nil
 	}
 	if err := cfg.check(); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
-}
-
-func unquote(s string) string {
-	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
-		return s[1 : len(s)-1]
-	}
-	return s
 }
 
 func (c *Config) set(key, value string) bool {

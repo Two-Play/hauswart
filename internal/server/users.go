@@ -76,6 +76,9 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, u stor
 		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
 		return
 	}
+	if s.managedElsewhere(w, r, id) {
+		return
+	}
 	switch err := s.store.DeleteUser(r.Context(), id); {
 	case errors.Is(err, store.ErrNotFound):
 		fail(w, http.StatusNotFound, api.ErrNoSuchUser)
@@ -103,6 +106,9 @@ func (s *Server) handleSetRole(w http.ResponseWriter, r *http.Request, u store.U
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, http.StatusBadRequest, api.ErrInvalidUserID)
+		return
+	}
+	if s.managedElsewhere(w, r, id) {
 		return
 	}
 	switch err := s.store.SetRole(r.Context(), id, in.Role); {
