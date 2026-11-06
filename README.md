@@ -45,6 +45,8 @@ in containers and virtual machines, not on physical machines or over a real VPN.
   lists, and a strict list of what may run. Others on the device stay free
 - A desktop app for family members with their screen time, shares and requests, and one
   for admins to review and sign tasks
+- An inventory of all devices with hardware, software, network and security state, your own
+  details such as location and warranty, a search for software across devices and a CSV export
 - Audit log of every action
 - Backup and restore
 
@@ -93,7 +95,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | `make test-gui` | The desktop apps, clicked through without a screen. Needs the headers of Fyne, or use `make gui` to build in a container |
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, certificate renewal, signed tasks against a simulated hacked server, and admin notifications |
 | `make test-packages` | RPM, `.deb` and tarball on fresh systems with systemd, including a disaster recovery |
-| `make test-vm` | Flatpak, `rpm-ostree`, real reboots, popups and screen time in GNOME and Plasma sessions, and the login with a real Authentik, Samba and Nextcloud, in real virtual machines. Needs KVM and Podman, and downloads several GB |
+| `make test-vm` | Flatpak, `rpm-ostree`, the inventory with made-up hardware, real reboots, popups and screen time in GNOME and Plasma sessions, and the login with a real Authentik, Samba and Nextcloud, in real virtual machines. Needs KVM and Podman, and downloads several GB |
 | `test/authentik.py` | The dashboard login and the sync of accounts against a real Authentik in containers |
 | `node test/passkeys.mjs` | The passkey flow in Chromium with a virtual authenticator, including what a hacked server tries. Needs `make build` |
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |

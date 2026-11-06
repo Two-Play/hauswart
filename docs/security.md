@@ -436,6 +436,14 @@ for a PIN is up to that passkey, not to Hauswart.
 - **The development listener** `-dev-http` has no TLS. It accepts only loopback
   addresses. Do not use it in operation.
 
+## The inventory
+
+Serial numbers, MAC addresses and lists of software are personal data once a device
+belongs to someone, as are the names you add yourself. They stay on the server and in
+its backups, only admins can see them, and devices are never deleted, so neither are
+they. The inventory only reads, and changes nothing on a device. What a device reports
+is unproven, so it should not decide anything.
+
 ## Reporting a problem
 
 This is a private project. Open a ticket in the `HAUS` Jira project.

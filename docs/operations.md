@@ -355,6 +355,23 @@ certificate has less than 30 days left. An agent renews long before that, so thi
 means the device has been off for months or cannot reach the server. See
 [Certificates](#certificates).
 
+## Keep an inventory
+
+**Inventory** in the dashboard lists every device, for admins only. A device sends its
+hardware, installed packages and Flatpaks, network cards and security state at start,
+every six hours and after a package task, but only if something changed. All of it
+comes from the device, so a hacked device can lie, and it can be up to six hours old,
+IP addresses included. Details show when it was taken.
+
+Open a device to add what only you know: inventory number, person, location, purchase
+date, warranty and a note. A warranty shows a warning from 30 days before its end until
+30 days after. **Software** finds a package across all active devices, with its
+versions. A revoked device keeps its details, marked as such.
+
+**Export CSV** gives one line per device, and the audit log records it. A value that a
+spreadsheet would read as a formula starts with `'`, as a device picks its own name.
+Devices without an agent, such as printers, are not listed.
+
 ## Certificates
 
 Device certificates last two years. Agents renew theirs on their own once a
