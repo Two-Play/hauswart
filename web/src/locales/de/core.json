@@ -15,6 +15,7 @@
   "nav": {
     "devices": "Geräte",
     "requests": "Anfragen",
+    "inventory": "Inventar",
     "tasks": "Aufgaben",
     "users": "Benutzer",
     "audit": "Protokoll",

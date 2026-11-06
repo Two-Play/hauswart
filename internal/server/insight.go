@@ -36,11 +36,15 @@ func (s *Server) recordInsight(r *http.Request, id string, rep *api.Report) {
 	}
 }
 
-func deviceWarnings(d store.Device) []api.Warning {
+func deviceWarnings(d store.Device, asset api.Asset) []api.Warning {
 	if d.Revoked || d.Report == nil {
 		return nil
 	}
-	return d.Report.Warnings(time.Now())
+	warnings := d.Report.Warnings(time.Now())
+	if warning := asset.Warning(time.Now()); warning != nil {
+		warnings = append(warnings, *warning)
+	}
+	return warnings
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request, _ store.User) {

@@ -196,6 +196,27 @@ var migrations = []string{
 	UPDATE requests SET kind_new = kind;
 	ALTER TABLE requests DROP COLUMN kind;
 	ALTER TABLE requests RENAME COLUMN kind_new TO kind;`,
+	`CREATE TABLE device_inventory (
+		device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+		document TEXT NOT NULL,
+		updated_at INTEGER NOT NULL,
+		package_hash TEXT NOT NULL,
+		package_count INTEGER NOT NULL
+	);
+	CREATE TABLE device_packages (
+		device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		kind TEXT NOT NULL,
+		name TEXT NOT NULL,
+		version TEXT NOT NULL,
+		PRIMARY KEY (device_id, kind, name, version)
+	);
+	CREATE INDEX device_packages_name ON device_packages(name);
+	CREATE TABLE device_assets (
+		device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+		document TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {

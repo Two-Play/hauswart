@@ -1,0 +1,81 @@
+{
+  "inventory": {
+    "export": "Export CSV",
+    "save": "Save",
+    "search": "Search",
+    "searchHint": "Name, person, serial number…",
+    "filter": "Show",
+    "empty": "No devices match.",
+    "device": "Device",
+    "model": "Model",
+    "vendor": "Vendor",
+    "serial": "Serial number",
+    "bios": "BIOS",
+    "cpu": "Processor",
+    "memory": "Memory",
+    "system": "System",
+    "kernel": "Kernel",
+    "agent": "Agent",
+    "disks": "Disks",
+    "encryption": "Disk encryption",
+    "screenLock": "Screen lock",
+    "firewall": "Firewall",
+    "updates": "Updates",
+    "pending_one": "{{count}} pending",
+    "pending_other": "{{count}} pending",
+    "revoked": "Revoked",
+    "revokedHint": "This device is revoked. These are its last details.",
+    "none": "This device has not sent an inventory yet.",
+    "reported": "Everything below comes from the device itself, which can be wrong.",
+    "reportedAt": "Everything below comes from the device itself, which can be wrong. As of {{time}}.",
+    "truncated": "This device has more packages than it may send, so the list is incomplete.",
+    "searchPackages": "Search packages",
+    "noPackages": "No packages found.",
+    "morePackages": "Showing {{shown}} of {{count}}. Search to narrow the list.",
+    "package": "Package",
+    "version": "Version",
+    "kind": "Kind",
+    "noNetwork": "No network cards found.",
+    "card": "Card",
+    "mac": "MAC address",
+    "addresses": "Addresses",
+    "software": "Software",
+    "softwareHint": "Name of a package or Flatpak, at least two characters",
+    "noSoftware": "Nothing found.",
+    "devices": "Devices",
+    "moreSoftware": "There are more results. Search for something more specific.",
+    "kinds": {
+      "package": "Package",
+      "flatpak": "Flatpak"
+    },
+    "check": {
+      "on": "On",
+      "off": "Off",
+      "unknown": "Unknown"
+    },
+    "filters": {
+      "all": "All devices",
+      "unencrypted": "Not encrypted",
+      "firewall": "Firewall off",
+      "warranty": "Warranty ending",
+      "updates": "Updates pending",
+      "revoked": "Revoked"
+    },
+    "tabs": {
+      "devices": "Devices",
+      "hardware": "Hardware",
+      "software_one": "Software ({{count}})",
+      "software_other": "Software ({{count}})",
+      "network": "Network",
+      "security": "Security"
+    },
+    "asset": {
+      "tag": "Inventory number",
+      "person": "Person",
+      "location": "Location",
+      "purchased": "Purchased",
+      "warranty_until": "Warranty until",
+      "note": "Note"
+    }
+  }
+}

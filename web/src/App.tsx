@@ -17,6 +17,7 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconCertificate,
   IconClipboardList,
+  IconClipboardData,
   IconDevicesPc,
   IconFingerprint,
   IconFolders,
@@ -37,6 +38,7 @@ import { AuditView } from './views/AuditView';
 import { CertificatesView } from './views/CertificatesView';
 import { DevicesView } from './views/DevicesView';
 import { GroupsView } from './views/GroupsView';
+import { InventoryView } from './views/InventoryView';
 import { LoginView } from './views/LoginView';
 import { PasswordModal } from './views/PasswordModal';
 import { RequestsView } from './views/RequestsView';
@@ -58,6 +60,7 @@ const VIEWS: {
   { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
   { key: 'approvals', icon: IconFingerprint, view: ApprovalsView, approverOnly: true },
+  { key: 'inventory', icon: IconClipboardData, view: InventoryView, adminOnly: true },
   { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
   { key: 'certificates', icon: IconCertificate, view: CertificatesView, adminOnly: true },
   { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },

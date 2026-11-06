@@ -58,10 +58,13 @@ function seconds(date: string): number {
   return Math.floor(new Date(date).getTime() / 1000);
 }
 
-function useWarningText() {
+export function useWarningText() {
   const { t } = useTranslation();
   return (warning: Warning) => {
     if (warning.code === 'disk_full') return t('insight.diskFull', { percent: warning.value });
+    if (warning.code === 'warranty_ending') {
+      return warning.value < 0 ? t('insight.warrantyOver') : t('insight.warrantyEnding', { count: warning.value });
+    }
     return warning.value < 0
       ? t('insight.certExpired')
       : t('insight.certExpiring', { count: warning.value });

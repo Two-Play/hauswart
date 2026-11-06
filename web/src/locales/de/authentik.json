@@ -16,7 +16,10 @@
     "invalid_mount": "Die Freigabe ist ungültig: {{value}}",
     "invalid_request": "Die Anfrage ist leer, zu lang oder enthält nicht erlaubte Zeichen.",
     "shared_account": "Mehrere Konten nutzen dieses Linux-Konto, bitte frage im Dashboard an.",
-    "invalid_app_rule": "Die App-Regel ist ungültig: {{value}}"
+    "invalid_app_rule": "Die App-Regel ist ungültig: {{value}}",
+    "invalid_inventory": "Das Inventar ist ungültig: {{value}}",
+    "invalid_asset": "Dieser Wert ist zu lang oder ungültig: {{value}}",
+    "inventory_too_often": "Dieses Gerät sendet sein Inventar zu oft"
   },
   "policies": {
     "directory": "Konten aus einem Verzeichnis",

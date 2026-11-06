@@ -15,6 +15,7 @@ func init() {
 		mux.HandleFunc("GET /ca.pem", s.handleCA)
 		mux.HandleFunc("POST /agent/enroll", s.handleEnroll)
 		mux.Handle("POST /agent/report", s.agent(s.handleReport))
+		mux.Handle("POST /agent/inventory", s.agent(s.handleAgentInventory))
 		mux.Handle("POST /agent/renew", s.agent(s.handleRenew))
 		mux.Handle("GET /agent/tasks", s.agent(s.handlePoll))
 		mux.Handle("POST /agent/tasks/{id}/result", s.agent(s.handleResult))
@@ -108,6 +109,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 	if !readJSON(w, r, &rep) {
 		return
 	}
+	rep.Clean()
 	s.recordInsight(r, id, &rep)
 	before, err := s.store.DeviceReport(r.Context(), id)
 	if err != nil {

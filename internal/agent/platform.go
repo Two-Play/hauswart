@@ -30,9 +30,13 @@ type Backend struct {
 	// name can be what another package provides, as vim is on Fedora.
 	Query   func(pkg string) []string
 	Present func(out string, err error) bool
+	// List prints what is installed, for parseInstalled.
+	List []string
 }
 
 func rpmQuery(pkg string) []string { return []string{"rpm", "-q", "--whatprovides", pkg} }
+
+var rpmList = []string{"rpm", "-qa", "--qf", "%{NAME} %{EVR}\\n"}
 
 func exitedCleanly(_ string, err error) bool { return err == nil }
 
@@ -68,6 +72,7 @@ func simpleBackend(name string, install, remove, upgrade []string) *Backend {
 		Upgrade: func() []string { return upgrade },
 		Query:   rpmQuery,
 		Present: exitedCleanly,
+		List:    rpmList,
 	}
 }
 
@@ -108,6 +113,7 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			Present: func(out string, err error) bool {
 				return err == nil && strings.TrimSpace(out) == "installed"
 			},
+			List: []string{"dpkg-query", "-W", "-f=${db:Status-Status} ${binary:Package} ${Version}\\n"},
 		}
 	case has("zypper"):
 		return simpleBackend("zypper",
@@ -120,6 +126,7 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			[]string{"pacman", "-R", "--noconfirm", "--"},
 			[]string{"pacman", "-Syu", "--noconfirm"})
 		backend.Query = func(pkg string) []string { return []string{"pacman", "-Q", pkg} }
+		backend.List = []string{"pacman", "-Q"}
 		return backend
 	}
 	return nil

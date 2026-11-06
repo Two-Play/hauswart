@@ -15,6 +15,7 @@
   "nav": {
     "devices": "Devices",
     "requests": "Requests",
+    "inventory": "Inventory",
     "tasks": "Tasks",
     "users": "Users",
     "audit": "Audit log",

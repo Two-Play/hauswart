@@ -63,6 +63,8 @@ const (
 	// WarnCertExpiring carries the days left, which are negative once the
 	// certificate has expired.
 	WarnCertExpiring = "cert_expiring"
+	// WarnWarrantyEnding carries the days left, which are negative once it ended.
+	WarnWarrantyEnding = "warranty_ending"
 
 	diskFullPercent = 90
 	// Agents renew long before this, so a device that gets here is either

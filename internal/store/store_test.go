@@ -244,6 +244,9 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		`ALTER TABLE devices DROP COLUMN passkey_counter`,
 		`ALTER TABLE tasks DROP COLUMN passkey_envelope`,
 		`ALTER TABLE tasks DROP COLUMN passkey_counter`,
+		`DROP TABLE device_inventory`,
+		`DROP TABLE device_packages`,
+		`DROP TABLE device_assets`,
 		`PRAGMA user_version = 0`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
