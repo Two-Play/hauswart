@@ -1,4 +1,4 @@
-package main
+package admintool
 
 import (
 	"crypto/ed25519"
