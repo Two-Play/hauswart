@@ -39,6 +39,7 @@ type devicePolicy struct {
 	Deviations []api.PolicyDeviation `json:"deviations,omitempty"`
 	Corrected  []string              `json:"corrected,omitempty"`
 	Checks     map[string]string     `json:"checks,omitempty"`
+	Apps       []api.AppEntry        `json:"apps,omitempty"`
 	CheckedAt  time.Time             `json:"checked_at,omitzero"`
 }
 
@@ -234,6 +235,7 @@ func (s *Server) policyState(ctx context.Context, device string) (devicePolicy, 
 		state.Deviations = report.Policy.Deviations
 		state.Corrected = report.Policy.Corrected
 		state.Checks = report.Policy.Checks
+		state.Apps = report.Policy.Apps
 		state.CheckedAt = report.Policy.CheckedAt
 	}
 	want := ""

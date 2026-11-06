@@ -42,6 +42,7 @@ const (
 	deviationSecure  = "security"
 	deviationLogin   = "directory"
 	deviationMount   = "mount"
+	deviationApps    = "apps"
 )
 
 // policyState is what the device has to remember besides the policy.
@@ -55,6 +56,8 @@ type policyState struct {
 	UpdateError string `json:"update_error,omitempty"`
 	// Extensions hold how long a user may stay beyond the time windows.
 	Extensions map[string]time.Time `json:"extensions,omitempty"`
+	// AppFilters are the users whose Flatpaks are limited, by user ID.
+	AppFilters []string `json:"app_filters,omitempty"`
 	// ScreenUIDs remembers who a screen time rule is about, by the name in the rule.
 	ScreenUIDs map[string]string `json:"screen_uids,omitempty"`
 }
@@ -264,13 +267,15 @@ func (pe *PolicyEngine) Enforce(ctx context.Context) {
 	}
 	pe.enforceMounts(ctx, policy.Mounts, directory == checkOn, &o)
 	pe.enforceNextcloud(ctx, policy.Nextcloud, &o)
+	pe.enforceApps(ctx, policy.Apps, &o)
+	apps := pe.exec.launchers()
 	if len(o.corrected) > 0 {
 		pe.log.Warn("policy corrected this device", "items", o.corrected)
 	}
 
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
-	pe.status = api.PolicyStatus{CheckedAt: time.Now().UTC(), Deviations: o.deviations, Corrected: o.corrected, Checks: checks}
+	pe.status = api.PolicyStatus{CheckedAt: time.Now().UTC(), Deviations: o.deviations, Corrected: o.corrected, Checks: checks, Apps: apps.entries()}
 }
 
 func (pe *PolicyEngine) enforceCAs(ctx context.Context, cas []api.CAInstallPayload, o *outcome) {

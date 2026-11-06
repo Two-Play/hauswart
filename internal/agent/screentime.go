@@ -129,10 +129,15 @@ func (e *Executor) loginSessions(ctx context.Context) (map[string]*loginUser, er
 // the rule. The name counts as well: a local account that was created again has a
 // new ID, and someone taking over a name is at worst held to that rule.
 func (pe *PolicyEngine) screenAccounts(rule api.ScreenTimeRule) []string {
+	return pe.accounts(rule.User)
+}
+
+// accounts is the same for anything else that goes by the name in a policy.
+func (pe *PolicyEngine) accounts(name string) []string {
 	pe.mu.Lock()
-	pinned := pe.state.ScreenUIDs[rule.User]
+	pinned := pe.state.ScreenUIDs[name]
 	pe.mu.Unlock()
-	person, err := pe.exec.lookupUser(rule.User)
+	person, err := pe.exec.lookupUser(name)
 	if err != nil {
 		if pinned == "" {
 			return nil
@@ -145,7 +150,7 @@ func (pe *PolicyEngine) screenAccounts(rule api.ScreenTimeRule) []string {
 		if pe.state.ScreenUIDs == nil {
 			pe.state.ScreenUIDs = map[string]string{}
 		}
-		pe.state.ScreenUIDs[rule.User] = person.Uid
+		pe.state.ScreenUIDs[name] = person.Uid
 		if err := pe.saveState(); err != nil {
 			pe.log.Error("saving the policy state failed", "err", err)
 		}

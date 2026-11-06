@@ -15,7 +15,8 @@
     "invalid_directory": "The directory settings are not valid: {{value}}",
     "invalid_mount": "The share is not valid: {{value}}",
     "invalid_request": "The request is empty, too long or has characters that are not allowed.",
-    "shared_account": "Several accounts use this Linux account, so please ask in the dashboard."
+    "shared_account": "Several accounts use this Linux account, so please ask in the dashboard.",
+    "invalid_app_rule": "The app rule is not valid: {{value}}"
   },
   "policies": {
     "directory": "Accounts from a directory",
@@ -43,7 +44,22 @@
       "drive": "Network drive: nothing is copied"
     },
     "directoryCa": "CA of the directory (PEM)",
-    "directoryCaHint": "Only this CA is trusted for the directory. Do not use the Hauswart CA: a hacked server could then log in as anyone."
+    "directoryCaHint": "Only this CA is trusted for the directory. Do not use the Hauswart CA: a hacked server could then log in as anyone.",
+    "apps": "Applications",
+    "appsHint": "Rules per Linux user. Everyone else on the device is left alone. They need fapolicyd, which the device installs.",
+    "appUser": "Linux user",
+    "appDownloads": "No programs from home or temporary folders",
+    "appForbidden": "Forbidden programs (full paths)",
+    "appStrict": "Only allow the applications below",
+    "appAllowed": "Allowed applications",
+    "appFlatpakMode": "Flatpaks",
+    "appFlatpakModes": {
+      "none": "No limit",
+      "allow": "Only these",
+      "deny": "All but these"
+    },
+    "appFlatpaks": "Flatpak IDs",
+    "addAppRule": "Add user"
   },
   "requests": {
     "kinds": {

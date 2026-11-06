@@ -72,6 +72,36 @@ type Policy struct {
 	Mounts []MountRule `json:"mounts,omitempty"`
 	// Nextcloud sets up the family's cloud for everyone on the device.
 	Nextcloud *NextcloudRule `json:"nextcloud,omitempty"`
+	// Apps says what some people may start. Everyone else is left alone.
+	Apps []AppRule `json:"apps,omitempty"`
+}
+
+// Modes of a FlatpakList.
+const (
+	FlatpakAllow = "allow"
+	FlatpakDeny  = "deny"
+)
+
+// AppRule limits one user. Nothing here reaches anyone else on the device.
+type AppRule struct {
+	User string `json:"user"`
+	// BlockDownloads stops programs from places a user can write to.
+	BlockDownloads bool `json:"block_downloads,omitempty"`
+	// ForbiddenPrograms are absolute paths.
+	ForbiddenPrograms []string `json:"forbidden_programs,omitempty"`
+	// Strict allows only the applications in AllowedApps, and blocks downloads and
+	// all Flatpaks that are not listed. It is about applications with a launcher:
+	// a desktop needs hundreds of helpers, which stay.
+	Strict bool `json:"strict,omitempty"`
+	// AllowedApps are launchers, as in org.kde.kate.
+	AllowedApps []string     `json:"allowed_apps,omitempty"`
+	Flatpaks    *FlatpakList `json:"flatpaks,omitempty"`
+}
+
+// FlatpakList allows or denies some Flatpaks, by their ID.
+type FlatpakList struct {
+	Mode string   `json:"mode"`
+	Apps []string `json:"apps"`
 }
 
 // MountRule puts a share into the home directory, under Folder.
@@ -157,6 +187,14 @@ type PolicyStatus struct {
 	// Corrected lists what the last check put right, which says that someone or
 	// something changed the device.
 	Corrected []string `json:"corrected,omitempty"`
+	// Apps are the applications with a launcher, to choose from in the dashboard.
+	Apps []AppEntry `json:"apps,omitempty"`
+}
+
+// AppEntry is an application a device has.
+type AppEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // PolicyDeviation is one point where a device differs from its policy.
@@ -173,6 +211,7 @@ type PolicyConflict struct {
 }
 
 var (
+	appIDRe         = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 	shareRe         = regexp.MustCompile(`^[A-Za-z0-9._-]{1,80}$`)
 	nextcloudRe     = regexp.MustCompile(`^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._-]+)*$`)
 	ldapURIRe       = regexp.MustCompile(`^ldaps://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
@@ -298,6 +337,14 @@ func CheckPolicy(p Policy) error {
 			return Fail(ErrInvalidMount, mount.Server+"/"+mount.Share)
 		}
 	}
+	if len(p.Apps) > maxScreenRules {
+		return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
+	}
+	for _, rule := range p.Apps {
+		if err := checkAppRule(rule); err != nil {
+			return err
+		}
+	}
 	if n := p.Nextcloud; n != nil {
 		if !nextcloudRe.MatchString(n.URL) || (n.Mode != NextcloudClient && n.Mode != NextcloudDrive) {
 			return Fail(ErrInvalidMount, n.URL)
@@ -322,6 +369,43 @@ func CheckPolicy(p Policy) error {
 	}
 	if hasDuplicates(p) {
 		return Fail(ErrPolicyConflict, "duplicate entry")
+	}
+	return nil
+}
+
+// These values go into the rule file of a daemon that decides on every program.
+func checkAppRule(r AppRule) error {
+	if !ValidUser(r.User) {
+		return Fail(ErrInvalidUser, r.User)
+	}
+	lists := [][]string{r.ForbiddenPrograms, r.AllowedApps}
+	if r.Flatpaks != nil {
+		lists = append(lists, r.Flatpaks.Apps)
+		if r.Flatpaks.Mode != FlatpakAllow && r.Flatpaks.Mode != FlatpakDeny {
+			return Fail(ErrInvalidAppRule, r.Flatpaks.Mode)
+		}
+	}
+	for _, list := range lists {
+		if len(list) > maxPolicyPackages {
+			return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
+		}
+	}
+	for _, program := range r.ForbiddenPrograms {
+		if !commandRe.MatchString(program) || strings.Contains(program, "..") {
+			return Fail(ErrInvalidAppRule, program)
+		}
+	}
+	for _, app := range r.AllowedApps {
+		if !appIDRe.MatchString(app) {
+			return Fail(ErrInvalidAppRule, app)
+		}
+	}
+	if r.Flatpaks != nil {
+		for _, app := range r.Flatpaks.Apps {
+			if !appIDRe.MatchString(app) {
+				return Fail(ErrInvalidAppRule, app)
+			}
+		}
 	}
 	return nil
 }
@@ -366,6 +450,13 @@ func hasDuplicates(p Policy) bool {
 			return true
 		}
 		folders[mount.Folder] = true
+	}
+	appUsers := map[string]bool{}
+	for _, rule := range p.Apps {
+		if appUsers[rule.User] {
+			return true
+		}
+		appUsers[rule.User] = true
 	}
 	users := map[string]bool{}
 	for _, rule := range p.ScreenTime {
@@ -535,6 +626,8 @@ func MergePolicies(groups map[string]Policy) (Policy, []PolicyConflict) {
 		func(c CAInstallPayload) string { return c.Name })
 	out.Mounts = keyed(m, "mount", names, groups, func(p Policy) []MountRule { return p.Mounts },
 		func(r MountRule) string { return r.Folder })
+	out.Apps = keyed(m, "app rule of", names, groups, func(p Policy) []AppRule { return p.Apps },
+		func(r AppRule) string { return r.User })
 	out.ScreenTime = keyed(m, "screen time of", names, groups, func(p Policy) []ScreenTimeRule { return p.ScreenTime },
 		func(r ScreenTimeRule) string { return r.User })
 

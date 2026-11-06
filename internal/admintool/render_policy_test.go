@@ -31,6 +31,8 @@ func fullPolicy() api.Policy {
 		Directory:         &api.DirectoryRule{URI: "ldaps://auth.example", BaseDN: "dc=ldap", BindDN: "cn=reader", BindPassword: "secret", CA: caPEM("directory")},
 		Mounts:            []api.MountRule{{Server: "nas.home", Share: "family", Folder: "Family"}},
 		Nextcloud:         &api.NextcloudRule{URL: "https://cloud.home", Mode: api.NextcloudDrive},
+		Apps: []api.AppRule{{User: "anna", BlockDownloads: true, ForbiddenPrograms: []string{"/usr/bin/steam"}, Strict: true,
+			AllowedApps: []string{"org.kde.kate"}, Flatpaks: &api.FlatpakList{Mode: api.FlatpakDeny, Apps: []string{"com.valvesoftware.Steam"}}}},
 	}
 }
 
@@ -88,6 +90,14 @@ func TestEveryPolicyChangeShowsAsAChange(t *testing.T) {
 		"share folder":      func(p *api.Policy) { p.Mounts[0].Folder = "Other" },
 		"nextcloud url":     func(p *api.Policy) { p.Nextcloud.URL = "https://evil.example" },
 		"nextcloud mode":    func(p *api.Policy) { p.Nextcloud.Mode = api.NextcloudClient },
+		"apps downloads":    func(p *api.Policy) { p.Apps[0].BlockDownloads = false },
+		"apps forbidden":    func(p *api.Policy) { p.Apps[0].ForbiddenPrograms = []string{"/usr/bin/x"} },
+		"apps strict":       func(p *api.Policy) { p.Apps[0].Strict = false },
+		"apps allowed":      func(p *api.Policy) { p.Apps[0].AllowedApps = []string{"other"} },
+		"apps flatpak mode": func(p *api.Policy) { p.Apps[0].Flatpaks.Mode = api.FlatpakAllow },
+		"apps flatpak list": func(p *api.Policy) { p.Apps[0].Flatpaks.Apps = []string{"org.x"} },
+		"no flatpak list":   func(p *api.Policy) { p.Apps[0].Flatpaks = nil },
+		"apps user":         func(p *api.Policy) { p.Apps[0].User = "ben" },
 	}
 	for name, change := range changes {
 		before, after := fullPolicy(), fullPolicy()
