@@ -4,7 +4,7 @@ real reboots and popups in a real desktop session.
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory directory-debian gui-kde gui-gnome]
+directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory directory-debian gui-kde gui-gnome apps-kde apps-gnome apps-debian]
 """
 import hashlib
 import json
@@ -831,7 +831,8 @@ def test_directory(admin, agent_bin, work, public_key, debian=False):
         drive = as_lena(f"""dbus-run-session -- sh -c '
             printf %s "{password}" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; sleep 1
             printf %s "{password}" | secret-tool store --label=Nextcloud service hauswart-nextcloud
-            /usr/local/libexec/hauswart-nextcloud-drive & sleep 8
+            /usr/local/libexec/hauswart-nextcloud-drive &
+            for i in $(seq 40); do grep -q rclone /proc/mounts && break; sleep 1; done; sleep 2
             ls ~/Nextcloud; grep -c rclone /proc/mounts; ps -eo args | grep -c "[w]ebdav-pass"
             fusermount3 -u ~/Nextcloud'""")
         print("       " + drive.stdout.replace("\n", " | ")[:300], flush=True)
@@ -861,11 +862,29 @@ def test_directory(admin, agent_bin, work, public_key, debian=False):
         tool.run("approve", input="y\n")
         check(group, "the screen time rule arrives", wait_for(lambda: "screen_uids" in vm.ssh("cat /var/lib/hauswart/policy-state.json").stdout, 90, 3),
               vm.ssh("cat /var/lib/hauswart/policy-state.json").stdout)
+        # The same for application rules, which also have to work with such an account.
+        policy["apps"] = [{"user": "lena", "block_downloads": True, "flatpaks": {"mode": "allow", "apps": []}}]
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        vm.ssh("cp /usr/bin/true /tmp/lenas; chmod 755 /tmp/lenas")
+        check(group, "an application rule holds for a directory account",
+              wait_for(lambda: vm.ssh("cd /tmp; runuser -u lena -- /tmp/lenas").returncode != 0, 420, 5),
+              vm.ssh("journalctl -u hauswart-agent -u fapolicyd --no-pager | tail -8 | cut -c1-200").stdout)
+        check(group, "root is not affected", vm.ssh("/tmp/lenas").returncode == 0)
+        lena_uid = vm.ssh("id -u lena").stdout.strip()
+
+        def app_filter():
+            return vm.ssh(f"busctl --system get-property org.freedesktop.Accounts /org/freedesktop/Accounts/User{lena_uid} "
+                          "com.endlessm.ParentalControls.AppFilter AppFilter").stdout.strip()
+        check(group, "and so does the Flatpak filter", wait_for(lambda: app_filter().startswith("(bas) true"), 120, 5),
+              app_filter() + vm.ssh("journalctl -u hauswart-agent --no-pager | tail -5 | cut -c1-240").stdout)
         lena_id = stack.pk("core/users/", "lena", key="username")
         stack.api("PATCH", f"core/users/{lena_id}/", {"username": "free-at-last"})
         vm.ssh("sss_cache -E; systemctl restart sssd; sleep 3")
         check(group, "the device knows the new name", vm.ssh("getent passwd free-at-last").returncode == 0,
               vm.ssh("getent passwd free-at-last; tail -5 /var/log/sssd/sssd_hauswart.log").stdout)
+        check(group, "ATTACK the new name does not lead out of the application rule",
+              vm.ssh("cd /tmp; runuser -u free-at-last -- /tmp/lenas").returncode != 0)
         child = subprocess.Popen(["ssh", "-p", "2239", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                                   "-o", "PreferredAuthentications=password,keyboard-interactive", "free-at-last@127.0.0.1", "sleep 300"],
                                  env={**os.environ, "SSH_ASKPASS": askpass, "SSH_ASKPASS_REQUIRE": "force"},
@@ -1006,6 +1025,160 @@ def test_screentime(admin, agent_bin, work, public_key, kde=False):
 
 def test_kde(admin, agent_bin, work, public_key):
     test_screentime(admin, agent_bin, work, public_key, kde=True)
+
+
+def test_apps(admin, agent_bin, work, public_key, desktop="kde"):
+    """Rules per person: a child is stopped, a parent on the same device is not."""
+    group = f"apps-{desktop}"
+    print(f"\n== {group} (real fapolicyd and Flatpak)", flush=True)
+    debian = desktop == "debian"
+    tool = signing_tool(admin, work)
+    extra = [] if debian else ["-vga", "virtio"]
+    vm = VM(work, group, debian_image() if debian else cloud_image(), "fedora", 2243, [*cloud_seed(work, group, public_key), *extra])
+
+    def as_user(user, command):
+        return vm.ssh(f"cd /tmp; runuser -u {user} -- {command}")
+
+    def blocked(result):
+        return result.returncode != 0
+
+    def denied(result):
+        # A file that is not there fails as well, and proves nothing.
+        output = result.stdout + result.stderr
+        return blocked(result) and "No such file" not in output and "not found" not in output
+
+    try:
+        if debian:
+            check(group, "VM boots", vm.wait_ssh())
+            vm.ssh("cloud-init status --wait; useradd -m anna")
+            manager = ""
+        else:
+            manager = desktop_session(vm, group, desktop == "kde")
+            check(group, "anna has a graphical session", wait_for(lambda: graphical_session(vm)))
+        install = ("apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q flatpak python3" if debian
+                   else "dnf5 install -y flatpak python3")
+        check(group, "Flatpak installed", vm.ssh(install, timeout=900).returncode == 0)
+        pulled = vm.ssh("flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; "
+                        f"flatpak install --system --noninteractive -y flathub {FLATPAK_APP}", timeout=1800)
+        check(group, "a Flatpak is there", pulled.returncode == 0, pulled.stdout[-300:] + pulled.stderr[-300:])
+        vm.ssh(r"""useradd -m ben
+for u in anna ben; do cp /usr/bin/true /home/$u/mytrue; chown $u /home/$u/mytrue
+  printf '#!/bin/sh\necho ran\n' >/home/$u/s.sh; chmod 755 /home/$u/s.sh; chown $u /home/$u/s.sh
+  printf '#!/usr/bin/python3\nprint("ran")\n' >/home/$u/p.py; chown $u /home/$u/p.py; done
+for p in okapp badapp forbidden; do cp /usr/bin/true /usr/bin/hw-$p; done
+cat >/usr/local/bin/hw-namespace <<'PY'
+import os, sys
+os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWNS)
+print("unshared", flush=True)
+os.execv(sys.argv[1], ["x"])
+PY
+cat >/usr/local/bin/hw-escape <<'PY'
+import ctypes, os, shutil, sys
+uid, gid = os.getuid(), os.getgid()
+os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWNS)
+open("/proc/self/setgroups", "w").write("deny")
+open("/proc/self/uid_map", "w").write(f"0 {uid} 1")
+open("/proc/self/gid_map", "w").write(f"0 {gid} 1")
+assert ctypes.CDLL(None).mount(b"x", b"/mnt", b"tmpfs", 0, None) == 0
+shutil.copy(sys.argv[1], "/mnt/x")
+os.chmod("/mnt/x", 0o755)
+print("mounted", flush=True)
+os.execv("/mnt/x", ["x", "-version"])
+PY
+for p in okapp badapp; do printf '[Desktop Entry]\nType=Application\nName=%s\nExec=hw-%s\n' $p $p >/usr/share/applications/hw-$p.desktop; done""")
+        device = protected_agent(vm, admin, tool, agent_bin, group)
+        code, out = admin.call("POST", "/api/groups", {"name": group})
+        path = f"/api/groups/{out['id']}"
+        admin.call("PUT", f"{path}/devices", {"devices": [device]})
+        policy = {"apps": [{"user": "anna", "strict": True, "allowed_apps": ["hw-okapp"], "forbidden_programs": ["/usr/bin/hw-forbidden"]}]}
+        code, out = admin.call("PUT", f"{path}/policy", policy)
+        check(group, "policy saved", code == 204, out)
+        shown = tool.run("approve", input="y\n")
+        check(group, "the rule is shown before signing", "user anna may ONLY start these applications from the menu: hw-okapp" in shown.stdout, shown.stdout + shown.stderr)
+
+        def state():
+            return admin.call("GET", f"{path}/policy")[1]["devices"][0]
+        applied = wait_for(lambda: vm.ssh("systemctl is-active fapolicyd").stdout.strip() == "active" and state()["state"] in ("current", "deviation"), 420, 5)
+        print("       " + str(state())[:500], flush=True)
+        check(group, "the device applies it", applied, vm.ssh("journalctl -u hauswart-agent -u fapolicyd --no-pager | tail -8 | cut -c1-200").stdout)
+        check(group, "the applications reach the dashboard", any(a["id"] == "hw-badapp" for a in state().get("apps", [])), str(state())[:300])
+
+        if not debian:
+            vm.ssh("systemctl reboot", timeout=30)
+            time.sleep(15)
+            check(group, "VM comes back", vm.wait_ssh())
+            check(group, "the session of the child starts under the rules", wait_for(lambda: graphical_session(vm)),
+                  vm.ssh(f"journalctl -b -u {manager} --no-pager | tail -10; loginctl list-sessions").stdout)
+            time.sleep(25)
+            shell = "plasmashell" if desktop == "kde" else "gnome-shell"
+            check(group, "and the desktop runs", vm.ssh(f"pgrep -x -u anna {shell}").returncode == 0,
+                  vm.ssh("ps -u anna -o comm= | sort -u | tr '\\n' ' '; journalctl -b -u fapolicyd --no-pager | tail -5").stdout)
+            check(group, "the rules are on after the reboot", vm.ssh("systemctl is-active fapolicyd").stdout.strip() == "active")
+
+        # After the reboot, as neither of these two would survive it.
+        vm.ssh("cp /usr/bin/true /tmp/annas; chmod 755 /tmp/annas; mkdir -p /run/media/stick; "
+               "mount -t tmpfs stick /run/media/stick; cp /usr/bin/true /run/media/stick/mytrue")
+        loader = "/lib64/ld-linux-x86-64.so.2"
+        for label, command in (("a program from home", "/home/anna/mytrue"), ("a program from /tmp", "/tmp/annas"),
+                               ("through the loader", f"{loader} /home/anna/mytrue"), ("a script", "/home/anna/s.sh"),
+                               ("a script through sh", "sh /home/anna/s.sh"), ("a script through python", "python3 /home/anna/p.py"),
+                               ("a forbidden program", "/usr/bin/hw-forbidden"), ("an application not on the list", "/usr/bin/hw-badapp"),
+                               ("a forbidden program through the loader", f"{loader} /usr/bin/hw-forbidden"),
+                               ("a program on a stick", "/run/media/stick/mytrue"),
+                               ("a new mount namespace", "unshare -Urm /home/anna/mytrue"),
+                               ("a sandbox of bubblewrap", "bwrap --dev-bind / / /home/anna/mytrue")):
+            result = as_user("anna", command)
+            check(group, f"ATTACK {label}", denied(result), result.stdout + result.stderr)
+        result = as_user("anna", "python3 /usr/local/bin/hw-namespace /home/anna/mytrue")
+        check(group, "ATTACK a namespace from Python", denied(result) and "unshared" in result.stdout, result.stdout + result.stderr)
+        result = as_user("ben", "python3 /usr/local/bin/hw-namespace /home/ben/mytrue")
+        check(group, "and that way works for a parent, so the rule stopped it", not blocked(result), result.stdout + result.stderr)
+        result = as_user("ben", "/run/media/stick/mytrue")
+        check(group, "a parent may: a program on a stick", not blocked(result), result.stdout + result.stderr)
+        # A known limit, see docs/security.md. Measured, so that the text stays true.
+        for kind, program in (("dynamic", "/usr/bin/true"), ("static", "/usr/bin/hauswart-agent")):
+            escape = as_user("anna", f"python3 /usr/local/bin/hw-escape {program}")
+            print(f"       LIMIT a {kind} program on a file system of their own: rc={escape.returncode} {(escape.stdout + escape.stderr)[-120:].strip()}", flush=True)
+        vm.ssh("cp /lib/x86_64-linux-gnu/libz.so.1 /home/anna/x.so 2>/dev/null || cp /usr/lib64/libz.so.1 /home/anna/x.so; chown anna /home/anna/x.so")
+        preload = vm.ssh("cd /tmp; runuser -u anna -- env LD_PRELOAD=/home/anna/x.so /usr/bin/id 2>&1")
+        check(group, "ATTACK a library from home", "cannot be preloaded" in preload.stdout or preload.returncode != 0, preload.stdout)
+        check(group, "the allowed application starts", not blocked(as_user("anna", "/usr/bin/hw-okapp")))
+        check(group, "helpers keep working", not blocked(as_user("anna", "/usr/bin/id")))
+        for label, command in (("a program from home", "/home/ben/mytrue"), ("a script", "/home/ben/s.sh"),
+                               ("a forbidden program", "/usr/bin/hw-forbidden"), ("an application not on the list", "/usr/bin/hw-badapp")):
+            check(group, f"a parent may: {label}", not blocked(as_user("ben", command)))
+
+        run = f"env HOME=/home/%s flatpak run --command=true {FLATPAK_APP}"
+        denied = vm.ssh(f"cd /tmp; runuser -u anna -- {run % 'anna'} 2>&1")
+        print("       " + denied.stdout[-200:].strip().replace("\n", " "), flush=True)
+        check(group, "ATTACK a Flatpak not on the list", denied.returncode != 0 and "not allowed" in denied.stdout, denied.stdout[-300:])
+        ben = vm.ssh(f"cd /tmp; runuser -u ben -- {run % 'ben'} 2>&1")
+        check(group, "a parent may use the Flatpak", "not allowed" not in ben.stdout, ben.stdout[-300:])
+
+        policy["apps"][0]["flatpaks"] = {"mode": "allow", "apps": [FLATPAK_APP]}
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        allowed = wait_for(lambda: "not allowed" not in vm.ssh(f"cd /tmp; runuser -u anna -- {run % 'anna'} 2>&1").stdout, 90, 5)
+        check(group, "the Flatpak works once it is on the list", allowed, vm.ssh(f"cd /tmp; runuser -u anna -- {run % 'anna'} 2>&1").stdout[-300:])
+
+        vm.ssh("systemctl stop fapolicyd; systemctl restart hauswart-agent")
+        check(group, "a stopped service comes back", wait_for(lambda: vm.ssh("systemctl is-active fapolicyd").stdout.strip() == "active", 60))
+        check(group, "and the rule holds again", wait_for(lambda: blocked(as_user("anna", "/home/anna/mytrue")), 20, 2))
+
+        admin.call("PUT", f"{path}/devices", {"devices": []})
+        tool.run("approve", input="y\n")
+        check(group, "without the policy the child is free again", wait_for(lambda: not blocked(as_user("anna", "/home/anna/mytrue")), 90, 3))
+        check(group, "and the service is off", vm.ssh("systemctl is-enabled fapolicyd").stdout.strip() != "enabled")
+    finally:
+        vm.stop()
+
+
+def test_apps_gnome(admin, agent_bin, work, public_key):
+    test_apps(admin, agent_bin, work, public_key, "gnome")
+
+
+def test_apps_debian(admin, agent_bin, work, public_key):
+    test_apps(admin, agent_bin, work, public_key, "debian")
 
 
 def test_gui(admin, agent_bin, work, public_key, kde=True):
@@ -1185,7 +1358,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -1214,7 +1387,8 @@ def main():
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
                      "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
                      "atomic-policy": test_atomic_policy, "directory": test_directory,
-                     "directory-debian": test_directory_debian, "gui-kde": test_gui, "gui-gnome": test_gui_gnome}
+                     "directory-debian": test_directory_debian, "gui-kde": test_gui, "gui-gnome": test_gui_gnome,
+                     "apps-kde": test_apps, "apps-gnome": test_apps_gnome, "apps-debian": test_apps_debian}
             tests[name](admin, f"{work}/agent", work, public_key)
     finally:
         if signing:

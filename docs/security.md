@@ -251,6 +251,37 @@ that changed since it was on the screen is refused. Whatever runs as you can sti
 ask your ssh-agent to sign, with either tool. Use a security key, or `ssh-add -c`, to
 have a say in that.
 
+### Application rules
+
+Rules for a person work in the kernel, through fapolicyd, by user ID. They hold for
+programs, and they end where a program that is allowed runs what it is given:
+
+- **Interpreters.** Scripts in a home folder are stopped by their type, which fapolicyd
+  takes from the first line. A script without one, or `python3 < file`, gets past.
+  Forbid the interpreter too, if that matters.
+- **Code typed into an interpreter is not a file.** `python3 -c` runs what it is given.
+  Python can also make its own mount namespace with a file system nothing watches. An
+  ordinary program fails there, as the loader is caught, but a statically linked one
+  runs: the VM tests measure this. It takes code and such a program, and the only way
+  to stop it is to forbid the interpreter, if nothing the child needs depends on it.
+  Namespaces cannot be turned off for one person, and Flatpak needs them.
+- **Bubblewrap and FUSE.** Flatpaks need them, so a child who may use a Flatpak can call
+  them too, and with bubblewrap also start the files of another Flatpak. Without Flatpaks
+  a strict rule blocks them, and some desktops then show no previews of images. `unshare`
+  and `nsenter` are always blocked.
+- **Network shares are not watched.** A server that hangs would hold up every program on
+  the device. Shares from a policy are mounted `noexec`, others are not covered.
+- **Web apps** run in the browser. A rule cannot see them.
+- **A strict rule is about applications with a launcher.** A desktop needs hundreds of
+  helpers, so what has no launcher stays available, and an application installed just
+  now stays open until the next check, up to 15 minutes later. It stops what the launcher
+  starts, which can be a small script in front of the real program. A launcher that goes
+  through `sh` or `python3` blocks nothing, and a program no rule can be written for, as
+  its path has a space, shows as a deviation.
+- **Flatpak lists name the stable branch.** Anything else counts as not listed.
+- **Anyone with sudo can get around all of it,** and a stopped service stops nothing:
+  that shows as a deviation, and the next check starts it again.
+
 ### With control of a device
 
 - Act as that one device: send false reports and results for its own tasks.

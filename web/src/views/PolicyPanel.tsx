@@ -60,6 +60,16 @@ interface Policy {
   directory?: { uri: string; base_dn: string; bind_dn: string; bind_password: string; ca: string };
   mounts?: { server: string; share: string; folder: string }[];
   nextcloud?: { url: string; mode: string };
+  apps?: AppRule[];
+}
+
+interface AppRule {
+  user: string;
+  block_downloads?: boolean;
+  forbidden_programs?: string[];
+  strict?: boolean;
+  allowed_apps?: string[];
+  flatpaks?: { mode: string; apps: string[] };
 }
 
 interface DevicePolicy {
@@ -69,6 +79,7 @@ interface DevicePolicy {
   deviations?: { kind: string; item: string; detail?: string }[];
   corrected?: string[];
   checks?: Record<string, string>;
+  apps?: { id: string; name: string }[];
 }
 
 interface PolicyView {
@@ -130,7 +141,108 @@ function without<T>(list: T[], index: number): T[] {
   return list.filter((_, i) => i !== index);
 }
 
-function PolicyForm({ initial, onSave, onClose }: { initial: Policy; onSave: (p: Policy) => void; onClose: () => void }) {
+function AppRuleForm({
+  rule,
+  known,
+  onChange,
+  onRemove,
+}: {
+  rule: AppRule;
+  known: { value: string; label: string }[];
+  onChange: (rule: AppRule) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const mode = rule.flatpaks?.mode ?? 'none';
+  const allowed = rule.allowed_apps ?? [];
+  // A rule from another device may name what this list does not know.
+  const choices = [...known, ...allowed.filter((id) => !known.some((k) => k.value === id)).map((id) => ({ value: id, label: id }))];
+  return (
+    <Paper withBorder p="xs">
+      <Stack gap="xs">
+        <TextInput
+          label={t('policies.appUser')}
+          value={rule.user}
+          onChange={(e) => onChange({ ...rule, user: e.currentTarget.value })}
+        />
+        <Checkbox
+          label={t('policies.appDownloads')}
+          checked={!!rule.block_downloads || !!rule.strict}
+          disabled={!!rule.strict}
+          onChange={(e) => onChange({ ...rule, block_downloads: e.currentTarget.checked })}
+        />
+        <TagsInput
+          label={t('policies.appForbidden')}
+          placeholder="/usr/bin/steam"
+          value={rule.forbidden_programs ?? []}
+          onChange={(forbidden_programs) => onChange({ ...rule, forbidden_programs })}
+        />
+        <Checkbox
+          label={t('policies.appStrict')}
+          checked={!!rule.strict}
+          onChange={(e) => {
+            const strict = e.currentTarget.checked;
+            onChange({ ...rule, strict, flatpaks: strict && rule.flatpaks?.mode === 'deny' ? undefined : rule.flatpaks });
+          }}
+        />
+        {rule.strict &&
+          (known.length > 0 ? (
+            <MultiSelect
+              label={t('policies.appAllowed')}
+              searchable
+              data={choices}
+              value={allowed}
+              onChange={(allowed_apps) => onChange({ ...rule, allowed_apps })}
+            />
+          ) : (
+            // No device has reported yet, and the rule should not have to wait for one.
+            <TagsInput
+              label={t('policies.appAllowed')}
+              value={allowed}
+              onChange={(allowed_apps) => onChange({ ...rule, allowed_apps })}
+            />
+          ))}
+        <Select
+          label={t('policies.appFlatpakMode')}
+          allowDeselect={false}
+          value={mode}
+          onChange={(next) =>
+            onChange({
+              ...rule,
+              flatpaks: !next || next === 'none' ? undefined : { mode: next, apps: rule.flatpaks?.apps ?? [] },
+            })
+          }
+          data={(rule.strict ? ['none', 'allow'] : ['none', 'allow', 'deny']).map((value) => ({
+            value,
+            label: t(`policies.appFlatpakModes.${value}`),
+          }))}
+        />
+        {rule.flatpaks && (
+          <TagsInput
+            label={t('policies.appFlatpaks')}
+            value={rule.flatpaks.apps}
+            onChange={(apps) => rule.flatpaks && onChange({ ...rule, flatpaks: { ...rule.flatpaks, apps } })}
+          />
+        )}
+        <Button size="xs" variant="subtle" color="red" onClick={onRemove}>
+          {t('policies.remove')}
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
+
+function PolicyForm({
+  initial,
+  known,
+  onSave,
+  onClose,
+}: {
+  initial: Policy;
+  known: { value: string; label: string }[];
+  onSave: (p: Policy) => void;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const [p, setP] = useState<Policy>(initial);
   const change = (next: Partial<Policy>) => setP({ ...p, ...next });
@@ -139,6 +251,7 @@ function PolicyForm({ initial, onSave, onClose }: { initial: Policy; onSave: (p:
   const rules = p.screen_time ?? [];
   const security = p.security ?? {};
   const mounts = p.mounts ?? [];
+  const appRules = p.apps ?? [];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
@@ -355,6 +468,24 @@ function PolicyForm({ initial, onSave, onClose }: { initial: Policy; onSave: (p:
       </Button>
 
       <Divider />
+      <Title order={5}>{t('policies.apps')}</Title>
+      <Text size="xs" c="dimmed">
+        {t('policies.appsHint')}
+      </Text>
+      {appRules.map((rule, i) => (
+        <AppRuleForm
+          key={i}
+          rule={rule}
+          known={known}
+          onChange={(next) => change({ apps: replaced(appRules, i, next) })}
+          onRemove={() => change({ apps: without(appRules, i) })}
+        />
+      ))}
+      <Button size="xs" variant="light" onClick={() => change({ apps: [...appRules, { user: '' }] })}>
+        {t('policies.addAppRule')}
+      </Button>
+
+      <Divider />
       <Title order={5}>{t('policies.directory')}</Title>
       <Text size="xs" c="dimmed">
         {t('policies.directoryHint')}
@@ -483,6 +614,15 @@ function normalized(p: Policy, language: string): Policy {
   return out;
 }
 
+// What the members of the group have, for choosing from.
+function knownApps(view: PolicyView) {
+  const seen = new Map<string, string>();
+  for (const device of view.devices) {
+    for (const app of device.apps ?? []) seen.set(app.id, app.name);
+  }
+  return [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 function hasPolicy(view: PolicyView) {
   return view.policy !== null;
 }
@@ -577,7 +717,7 @@ export function PolicyPanel({ groupId, devices }: { groupId: number; devices: De
               </Text>
             )}
             <Modal opened={editing} onClose={() => setEditing(false)} title={t('policies.title')} size="xl">
-              <PolicyForm initial={data.policy ?? {}} onSave={save} onClose={() => setEditing(false)} />
+              <PolicyForm initial={data.policy ?? {}} known={knownApps(data)} onSave={save} onClose={() => setEditing(false)} />
             </Modal>
           </Stack>
         )}

@@ -563,7 +563,8 @@ has the policy and can reach the directory.
 ### Shares
 
 **Shares** in a policy appear in `/media` at login, as `lena-Family` for the folder
-`Family`, with the login password, so nothing about them is stored. File managers list
+`Family`, with the login password, so nothing about them is stored. Programs cannot run from
+a share. File managers list
 them there. They are not in the home directory on purpose: the mount runs as root, and
 a user could put a link there. The share has to know the same password, and that is
 why this needs the directory login. Local accounts get no shares. A share out of reach
@@ -611,6 +612,24 @@ libraries:
 ```bash
 make gui
 ```
+
+### Application rules
+
+Under **Applications** in a policy, each Linux user gets rules of their own, and
+everyone else on the device stays free:
+
+- **No programs from home or temporary folders** stops what someone downloads.
+- **Forbidden programs** stops single programs for this person, by full path.
+- **Only allow the applications below** is the strict rule. The list offers what the
+  devices of the group have. Everything else with a launcher is blocked, new
+  applications included, and only the listed Flatpaks run.
+- **Flatpaks** can be limited on their own, to a list or by exceptions.
+
+A device installs `fapolicyd` and `malcontent` for this. The rules that come with
+`fapolicyd` would apply to everyone, so they are set aside, and they come back when the
+last rule ends. Fedora and Debian are tested, with GNOME and Plasma.
+
+A rule that cannot be applied shows as a deviation, and the device goes on working.
 
 ## Notifications about requests
 

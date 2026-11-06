@@ -39,6 +39,7 @@ type devicePolicy struct {
 	Deviations []api.PolicyDeviation `json:"deviations,omitempty"`
 	Corrected  []string              `json:"corrected,omitempty"`
 	Checks     map[string]string     `json:"checks,omitempty"`
+	Apps       []api.AppEntry        `json:"apps,omitempty"`
 	CheckedAt  time.Time             `json:"checked_at,omitzero"`
 }
 
@@ -236,6 +237,8 @@ func (s *Server) policyState(ctx context.Context, device string) (devicePolicy, 
 		state.Checks = report.Policy.Checks
 		state.CheckedAt = report.Policy.CheckedAt
 	}
+	// Also without a policy: the first rule needs something to choose from.
+	state.Apps = report.Apps
 	want := ""
 	if !effective.IsZero() {
 		want = effective.Hash()

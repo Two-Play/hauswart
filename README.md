@@ -41,6 +41,8 @@ in containers and virtual machines, not on physical machines or over a real VPN.
   accounts
 - Linux login with Authentik accounts on Fedora and Debian, also offline, with SMB
   shares at login and Nextcloud as a sync client or network drive
+- Application rules per person: no downloaded programs, forbidden programs, Flatpak
+  lists, and a strict list of what may run. Others on the device stay free
 - A desktop app for family members with their screen time, shares and requests, and one
   for admins to review and sign tasks
 - Audit log of every action

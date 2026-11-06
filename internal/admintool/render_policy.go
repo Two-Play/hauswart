@@ -108,6 +108,25 @@ func policyLines(p api.Policy) []string {
 			sha256.Sum256([]byte(d.BindPassword)))
 		add("directory identified by the CA with SHA-256 %x", sha256.Sum256(block.Bytes))
 	}
+	for _, rule := range p.Apps {
+		if rule.BlockDownloads || rule.Strict || len(rule.ForbiddenPrograms) > 0 {
+			add("user %s may not start programs from home, temporary folders, shares or sticks", rule.User)
+		}
+		for _, program := range rule.ForbiddenPrograms {
+			add("user %s may not start %s", rule.User, program)
+		}
+		if rule.Strict {
+			add("user %s may ONLY start these applications from the menu: %s", rule.User, strings.Join(rule.AllowedApps, ", "))
+			if rule.Flatpaks == nil {
+				add("user %s may use no Flatpak", rule.User)
+			}
+		} else if len(rule.AllowedApps) > 0 {
+			add("user %s has a list of applications that only counts when strict: %s", rule.User, strings.Join(rule.AllowedApps, ", "))
+		}
+		if rule.Flatpaks != nil {
+			add("user %s Flatpaks, %s: %s, and none of their own", rule.User, rule.Flatpaks.Mode, strings.Join(rule.Flatpaks.Apps, ", "))
+		}
+	}
 	for _, mount := range p.Mounts {
 		add("share //%s/%s appears in /media as USER-%s, with the login password", mount.Server, mount.Share, mount.Folder)
 	}

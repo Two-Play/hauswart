@@ -32,6 +32,7 @@ const (
 	ErrInvalidMount     = "invalid_mount"
 	ErrInvalidRequest   = "invalid_request"
 	ErrSharedAccount    = "shared_account"
+	ErrInvalidAppRule   = "invalid_app_rule"
 )
 
 func init() {
@@ -64,5 +65,6 @@ func init() {
 		ErrInvalidMount:     "the share is not valid: %s",
 		ErrInvalidRequest:   "the request is empty, too long or has characters that are not allowed",
 		ErrSharedAccount:    "several accounts use this Linux account, so please ask in the dashboard",
+		ErrInvalidAppRule:   "the app rule is not valid: %s",
 	})
 }
