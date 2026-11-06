@@ -356,13 +356,15 @@ func TestLocalAdminStaysAsEmergencyAccess(t *testing.T) {
 }
 
 func directoryEntry(uid, name string, active bool, groups ...string) directoryUser {
-	entry := directoryUser{UID: uid, Username: name, Active: active, Type: directoryInternal}
+	list := []struct {
+		Name string `json:"name"`
+	}{}
 	for _, group := range groups {
-		entry.Groups = append(entry.Groups, struct {
+		list = append(list, struct {
 			Name string `json:"name"`
 		}{group})
 	}
-	return entry
+	return directoryUser{UID: uid, Username: name, Active: &active, Type: directoryInternal, Groups: &list}
 }
 
 func syncEnv(t *testing.T) (*env, *fakeProvider, *Server) {
@@ -467,5 +469,78 @@ func TestOIDCConfigChecks(t *testing.T) {
 		if cfg.check() == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestBadAnswersChangeNothing(t *testing.T) {
+	noGroups := directoryEntry("sub-1", "lena", true)
+	noGroups.Groups = nil
+	noState := directoryEntry("sub-1", "lena", true)
+	noState.Active = nil
+	noSubject := directoryEntry("", "admin", true)
+	for name, answer := range map[string][]directoryUser{
+		"empty":      {},
+		"no groups":  {noGroups, directoryEntry("sub-2", "max", true)},
+		"no state":   {noState, directoryEntry("sub-2", "max", true)},
+		"no subject": {noSubject, directoryEntry("sub-1", "lena", true, "family-admins")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, p, srv := syncEnv(t)
+			p.directory = []directoryUser{directoryEntry("sub-1", "lena", true, "family-admins"), directoryEntry("sub-2", "max", true)}
+			srv.syncDirectory(context.Background())
+			p.directory = answer
+			srv.syncDirectory(context.Background())
+			users := listed(t, e)
+			if users["lena"].Disabled || users["lena"].Role != store.RoleAdmin || users["admin"].Source != "" {
+				t.Fatalf("got %+v", users)
+			}
+		})
+	}
+}
+
+func TestLocalAccountsCannotBeFoundWithoutASubject(t *testing.T) {
+	e := setup(t)
+	if _, err := e.store.SaveDirectoryUser(context.Background(), store.DirectoryUser{Username: "mia", Role: store.RoleMember}); err == nil {
+		t.Fatal("saved an account without a subject")
+	}
+	if users := listed(t, e); users["admin"].Role != store.RoleAdmin {
+		t.Fatalf("got %+v", users)
+	}
+}
+
+func TestNamesCanMoveInTheDirectory(t *testing.T) {
+	e, p, srv := syncEnv(t)
+	p.directory = []directoryUser{directoryEntry("sub-1", "lena", true), directoryEntry("sub-2", "max", true)}
+	srv.syncDirectory(context.Background())
+
+	// They swap.
+	p.directory = []directoryUser{directoryEntry("sub-1", "max", true), directoryEntry("sub-2", "lena", true)}
+	srv.syncDirectory(context.Background())
+	users := listed(t, e)
+	if users["lena"].Disabled || users["max"].Disabled {
+		t.Fatalf("got %+v", users)
+	}
+
+	// Someone is deleted and comes back with a new subject.
+	p.directory = []directoryUser{directoryEntry("sub-3", "lena", true), directoryEntry("sub-1", "max", true)}
+	srv.syncDirectory(context.Background())
+	if users := listed(t, e); users["lena"].Disabled {
+		t.Fatalf("got %+v", users)
+	}
+}
+
+func TestLastWorkingAdminIsKept(t *testing.T) {
+	e, p, srv := syncEnv(t)
+	ctx := context.Background()
+	p.directory = []directoryUser{directoryEntry("sub-1", "lena", true, "family-admins"), directoryEntry("sub-2", "max", true)}
+	srv.syncDirectory(ctx)
+	p.directory = []directoryUser{directoryEntry("sub-1", "lena", false, "family-admins"), directoryEntry("sub-2", "max", true)}
+	srv.syncDirectory(ctx)
+	if !listed(t, e)["lena"].Disabled {
+		t.Fatal("the local admin is there, so lena can go")
+	}
+	id := listed(t, e)["admin"].ID
+	if err := e.store.DeleteUser(ctx, id); err == nil {
+		t.Fatal("removed the only admin who can still log in")
 	}
 }

@@ -82,9 +82,11 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			[]string{"rpm-ostree", "uninstall"},
 			[]string{"rpm-ostree", "upgrade"})
 	case has("dnf5"):
+		// Like rpm-ostree, the dnf5 of a freshly installed Fedora 44 refuses "--".
+		// Names are validated to not start with a dash.
 		return simpleBackend("dnf5",
-			[]string{"dnf5", "install", "-y", "--"},
-			[]string{"dnf5", "remove", "-y", "--"},
+			[]string{"dnf5", "install", "-y"},
+			[]string{"dnf5", "remove", "-y"},
 			[]string{"dnf5", "upgrade", "-y"})
 	case has("dnf"):
 		return simpleBackend("dnf",

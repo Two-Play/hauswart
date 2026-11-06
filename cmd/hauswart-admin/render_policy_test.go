@@ -27,6 +27,10 @@ func fullPolicy() api.Policy {
 		Security:          &api.SecurityRule{Firewall: true, DiskEncryption: true, ScreenLock: true},
 		TimeZone:          "Europe/Berlin",
 		ScreenTime:        []api.ScreenTimeRule{{User: "anna", Windows: []api.Window{window}}, {User: "ben"}},
+		Language:          "de",
+		Directory:         &api.DirectoryRule{URI: "ldaps://auth.example", BaseDN: "dc=ldap", BindDN: "cn=reader", BindPassword: "secret", CA: caPEM("directory")},
+		Mounts:            []api.MountRule{{Server: "nas.home", Share: "family", Folder: "Family"}},
+		Nextcloud:         &api.NextcloudRule{URL: "https://cloud.home", Mode: api.NextcloudDrive},
 	}
 }
 
@@ -72,6 +76,18 @@ func TestEveryPolicyChangeShowsAsAChange(t *testing.T) {
 		"zone":              func(p *api.Policy) { p.TimeZone = "UTC" },
 		"window":            func(p *api.Policy) { p.ScreenTime[0].Windows[0].End = "20:00" },
 		"rule gone":         func(p *api.Policy) { p.ScreenTime = p.ScreenTime[:1] },
+		"language":          func(p *api.Policy) { p.Language = "en" },
+		"directory uri":     func(p *api.Policy) { p.Directory.URI = "ldaps://evil.example" },
+		"directory base":    func(p *api.Policy) { p.Directory.BaseDN = "dc=evil" },
+		"directory bind":    func(p *api.Policy) { p.Directory.BindDN = "cn=evil" },
+		"directory secret":  func(p *api.Policy) { p.Directory.BindPassword = "other" },
+		"directory CA":      func(p *api.Policy) { p.Directory.CA = caPEM("evil") },
+		"no directory":      func(p *api.Policy) { p.Directory = nil },
+		"share server":      func(p *api.Policy) { p.Mounts[0].Server = "evil.example" },
+		"share name":        func(p *api.Policy) { p.Mounts[0].Share = "other" },
+		"share folder":      func(p *api.Policy) { p.Mounts[0].Folder = "Other" },
+		"nextcloud url":     func(p *api.Policy) { p.Nextcloud.URL = "https://evil.example" },
+		"nextcloud mode":    func(p *api.Policy) { p.Nextcloud.Mode = api.NextcloudClient },
 	}
 	for name, change := range changes {
 		before, after := fullPolicy(), fullPolicy()
@@ -196,5 +212,16 @@ func TestIdenticalPoliciesNeedALocalName(t *testing.T) {
 	got := identicalPolicies(cfg, queue, policyFingerprint(api.TaskPolicySet, payload))
 	if len(got) != 1 || !strings.Contains(got[0], "On laptop:") {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestWarnsAboutTheServersOwnCA(t *testing.T) {
+	policy := fullPolicy()
+	payload := mustJSON(t, policy)
+	if got := policyWarning(&config{CA: caPEM("server")}, api.TaskPolicySet, payload); got != "" {
+		t.Fatalf("got %q", got)
+	}
+	if got := policyWarning(&config{CA: policy.Directory.CA}, api.TaskPolicySet, payload); !strings.Contains(got, "WARNING") {
+		t.Fatalf("got %q", got)
 	}
 }

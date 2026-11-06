@@ -486,6 +486,7 @@ In Authentik, create an **OAuth2/OpenID provider** and an application for it:
 - Grant types: authorization code.
 - Signing key: choose one. Hauswart refuses tokens that are only signed with the
   client secret.
+- Subject mode: leave the default, the hashed user ID. The sync of accounts relies on it.
 - Scopes: `openid`, `profile` and `email`.
 
 Then write `/etc/hauswart/oidc.env` with mode 0600:
@@ -516,6 +517,73 @@ one of the two is renamed.
 
 Without `AUTHENTIK_TOKEN`, an account only appears at its first login, and someone
 you deactivate stays logged in for up to 12 hours.
+
+### Log in on devices with Authentik accounts
+
+A policy can let accounts from the LDAP outpost of Authentik log in on Fedora and
+Debian. Local accounts go on working. After one online login, a laptop also accepts
+the password without a connection, and it keeps doing so.
+
+In Authentik:
+
+1. Create an **LDAP provider** with the default authentication flow as its bind
+   flow, and an application for it. The bind flow must not ask for a second factor.
+2. Deploy an **LDAP outpost** for it. It needs TLS, and Hauswart refuses plain LDAP.
+   Its certificate must come from a CA of its own, such as Authentik's, and **not
+   from the Hauswart CA**: a hacked server holds that one and could pose as the
+   directory. `hauswart-admin approve` warns about this.
+3. Create a service account for reading, and give it the right to search the
+   directory.
+
+In the policy of a group, fill in **Accounts from a directory**:
+
+| Field | Example |
+| --- | --- |
+| Address | `ldaps://auth.example:6636` |
+| Base DN | `dc=ldap,dc=goauthentik,dc=io` |
+| Reading account | `cn=ldapreader,ou=users,dc=ldap,dc=goauthentik,dc=io` |
+| CA | The certificate of the CA that signed the outpost's certificate |
+
+The password of the reading account ends up on the server and on every device of the
+group, so that account must be able to do nothing but read.
+
+On a device with SELinux, the agent allows the port of the address for sssd. PAM
+stays as it is when the policy ends: without a domain, it does no harm.
+
+Screen time and sudo grants work for these accounts as well. Their IDs start at 2000.
+
+An account named like a local one on a device cannot log in there: local accounts
+stay local. Turn off **Allow users to change username** in the Authentik settings,
+because screen time goes by the name, and a child who renames themselves is someone
+else to it.
+
+### Shares
+
+**Shares** in a policy appear in `/media` at login, as `lena-Family` for the folder
+`Family`, with the login password, so nothing about them is stored. File managers list
+them there. They are not in the home directory on purpose: the mount runs as root, and
+a user could put a link there. The share has to know the same password, and that is
+why this needs the directory login. Local accounts get no shares. A share out of reach
+adds at most 8 seconds to a login.
+
+If the password changes in Authentik, a laptop that was offline knows the old one
+until it has logged in once at home.
+
+### Nextcloud
+
+Each person logs in to Nextcloud for themselves, so no policy holds a password.
+
+- **Sync client:** installs the client, starts it at login and points it at your
+  server.
+- **Network drive:** mounts the files in `~/Nextcloud` without a copy. Everyone creates
+  an app password in Nextcloud once, and stores it in their keyring:
+
+  ```bash
+  secret-tool store --label=Nextcloud service hauswart-nextcloud
+  ```
+
+  At the next login the drive is there. On a laptop without a connection it stays
+  away and tries again, every minute.
 
 ## Notifications about requests
 

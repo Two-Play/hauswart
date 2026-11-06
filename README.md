@@ -37,6 +37,10 @@ in containers, not on physical machines or over a real VPN. See
   server: required and forbidden software, files, CAs, updates in a maintenance
   window, firewall, and reports on disk encryption and the screen lock
 - Screen time per user with warnings, and more time for today from a phone
+- Dashboard login through Authentik, with roles from its groups and a sync of its
+  accounts
+- Linux login with Authentik accounts on Fedora and Debian, also offline, with SMB
+  shares at login and Nextcloud as a sync client or network drive
 - Audit log of every action
 - Backup and restore
 

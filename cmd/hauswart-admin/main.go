@@ -589,6 +589,9 @@ func approve(_ []string) error {
 			prompt := "Sign? [y/N/r to reject] "
 			if fingerprint != "" {
 				fmt.Println(policyChanges(task.DeviceID, task.Type, payload))
+				if warning := policyWarning(cfg, task.Type, payload); warning != "" {
+					fmt.Println(warning)
+				}
 				if others := identicalPolicies(cfg, queue[i+1:], fingerprint); len(others) > 0 {
 					fmt.Printf("  The same policy waits for other devices:\n%s\n", strings.Join(others, "\n"))
 					prompt = "Sign? [y/N/a for all of these/r to reject] "

@@ -39,7 +39,7 @@ func (f *fakeSystem) run(_ context.Context, name string, args ...string) (string
 		}
 		return "", errors.New("exit status 1")
 	case name == "dnf5" && args[0] == "install":
-		names := args[3:]
+		names := args[2:]
 		for _, pkg := range names {
 			if f.failed[pkg] {
 				return "No match for " + pkg, errors.New("exit status 1")
@@ -51,7 +51,7 @@ func (f *fakeSystem) run(_ context.Context, name string, args ...string) (string
 			}
 		}
 	case name == "dnf5" && args[0] == "remove":
-		for _, pkg := range args[3:] {
+		for _, pkg := range args[2:] {
 			delete(f.packages, pkg)
 		}
 	case name == "flatpak" && args[0] == "list":

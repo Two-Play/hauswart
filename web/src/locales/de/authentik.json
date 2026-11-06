@@ -11,6 +11,36 @@
     "oidc_failed": "Die Anmeldung über Authentik ist fehlgeschlagen. Bitte versuche es noch einmal.",
     "oidc_not_allowed": "Dieses Konto darf Hauswart nicht nutzen.",
     "oidc_bad_name": "Dieser Benutzername taugt nicht als Linux-Konto.",
-    "oidc_name_taken": "Ein lokales Konto hat bereits diesen Namen."
+    "oidc_name_taken": "Ein lokales Konto hat bereits diesen Namen.",
+    "invalid_directory": "Die Verzeichnis-Einstellungen sind ungültig: {{value}}",
+    "invalid_mount": "Die Freigabe ist ungültig: {{value}}"
+  },
+  "policies": {
+    "directory": "Konten aus einem Verzeichnis",
+    "directoryHint": "Lässt Konten aus dem LDAP-Outpost von Authentik auf Fedora und Debian anmelden. Das Lesekonto und sein Passwort landen auf jedem Gerät dieser Gruppe.",
+    "directoryOn": "Anmeldung mit Verzeichnis-Konten",
+    "uri": "Adresse (ldaps://…)",
+    "baseDn": "Base-DN",
+    "bindDn": "Lesekonto (DN)",
+    "bindPassword": "Sein Passwort",
+    "checks": {
+      "directory": "Verzeichnis-Anmeldung"
+    },
+    "mounts": "Freigaben",
+    "mountsHint": "SMB-Freigaben erscheinen beim Anmelden in /media, als BENUTZER-Ordner, mit dem Login-Passwort. Dafür braucht es Konten aus einem Verzeichnis.",
+    "server": "Server",
+    "share": "Freigabe",
+    "folder": "Name des Ordners in /media",
+    "addMount": "Freigabe hinzufügen",
+    "nextcloud": "Nextcloud",
+    "nextcloudOn": "Nextcloud einrichten",
+    "nextcloudUrl": "Adresse (https://…)",
+    "nextcloudMode": "Art",
+    "nextcloudModes": {
+      "client": "Sync-Client: Dateien liegen auf dem Gerät",
+      "drive": "Netzlaufwerk: nichts wird kopiert"
+    },
+    "directoryCa": "CA des Verzeichnisses (PEM)",
+    "directoryCaHint": "Nur dieser CA wird für das Verzeichnis vertraut. Nimm nicht die Hauswart-CA: Ein gehackter Server könnte sich sonst als jeder anmelden."
   }
 }

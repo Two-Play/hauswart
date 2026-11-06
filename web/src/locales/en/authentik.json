@@ -11,6 +11,36 @@
     "oidc_failed": "The login through Authentik failed. Please try again.",
     "oidc_not_allowed": "This account may not use Hauswart.",
     "oidc_bad_name": "This user name cannot be a Linux account.",
-    "oidc_name_taken": "A local account already has this name."
+    "oidc_name_taken": "A local account already has this name.",
+    "invalid_directory": "The directory settings are not valid: {{value}}",
+    "invalid_mount": "The share is not valid: {{value}}"
+  },
+  "policies": {
+    "directory": "Accounts from a directory",
+    "directoryHint": "Lets accounts from the Authentik LDAP outpost log in on Fedora and Debian. The reading account and its password reach every device of this group.",
+    "directoryOn": "Log in with directory accounts",
+    "uri": "Address (ldaps://…)",
+    "baseDn": "Base DN",
+    "bindDn": "Reading account (DN)",
+    "bindPassword": "Its password",
+    "checks": {
+      "directory": "Directory login"
+    },
+    "mounts": "Shares",
+    "mountsHint": "SMB shares appear at login in /media, as USER-folder, with the login password. This needs accounts from a directory.",
+    "server": "Server",
+    "share": "Share",
+    "folder": "Name of the folder in /media",
+    "addMount": "Add share",
+    "nextcloud": "Nextcloud",
+    "nextcloudOn": "Set up Nextcloud",
+    "nextcloudUrl": "Address (https://…)",
+    "nextcloudMode": "How",
+    "nextcloudModes": {
+      "client": "Sync client: files are copied to the device",
+      "drive": "Network drive: nothing is copied"
+    },
+    "directoryCa": "CA of the directory (PEM)",
+    "directoryCaHint": "Only this CA is trusted for the directory. Do not use the Hauswart CA: a hacked server could then log in as anyone."
   }
 }

@@ -27,6 +27,7 @@ HOST = "127.0.0.2"
 # In front of Authentik sits what a home usually has there, a TLS proxy.
 NAME = "auth.localhost"
 HTTP_PORT, HTTPS_PORT, INNER_HTTPS_PORT, DB_PORT = 19000, 19443, 19543, 15432
+LDAP_PORT = 13389
 PORT = int(os.environ.get("AUTH_PORT", "18460"))
 URL = f"https://localhost:{PORT}"
 TOKEN = "e2e-bootstrap-token-" + "x" * 20
@@ -117,6 +118,27 @@ class Authentik:
         found = self.api("GET", "propertymappings/provider/scope/?page_size=100")["results"]
         wanted = {f"goauthentik.io/providers/oauth2/scope-{s}" for s in ("openid", "email", "profile")}
         return [m["pk"] for m in found if m.get("managed") in wanted]
+
+    def ldap_outpost(self):
+        """Starts the outpost and returns the base DN. It speaks plain LDAP on the
+        host, and a TLS proxy goes in front of it."""
+        base_dn = "dc=ldap,dc=goauthentik,dc=io"
+        flow = self.pk("flows/instances/", "default-authentication-flow", key="slug")
+        provider = self.api("POST", "providers/ldap/", {
+            "name": "ldap", "authorization_flow": flow, "base_dn": base_dn, "bind_mode": "direct", "search_mode": "direct",
+            "invalidation_flow": self.pk("flows/instances/", "default-invalidation-flow", key="slug"),
+        })
+        self.api("POST", "core/applications/", {"name": "LDAP", "slug": "ldap", "provider": provider["pk"]})
+        outpost = self.api("POST", "outposts/instances/", {
+            "name": "ldap", "type": "ldap", "providers": [provider["pk"]],
+            "config": {"authentik_host": self.base, "authentik_host_insecure": True},
+        })
+        key = self.api("GET", f"core/tokens/{outpost['token_identifier']}/view_key/")["key"]
+        sh("podman", "run", "-d", "--name", CONTAINERS[3], "--network", "host",
+           "-e", f"AUTHENTIK_HOST={self.base}", "-e", f"AUTHENTIK_TOKEN={key}", "-e", "AUTHENTIK_INSECURE=true",
+           "-e", f"AUTHENTIK_LISTEN__LDAP=127.0.0.1:{LDAP_PORT}", "-e", "AUTHENTIK_LISTEN__LDAPS=127.0.0.1:13636",
+           "-e", "AUTHENTIK_LISTEN__METRICS=127.0.0.1:19302", "-e", "AUTHENTIK_LISTEN__HTTP=127.0.0.1:19002", LDAP_IMAGE)
+        return base_dn
 
     def oidc_application(self, redirect):
         signing = self.pk("crypto/certificatekeypairs/", "authentik Self-signed Certificate")

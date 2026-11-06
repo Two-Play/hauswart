@@ -314,7 +314,7 @@ func (s *Store) ChangePassword(ctx context.Context, id int64, hash, keepSession 
 func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `
 		DELETE FROM users WHERE id = ?
-		AND (role != 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1)`, id)
+		AND (role != 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0) > 1)`, id)
 	if err != nil {
 		return err
 	}

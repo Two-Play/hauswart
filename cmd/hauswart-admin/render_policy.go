@@ -102,6 +102,18 @@ func policyLines(p api.Policy) []string {
 	if p.Language != "" {
 		add("warnings in %s", p.Language)
 	}
+	if d := p.Directory; d != nil {
+		block, _ := pem.Decode([]byte(d.CA))
+		add("ACCOUNTS FROM %s MAY LOG IN, base %s, read as %s, password SHA-256 %x", d.URI, d.BaseDN, d.BindDN,
+			sha256.Sum256([]byte(d.BindPassword)))
+		add("directory identified by the CA with SHA-256 %x", sha256.Sum256(block.Bytes))
+	}
+	for _, mount := range p.Mounts {
+		add("share //%s/%s appears in /media as USER-%s, with the login password", mount.Server, mount.Share, mount.Folder)
+	}
+	if n := p.Nextcloud; n != nil {
+		add("Nextcloud %s as %s", n.URL, n.Mode)
+	}
 	return lines
 }
 
@@ -116,6 +128,24 @@ func policyFingerprint(taskType string, payload []byte) string {
 		return ""
 	}
 	return fmt.Sprintf("%s %x", taskType, sha256.Sum256(payload))
+}
+
+// policyWarning points out what the text of a policy cannot show. The CA of the
+// Hauswart server would let a hacked server pose as the directory, and whoever
+// does that logs in as anyone.
+func policyWarning(cfg *config, taskType string, payload []byte) string {
+	if taskType != api.TaskPolicySet {
+		return ""
+	}
+	var p api.Policy
+	if json.Unmarshal(payload, &p) != nil || p.Directory == nil || cfg.CA == "" {
+		return ""
+	}
+	if strings.TrimSpace(p.Directory.CA) == strings.TrimSpace(cfg.CA) {
+		return "  WARNING: the directory uses the CA of the Hauswart server. A hacked server could then pose as\n" +
+			"  the directory and log in to this device as anyone. Use a CA the server does not hold."
+	}
+	return ""
 }
 
 // identicalPolicies says what the same policy would change on the other devices

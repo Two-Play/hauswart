@@ -392,10 +392,30 @@ func (e *Executor) limitSet(ctx context.Context, p api.LimitPayload) (string, er
 
 func (e *Executor) lookupUser(name string) (*user.User, error) {
 	u, err := user.Lookup(name)
-	if err != nil {
-		return nil, fmt.Errorf("user %s does not exist on this device", name)
+	if err == nil {
+		return u, nil
 	}
-	return u, nil
+	// A static binary reads only /etc/passwd, and accounts from a directory
+	// service live elsewhere. getent asks what the system itself asks.
+	if u := e.directoryUser(name); u != nil {
+		return u, nil
+	}
+	return nil, fmt.Errorf("user %s does not exist on this device", name)
+}
+
+func (e *Executor) directoryUser(name string) *user.User {
+	out, err := e.Run(context.Background(), "getent", "passwd", name)
+	if err != nil {
+		return nil
+	}
+	fields := strings.Split(strings.TrimSpace(out), ":")
+	if len(fields) < 7 || fields[0] != name {
+		return nil
+	}
+	if _, err := strconv.Atoi(fields[2]); err != nil {
+		return nil
+	}
+	return &user.User{Username: fields[0], Uid: fields[2], Gid: fields[3], Name: fields[4], HomeDir: fields[5]}
 }
 
 // writeAtomicSync is writeAtomic that survives a power cut: the data is on disk

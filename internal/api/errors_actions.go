@@ -28,6 +28,8 @@ const (
 	ErrOIDCNotAllowed   = "oidc_not_allowed"
 	ErrOIDCBadName      = "oidc_bad_name"
 	ErrOIDCNameTaken    = "oidc_name_taken"
+	ErrInvalidDirectory = "invalid_directory"
+	ErrInvalidMount     = "invalid_mount"
 )
 
 func init() {
@@ -56,5 +58,7 @@ func init() {
 		ErrOIDCNotAllowed:   "this account may not use Hauswart",
 		ErrOIDCBadName:      "this user name cannot be a Linux account",
 		ErrOIDCNameTaken:    "a local account already has this name",
+		ErrInvalidDirectory: "the directory settings are not valid: %s",
+		ErrInvalidMount:     "the share is not valid: %s",
 	})
 }

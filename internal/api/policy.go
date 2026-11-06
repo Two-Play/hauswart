@@ -43,6 +43,8 @@ const (
 	maxScreenRules    = 16
 	maxRuleWindows    = 14
 	reservedCA        = "server"
+	maxBindPassword   = 256
+	maxPolicyMounts   = 16
 )
 
 // Policy is the state a device keeps on its own. A group holds one, and what a
@@ -63,6 +65,48 @@ type Policy struct {
 	ScreenTime []ScreenTimeRule `json:"screen_time,omitempty"`
 	// Language is that of the warnings a user sees, en or de.
 	Language string `json:"language,omitempty"`
+	// Directory lets accounts from an LDAP directory log in on the device.
+	Directory *DirectoryRule `json:"directory,omitempty"`
+	// Mounts are SMB shares that appear at login, with the login password. They
+	// need Directory, because the share has to know the same password.
+	Mounts []MountRule `json:"mounts,omitempty"`
+	// Nextcloud sets up the family's cloud for everyone on the device.
+	Nextcloud *NextcloudRule `json:"nextcloud,omitempty"`
+}
+
+// MountRule puts a share into the home directory, under Folder.
+type MountRule struct {
+	Server string `json:"server"`
+	Share  string `json:"share"`
+	Folder string `json:"folder"`
+}
+
+// How Nextcloud appears on a device.
+const (
+	// NextcloudClient installs the sync client and points it at the server.
+	NextcloudClient = "client"
+	// NextcloudDrive mounts the files without a local copy.
+	NextcloudDrive = "drive"
+)
+
+// NextcloudRule holds no passwords. Each person logs in for themselves.
+type NextcloudRule struct {
+	URL  string `json:"url"`
+	Mode string `json:"mode"`
+}
+
+// DirectoryRule points a device at an LDAP directory, such as the LDAP outpost
+// of Authentik. The password belongs to a service account that may only read: it
+// ends up on the server and on every device of the group.
+type DirectoryRule struct {
+	URI          string `json:"uri"`
+	BaseDN       string `json:"base_dn"`
+	BindDN       string `json:"bind_dn"`
+	BindPassword string `json:"bind_password"`
+	// CA is the one certificate authority this directory may use. It is not the
+	// system store, which holds the CA of the Hauswart server: a hacked server could
+	// then pose as the directory, and log in as anyone.
+	CA string `json:"ca"`
 }
 
 // ScreenExtendPayload lets a user stay until a moment today. It is a moment and
@@ -129,8 +173,12 @@ type PolicyConflict struct {
 }
 
 var (
-	clockRe = regexp.MustCompile(`^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$`)
-	weekday = map[string]time.Weekday{
+	shareRe         = regexp.MustCompile(`^[A-Za-z0-9._-]{1,80}$`)
+	nextcloudRe     = regexp.MustCompile(`^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._-]+)*$`)
+	ldapURIRe       = regexp.MustCompile(`^ldaps://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
+	distinguishedRe = regexp.MustCompile(`^[A-Za-z0-9=,._ -]{1,255}$`)
+	clockRe         = regexp.MustCompile(`^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$`)
+	weekday         = map[string]time.Weekday{
 		"sun": time.Sunday, "mon": time.Monday, "tue": time.Tuesday, "wed": time.Wednesday,
 		"thu": time.Thursday, "fri": time.Friday, "sat": time.Saturday,
 	}
@@ -237,6 +285,24 @@ func CheckPolicy(p Policy) error {
 	if p.Language != "" && p.Language != "en" && p.Language != "de" {
 		return Fail(ErrInvalidPayload, "language")
 	}
+	if p.Directory != nil {
+		if err := checkDirectory(*p.Directory); err != nil {
+			return err
+		}
+	}
+	if len(p.Mounts) > maxPolicyMounts {
+		return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
+	}
+	for _, mount := range p.Mounts {
+		if !ValidHostName(mount.Server) || !shareRe.MatchString(mount.Share) || !shareRe.MatchString(mount.Folder) || strings.HasPrefix(mount.Folder, ".") {
+			return Fail(ErrInvalidMount, mount.Server+"/"+mount.Share)
+		}
+	}
+	if n := p.Nextcloud; n != nil {
+		if !nextcloudRe.MatchString(n.URL) || (n.Mode != NextcloudClient && n.Mode != NextcloudDrive) {
+			return Fail(ErrInvalidMount, n.URL)
+		}
+	}
 	for _, rule := range p.ScreenTime {
 		if !ValidUser(rule.User) {
 			return Fail(ErrInvalidUser, rule.User)
@@ -260,6 +326,25 @@ func CheckPolicy(p Policy) error {
 	return nil
 }
 
+// These values end up in a configuration file of a daemon running as root, so a
+// line break must not be able to add settings. Only TLS is accepted, because the
+// passwords of the family go over this connection.
+func checkDirectory(d DirectoryRule) error {
+	if !ldapURIRe.MatchString(d.URI) {
+		return Fail(ErrInvalidDirectory, "uri")
+	}
+	if !distinguishedRe.MatchString(d.BaseDN) || !distinguishedRe.MatchString(d.BindDN) {
+		return Fail(ErrInvalidDirectory, "dn")
+	}
+	if d.BindPassword == "" || d.BindPassword != strings.TrimSpace(d.BindPassword) || !ValidText(d.BindPassword, maxBindPassword) {
+		return Fail(ErrInvalidDirectory, "password")
+	}
+	if !singleCertificate(d.CA) {
+		return Fail(ErrInvalidDirectory, "ca")
+	}
+	return nil
+}
+
 func hasDuplicates(p Policy) bool {
 	paths := map[string]bool{}
 	for _, file := range p.Files {
@@ -274,6 +359,13 @@ func hasDuplicates(p Policy) bool {
 			return true
 		}
 		names[ca.Name] = true
+	}
+	folders := map[string]bool{}
+	for _, mount := range p.Mounts {
+		if folders[mount.Folder] {
+			return true
+		}
+		folders[mount.Folder] = true
 	}
 	users := map[string]bool{}
 	for _, rule := range p.ScreenTime {
@@ -441,6 +533,8 @@ func MergePolicies(groups map[string]Policy) (Policy, []PolicyConflict) {
 		func(f FilePutPayload) string { return f.Path })
 	out.CAs = keyed(m, "CA", names, groups, func(p Policy) []CAInstallPayload { return p.CAs },
 		func(c CAInstallPayload) string { return c.Name })
+	out.Mounts = keyed(m, "mount", names, groups, func(p Policy) []MountRule { return p.Mounts },
+		func(r MountRule) string { return r.Folder })
 	out.ScreenTime = keyed(m, "screen time of", names, groups, func(p Policy) []ScreenTimeRule { return p.ScreenTime },
 		func(r ScreenTimeRule) string { return r.User })
 
@@ -451,6 +545,22 @@ func MergePolicies(groups map[string]Policy) (Policy, []PolicyConflict) {
 		return *p.Updates, true
 	}); ok {
 		out.Updates = &rule
+	}
+	if rule, ok := single(m, "directory", names, groups, func(p Policy) (DirectoryRule, bool) {
+		if p.Directory == nil {
+			return DirectoryRule{}, false
+		}
+		return *p.Directory, true
+	}); ok {
+		out.Directory = &rule
+	}
+	if rule, ok := single(m, "Nextcloud", names, groups, func(p Policy) (NextcloudRule, bool) {
+		if p.Nextcloud == nil {
+			return NextcloudRule{}, false
+		}
+		return *p.Nextcloud, true
+	}); ok {
+		out.Nextcloud = &rule
 	}
 	if zone, ok := single(m, "time zone", names, groups, func(p Policy) (string, bool) {
 		return p.TimeZone, p.TimeZone != ""

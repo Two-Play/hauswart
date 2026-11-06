@@ -117,7 +117,9 @@ type oidcLogin struct {
 
 	mu       sync.Mutex
 	attempts map[string]oidcAttempt
-	provider *oidc.Provider
+
+	discovery sync.Mutex
+	provider  *oidc.Provider
 }
 
 // StartOIDC reads the settings. Anything wrong keeps the feature off and leaves
@@ -175,8 +177,10 @@ func (s *Server) handleLoginOptions(w http.ResponseWriter, _ *http.Request) {
 // discover looks the provider up at the first login, so that a server starts
 // while the provider is away. A failed attempt is simply repeated by the next.
 func (o *oidcLogin) discover(ctx context.Context) (*oidc.Provider, error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+	// A lock of its own: a provider that hangs must not hold up logins on their
+	// way back.
+	o.discovery.Lock()
+	defer o.discovery.Unlock()
 	if o.provider != nil {
 		return o.provider, nil
 	}
@@ -407,11 +411,17 @@ func (s *Server) managedElsewhere(w http.ResponseWriter, r *http.Request, id int
 type directoryUser struct {
 	UID      string `json:"uid"`
 	Username string `json:"username"`
-	Active   bool   `json:"is_active"`
+	Active   *bool  `json:"is_active"`
 	Type     string `json:"type"`
-	Groups   []struct {
+	Groups   *[]struct {
 		Name string `json:"name"`
 	} `json:"groups_obj"`
+}
+
+// complete says whether an entry holds what a decision needs. A token with fewer
+// rights or a change in the API must not read as everyone having lost everything.
+func (d directoryUser) complete() bool {
+	return d.UID != "" && d.Username != "" && d.Type != "" && d.Active != nil && d.Groups != nil
 }
 
 func (s *Server) fetchDirectory(ctx context.Context) ([]directoryUser, error) {
@@ -463,29 +473,38 @@ func (s *Server) syncDirectory(ctx context.Context) {
 		s.log.Warn("the sync of accounts failed", "err", err)
 		return
 	}
+	known, err := s.store.DirectorySubjects(ctx)
+	if err != nil {
+		s.log.Warn("the sync of accounts failed", "err", err)
+		return
+	}
+	// Such an answer says more about the token than about the family.
+	if len(users) == 0 && len(known) > 0 {
+		s.log.Warn("the sync of accounts got an empty list and changes nothing")
+		return
+	}
+	if slices.ContainsFunc(users, func(u directoryUser) bool { return !u.complete() }) {
+		s.log.Warn("the sync of accounts got incomplete entries and changes nothing")
+		return
+	}
 	present := map[string]bool{}
 	for _, user := range users {
 		if user.Type != directoryInternal && user.Type != directoryExternal {
 			continue
 		}
 		var groups []string
-		for _, group := range user.Groups {
+		for _, group := range *user.Groups {
 			groups = append(groups, group.Name)
 		}
-		if !user.Active || s.oidc.refuse(user.Username, groups) != "" {
+		if !*user.Active || s.oidc.refuse(user.Username, groups) != "" {
 			continue
 		}
+		// A failure here says nothing about the person, so they stay.
+		present[user.UID] = true
 		_, err := s.store.SaveDirectoryUser(ctx, store.DirectoryUser{Subject: user.UID, Username: user.Username, Role: s.oidc.role(groups)})
 		if err != nil {
 			s.log.Warn("an account could not be synced", "user", user.Username, "err", err)
-			continue
 		}
-		present[user.UID] = true
-	}
-	known, err := s.store.DirectorySubjects(ctx)
-	if err != nil {
-		s.log.Warn("the sync of accounts failed", "err", err)
-		return
 	}
 	for _, subject := range known {
 		if err := s.store.SetDirectoryUserDisabled(ctx, subject, !present[subject]); err != nil {

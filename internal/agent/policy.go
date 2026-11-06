@@ -40,6 +40,8 @@ const (
 	deviationUpdates = "updates"
 	deviationScreen  = "screen_time"
 	deviationSecure  = "security"
+	deviationLogin   = "directory"
+	deviationMount   = "mount"
 )
 
 // policyState is what the device has to remember besides the policy.
@@ -251,6 +253,15 @@ func (pe *PolicyEngine) Enforce(ctx context.Context) {
 	pe.enforcePackages(ctx, policy, &o)
 	pe.enforceFlatpaks(ctx, policy, &o)
 	checks := pe.enforceSecurity(ctx, policy.Security, &o)
+	directory := pe.enforceDirectory(ctx, policy.Directory, policy.Mounts, &o)
+	if directory != "" {
+		if checks == nil {
+			checks = map[string]string{}
+		}
+		checks["directory"] = directory
+	}
+	pe.enforceMounts(ctx, policy.Mounts, directory == checkOn, &o)
+	pe.enforceNextcloud(ctx, policy.Nextcloud, &o)
 	if len(o.corrected) > 0 {
 		pe.log.Warn("policy corrected this device", "items", o.corrected)
 	}

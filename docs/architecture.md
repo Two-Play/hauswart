@@ -227,6 +227,22 @@ of the policy, so that changing the zone of a device moves nothing.
 that a late task gives no more than was meant. A passkey may approve it, and the
 agent limits it to four hours and to midnight.
 
+## Accounts from Authentik
+
+The dashboard speaks OIDC with Authentik, with PKCE, a nonce and a state that is tied
+to the browser by a cookie. An account is matched by its subject, and a name that
+already belongs to a local account is refused. `syncDirectory` reads Authentik's API
+every 5 minutes, and an account that disappeared there is disabled here.
+
+On devices, a policy can hold a `DirectoryRule`. The agent installs sssd, writes
+`/etc/sssd/conf.d/hauswart.conf` and selects the matching PAM setup: `authselect` on
+Fedora, `pam-auth-update` on Debian. Other systems report a deviation, because
+changing PAM by hand can lock everyone out. Shares use pam_mount. Fedora dropped the
+authselect feature for it, so the agent keeps a custom profile based on `sssd`.
+
+The agent is a static binary, and Go's `os/user` only reads `/etc/passwd` then. So
+`lookupUser` asks `getent` for accounts it does not find.
+
 ## Roles
 
 | Role | May do |

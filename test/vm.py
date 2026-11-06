@@ -4,7 +4,7 @@ real reboots and popups in a real desktop session.
 
 The server runs on the host. Guests reach it through QEMU's user networking at
 10.0.2.2, so this needs no root and touches nothing on the host but a cache
-directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy]
+directory. Usage: test/vm.py [flatpak atomic ubuntu power desktop screentime kde atomic-policy directory]
 """
 import hashlib
 import json
@@ -22,10 +22,14 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import authentik  # noqa: E402
 import browsers  # noqa: E402
 import e2e  # noqa: E402
 
 PORT = int(os.environ.get("VM_PORT", "18450"))
+LDAPS_PORT = 16636
+CLOUD_PORT, CLOUD_HTTP_PORT = 16443, 18080
+NEXTCLOUD_IMAGE = "docker.io/library/nextcloud:stable-apache"
 GUEST_URL = f"https://10.0.2.2:{PORT}"
 ROOT = e2e.ROOT
 CACHE = os.environ.get("VM_CACHE", os.path.expanduser("~/.cache/hauswart-vm"))
@@ -644,6 +648,199 @@ def test_atomic_policy(admin, agent_bin, work, public_key):
         vm.stop()
 
 
+def sh_logs():
+    return subprocess.run(["podman", "logs", "--tail", "12", authentik.CONTAINERS[3]], capture_output=True, text=True).stderr[-1800:]
+
+
+def test_directory(admin, agent_bin, work, public_key):
+    """Accounts from a real Authentik log in on a real device, also offline."""
+    group = "directory"
+    print(f"\n== directory (Fedora Cloud 44 VM, SSSD, Authentik {authentik.VERSION} LDAP outpost)", flush=True)
+    tool = signing_tool(admin, work)
+    stack = authentik.Authentik()
+    proxy = None
+    vm = VM(work, group, cloud_image(), "fedora", 2239, cloud_seed(work, group, public_key))
+    password = authentik.PASSWORD
+
+    def pam(user, secret):
+        return vm.ssh(f"printf '%s\\n' '{secret}' | pamtester login {user} authenticate")
+
+    def start_proxy():
+        return subprocess.Popen(["socat", f"OPENSSL-LISTEN:{LDAPS_PORT},reuseaddr,fork,cert={work}/ldap.pem,key={work}/ldap.key,verify=0",
+                                 f"TCP:127.0.0.1:{authentik.LDAP_PORT}"], stderr=subprocess.DEVNULL)
+
+    try:
+        stack.start()
+        check(group, "Authentik is up", True)
+        base_dn = stack.ldap_outpost()
+        admins = stack.pk("core/groups/", "authentik Admins")
+        stack.user("ldapreader", [admins])
+        stack.user("lena")
+        stack.user("fedora")  # named like the local account with sudo
+        # A CA of its own, as the one of the Hauswart server must not vouch for this.
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30", "-subj", "/CN=ldap.home.test",
+                        "-addext", "subjectAltName=DNS:ldap.home.test", "-addext", "basicConstraints=critical,CA:TRUE",
+                        "-keyout", f"{work}/ldap.key", "-out", f"{work}/ldap.pem"], check=True, capture_output=True)
+        proxy = start_proxy()
+
+        check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+        vm.ssh("cloud-init status --wait; echo '10.0.2.2 ldap.home.test' >>/etc/hosts")
+        installed = vm.ssh("dnf5 install -y pamtester authselect", timeout=900)
+        check(group, "test tools installed", installed.returncode == 0, installed.stderr[-500:])
+        device = protected_agent(vm, admin, tool, agent_bin, group)
+
+        code, out = admin.call("POST", "/api/groups", {"name": group})
+        path = f"/api/groups/{out['id']}"
+        admin.call("PUT", f"{path}/devices", {"devices": [device]})
+        ca = open(f"{work}/data/pki/ca.pem").read()
+        policy = {
+            "cas": [{"name": "home", "pem": ca}],
+            "directory": {"uri": f"ldaps://ldap.home.test:{LDAPS_PORT}", "base_dn": base_dn,
+                          "bind_dn": f"cn=ldapreader,ou=users,{base_dn}", "bind_password": password,
+                          "ca": open(f"{work}/ldap.pem").read()},
+        }
+        code, out = admin.call("PUT", f"{path}/policy", policy)
+        check(group, "policy saved", code == 204, out)
+        shown = tool.run("approve", input="y\n")
+        check(group, "the directory is shown before signing", "ACCOUNTS FROM ldaps://ldap.home.test" in shown.stdout, shown.stdout + shown.stderr)
+        check(group, "and its password is not", password not in shown.stdout, shown.stdout)
+
+        def state():
+            return admin.call("GET", f"{path}/policy")[1]["devices"][0]
+        applied = wait_for(lambda: state()["state"] == "current" and state().get("checks", {}).get("directory") == "on", 240, 5)
+        print("       " + str(state())[:700], flush=True)
+        check(group, "the device applies it", applied, vm.ssh("journalctl -u hauswart-agent --no-pager | tail -5").stdout)
+        known = wait_for(lambda: vm.ssh("getent passwd lena").returncode == 0, 60)
+        if not known:
+            print(vm.ssh(f"echo | timeout 10 openssl s_client -connect ldap.home.test:{LDAPS_PORT} 2>&1 | grep -E 'Verif|verify|CONNECTED|errno|alert' | head -8; "
+                         "dnf5 install -q -y openldap-clients >/dev/null 2>&1; "
+                         f"LDAPTLS_REQCERT=demand ldapsearch -LLL -H ldaps://ldap.home.test:{LDAPS_PORT} -x -D 'cn=ldapreader,ou=users,{base_dn}' "
+                         f"-w '{password}' -b '{base_dn}' '(cn=lena)' 2>&1 | head -30; "
+                         "grep -E '\\(0x00[1-8]0\\)' /var/log/sssd/sssd_hauswart.log | cut -c1-220 | tail -25").stdout[-5000:], flush=True)
+            print(sh_logs(), flush=True)
+        check(group, "a directory account is known", known)
+        print("       " + vm.ssh("getent passwd lena").stdout.strip(), flush=True)
+        check(group, "the password from Authentik works", pam("lena", password).returncode == 0,
+              pam("lena", password).stderr + vm.ssh("tail -15 /var/log/sssd/sssd_hauswart.log").stdout)
+        check(group, "a wrong password does not", pam("lena", "wrong-password").returncode != 0)
+        check(group, "ATTACK a directory account named like a local one gets nothing", pam("fedora", password).returncode != 0,
+              pam("fedora", password).stdout + vm.ssh("grep filter_users /etc/sssd/conf.d/hauswart.conf").stdout)
+        check(group, "the local account keeps its own ID", vm.ssh("id -u fedora").stdout.strip() == "1000", vm.ssh("getent passwd fedora").stdout)
+        check(group, "the local account still works", vm.ssh("id -un").stdout.strip() == "root" or vm.ssh("true").returncode == 0)
+
+        task, _ = signed_task(admin, tool, device, "sudo.grant", {"user": "lena", "expires_at": valid_for(30)})
+        check(group, "the agent knows directory accounts", task["status"] == "done", task["output"])
+        task = e2e.run_task(admin, device, "sudo.revoke", {"user": "lena"}, wait=60)
+        check(group, "and can take the right back", task["status"] == "done", task["output"])
+
+        # A share with the same password, and one that is out of reach.
+        prepared = vm.ssh("dnf5 install -y samba kernel-modules-core-$(uname -r) && setenforce 0; modprobe cifs; "
+                          "mkdir -p /srv/family && echo hello >/srv/family/hello.txt && chown -R lena /srv/family && "
+                          "printf '[family]\\npath = /srv/family\\nread only = no\\n' >>/etc/samba/smb.conf && "
+                          f"printf '%s\\n%s\\n' '{password}' '{password}' | smbpasswd -s -a lena && systemctl enable --now smb && "
+                          "sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* ; "
+                          "printf 'PasswordAuthentication yes\\nKbdInteractiveAuthentication yes\\n' >/etc/ssh/sshd_config.d/00-test.conf; systemctl restart sshd", timeout=900)
+        check(group, "Samba runs", prepared.returncode == 0, prepared.stdout[-400:] + prepared.stderr[-400:])
+        policy["mounts"] = [{"server": "127.0.0.1", "share": "family", "folder": "Family"}]
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        check(group, "the share is set up", wait_for(lambda: state()["state"] == "current" and "custom/hauswart" in vm.ssh("authselect current").stdout, 300, 5),
+              str(state()) + vm.ssh("authselect current; ls -la /etc/security/pam_mount.conf.xml").stdout)
+        askpass = f"{work}/askpass"
+        with open(askpass, "w") as f:
+            f.write(f"#!/bin/sh\necho '{password}'\n")
+        os.chmod(askpass, 0o700)
+
+        def as_lena(command):
+            return subprocess.run(["ssh", "-p", "2239", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                                   "-o", "PreferredAuthentications=password,keyboard-interactive", "lena@127.0.0.1", command],
+                                  env={**os.environ, "SSH_ASKPASS": askpass, "SSH_ASKPASS_REQUIRE": "force"},
+                                  capture_output=True, text=True, timeout=120)
+        login = as_lena("pwd; cat /media/lena-Family/hello.txt; grep -c cifs /proc/mounts")
+        print("       " + login.stdout.replace("\n", " | "), flush=True)
+        check(group, "the home directory appears", "/home/lena" in login.stdout, login.stderr[-300:])
+        if "hello" not in login.stdout:
+            print(vm.ssh("grep -n 'pam_mount\\|pam_sss' /etc/pam.d/password-auth; cat /etc/security/pam_mount.conf.xml | tail -6; "
+                         "journalctl -b --no-pager | grep -iE 'pam_mount|cifs|mount\\.' | grep -v AUDIT | tail -14; modprobe cifs; lsmod | grep -c cifs; "
+                         "testparm -s 2>/dev/null | tail -5").stdout[-2500:], flush=True)
+        check(group, "the share is there after login", "hello" in login.stdout)
+        check(group, "the mount point is out of the user's reach", vm.ssh("stat -c %U /media").stdout.strip() == "root")
+        check(group, "the password is in no file", vm.ssh(f"grep -rl '{password}' /etc/security /home 2>/dev/null").stdout.strip() == "")
+
+        policy["mounts"].append({"server": "10.255.255.1", "share": "away", "folder": "Away"})
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        wait_for(lambda: "10.255.255.1" in vm.ssh("cat /etc/security/pam_mount.conf.xml").stdout, 120, 5)
+        started = time.time()
+        login = as_lena("echo logged-in")
+        took = time.time() - started
+        check(group, "a share out of reach does not block the login", "logged-in" in login.stdout and took < 30, f"{took:.0f}s {login.stderr}")
+        print(f"       login with a share out of reach took {took:.0f}s", flush=True)
+
+        # Nextcloud as a drive, with the password only in a keyring.
+        code, issued = admin.call("POST", "/api/certificates", {"names": ["cloud.home.test"], "days": 30})
+        check(group, "certificate for Nextcloud", code == 201, str(issued))
+        for file, field in (("cloud.pem", "cert"), ("cloud.key", "key")):
+            with open(f"{work}/{file}", "w") as f:
+                f.write(issued[field])
+        subprocess.run(["podman", "rm", "-f", "hw-nextcloud"], capture_output=True)
+        subprocess.run(["podman", "run", "-d", "--name", "hw-nextcloud", "-p", f"127.0.0.1:{CLOUD_HTTP_PORT}:80",
+                        "-e", "SQLITE_DATABASE=nextcloud", "-e", "NEXTCLOUD_ADMIN_USER=lena", "-e", f"NEXTCLOUD_ADMIN_PASSWORD={password}",
+                        "-e", "NEXTCLOUD_TRUSTED_DOMAINS=cloud.home.test 127.0.0.1", NEXTCLOUD_IMAGE], capture_output=True, check=True)
+        cloud_proxy = subprocess.Popen(["socat", f"OPENSSL-LISTEN:{CLOUD_PORT},reuseaddr,fork,cert={work}/cloud.pem,key={work}/cloud.key,verify=0",
+                                        f"TCP:127.0.0.1:{CLOUD_HTTP_PORT}"], stderr=subprocess.DEVNULL)
+
+        def cloud_ready():
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{CLOUD_HTTP_PORT}/status.php", timeout=5) as resp:
+                    return json.load(resp).get("installed")
+            except (OSError, ValueError):
+                return False
+        check(group, "Nextcloud runs", wait_for(cloud_ready, 240, 5))
+        vm.ssh("echo '10.0.2.2 cloud.home.test' >>/etc/hosts; dnf5 install -y gnome-keyring dbus-daemon", timeout=600)
+        policy["nextcloud"] = {"url": f"https://cloud.home.test:{CLOUD_PORT}", "mode": "drive"}
+        admin.call("PUT", f"{path}/policy", policy)
+        tool.run("approve", input="y\n")
+        check(group, "the drive is set up", wait_for(lambda: vm.ssh("test -x /usr/local/libexec/hauswart-nextcloud-drive && command -v rclone").returncode == 0, 300, 5), str(state()))
+        drive = as_lena(f"""dbus-run-session -- sh -c '
+            printf %s "{password}" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; sleep 1
+            printf %s "{password}" | secret-tool store --label=Nextcloud service hauswart-nextcloud
+            /usr/local/libexec/hauswart-nextcloud-drive & sleep 8
+            ls ~/Nextcloud; grep -c rclone /proc/mounts; ps -eo args | grep -c "[w]ebdav-pass"
+            fusermount3 -u ~/Nextcloud'""")
+        print("       " + drive.stdout.replace("\n", " | ")[:300], flush=True)
+        check(group, "the files of Nextcloud are in the drive", "Documents" in drive.stdout or "Readme.md" in drive.stdout, drive.stdout + drive.stderr)
+        check(group, "the password is in no process list", password not in vm.ssh("ps -eo args").stdout)
+        cloud_proxy.terminate()
+        subprocess.run(["podman", "rm", "-f", "hw-nextcloud"], capture_output=True)
+
+        # The laptop leaves home.
+        proxy.terminate()
+        proxy.wait()
+        proxy = None
+        vm.ssh("sss_cache -E; systemctl restart sssd; sleep 8")
+        check(group, "offline: the directory is gone", vm.ssh(f"timeout 5 bash -c '</dev/tcp/ldap.home.test/{LDAPS_PORT}'").returncode != 0)
+        check(group, "offline: the account is still known", vm.ssh("getent passwd lena").returncode == 0)
+        started = time.time()
+        check(group, "offline: the password still works", pam("lena", password).returncode == 0,
+              pam("lena", password).stderr + vm.ssh("tail -15 /var/log/sssd/sssd_hauswart.log").stdout)
+        took = time.time() - started
+        check(group, "offline: and quickly", took < 15, f"{took:.0f}s")
+        check(group, "offline: a wrong password does not", pam("lena", "wrong-password").returncode != 0)
+        proxy = start_proxy()
+
+        admin.call("PUT", f"{path}/devices", {"devices": []})
+        tool.run("approve", input="y\n")
+        check(group, "leaving the group removes the service password",
+              wait_for(lambda: vm.ssh("test -e /etc/sssd/conf.d/hauswart.conf").returncode != 0, 120))
+        check(group, "and nobody is locked out", vm.ssh("true").returncode == 0)
+    finally:
+        if proxy:
+            proxy.terminate()
+        stack.stop()
+        vm.stop()
+
+
 def test_screentime(admin, agent_bin, work, public_key, kde=False):
     """A real session runs out of time on a protected device, and the security
     rules meet a real firewall and a real desktop."""
@@ -858,7 +1055,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
 
 def main():
-    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy"]
+    names = sys.argv[1:] or ["flatpak", "atomic", "ubuntu", "power", "desktop", "screentime", "kde", "atomic-policy", "directory"]
     os.makedirs(CACHE, exist_ok=True)
     work = tempfile.mkdtemp(prefix="hauswart-vm-", dir=os.environ.get("E2E_TMP"))
     env = {**os.environ, "CGO_ENABLED": "0"}
@@ -872,7 +1069,7 @@ def main():
     log_path = f"{work}/server.log"
     with open(log_path, "w") as log:
         server = subprocess.Popen(
-            [f"{work}/server", "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", GUEST_URL],
+            [f"{work}/server", "-addr", f"127.0.0.1:{PORT}", "-data", f"{work}/data", "-url", GUEST_URL, "-ca-scope", "home.test"],
             stderr=log, stdout=log)
     try:
         for _ in range(50):
@@ -886,7 +1083,7 @@ def main():
         for name in names:
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu,
                      "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
-                     "atomic-policy": test_atomic_policy}
+                     "atomic-policy": test_atomic_policy, "directory": test_directory}
             tests[name](admin, f"{work}/agent", work, public_key)
     finally:
         if signing:

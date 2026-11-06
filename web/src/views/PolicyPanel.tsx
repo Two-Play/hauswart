@@ -8,6 +8,7 @@ import {
   Modal,
   MultiSelect,
   Paper,
+  PasswordInput,
   Select,
   Stack,
   TagsInput,
@@ -56,6 +57,9 @@ interface Policy {
   time_zone?: string;
   screen_time?: ScreenRule[];
   language?: string;
+  directory?: { uri: string; base_dn: string; bind_dn: string; bind_password: string; ca: string };
+  mounts?: { server: string; share: string; folder: string }[];
+  nextcloud?: { url: string; mode: string };
 }
 
 interface DevicePolicy {
@@ -134,6 +138,7 @@ function PolicyForm({ initial, onSave, onClose }: { initial: Policy; onSave: (p:
   const cas = p.cas ?? [];
   const rules = p.screen_time ?? [];
   const security = p.security ?? {};
+  const mounts = p.mounts ?? [];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
@@ -348,6 +353,114 @@ function PolicyForm({ initial, onSave, onClose }: { initial: Policy; onSave: (p:
       >
         {t('policies.addRule')}
       </Button>
+
+      <Divider />
+      <Title order={5}>{t('policies.directory')}</Title>
+      <Text size="xs" c="dimmed">
+        {t('policies.directoryHint')}
+      </Text>
+      <Checkbox
+        label={t('policies.directoryOn')}
+        checked={!!p.directory}
+        onChange={(e) =>
+          change({
+            directory: e.currentTarget.checked ? { uri: '', base_dn: '', bind_dn: '', bind_password: '', ca: '' } : undefined,
+          })
+        }
+      />
+      {p.directory && (
+        <>
+          <TextInput
+            label={t('policies.uri')}
+            value={p.directory.uri}
+            onChange={(e) => p.directory && change({ directory: { ...p.directory, uri: e.currentTarget.value } })}
+          />
+          <TextInput
+            label={t('policies.baseDn')}
+            value={p.directory.base_dn}
+            onChange={(e) => p.directory && change({ directory: { ...p.directory, base_dn: e.currentTarget.value } })}
+          />
+          <TextInput
+            label={t('policies.bindDn')}
+            value={p.directory.bind_dn}
+            onChange={(e) => p.directory && change({ directory: { ...p.directory, bind_dn: e.currentTarget.value } })}
+          />
+          <PasswordInput
+            label={t('policies.bindPassword')}
+            value={p.directory.bind_password}
+            onChange={(e) => p.directory && change({ directory: { ...p.directory, bind_password: e.currentTarget.value } })}
+          />
+          <Textarea
+            label={t('policies.directoryCa')}
+            description={t('policies.directoryCaHint')}
+            autosize
+            minRows={3}
+            maxRows={8}
+            value={p.directory.ca}
+            onChange={(e) => p.directory && change({ directory: { ...p.directory, ca: e.currentTarget.value } })}
+          />
+        </>
+      )}
+
+      <Divider />
+      <Title order={5}>{t('policies.mounts')}</Title>
+      <Text size="xs" c="dimmed">
+        {t('policies.mountsHint')}
+      </Text>
+      {mounts.map((mount, i) => (
+        <Group key={i} align="flex-end" wrap="nowrap">
+          <TextInput
+            label={t('policies.server')}
+            value={mount.server}
+            onChange={(e) => change({ mounts: replaced(mounts, i, { ...mount, server: e.currentTarget.value }) })}
+          />
+          <TextInput
+            label={t('policies.share')}
+            value={mount.share}
+            onChange={(e) => change({ mounts: replaced(mounts, i, { ...mount, share: e.currentTarget.value }) })}
+          />
+          <TextInput
+            label={t('policies.folder')}
+            value={mount.folder}
+            onChange={(e) => change({ mounts: replaced(mounts, i, { ...mount, folder: e.currentTarget.value }) })}
+          />
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label={t('policies.remove')}
+            onClick={() => change({ mounts: without(mounts, i) })}
+          >
+            ×
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button size="xs" variant="light" onClick={() => change({ mounts: [...mounts, { server: '', share: '', folder: '' }] })}>
+        {t('policies.addMount')}
+      </Button>
+
+      <Divider />
+      <Title order={5}>{t('policies.nextcloud')}</Title>
+      <Checkbox
+        label={t('policies.nextcloudOn')}
+        checked={!!p.nextcloud}
+        onChange={(e) => change({ nextcloud: e.currentTarget.checked ? { url: '', mode: 'client' } : undefined })}
+      />
+      {p.nextcloud && (
+        <>
+          <TextInput
+            label={t('policies.nextcloudUrl')}
+            value={p.nextcloud.url}
+            onChange={(e) => p.nextcloud && change({ nextcloud: { ...p.nextcloud, url: e.currentTarget.value } })}
+          />
+          <Select
+            label={t('policies.nextcloudMode')}
+            allowDeselect={false}
+            value={p.nextcloud.mode}
+            onChange={(mode) => p.nextcloud && change({ nextcloud: { ...p.nextcloud, mode: mode ?? 'client' } })}
+            data={['client', 'drive'].map((value) => ({ value, label: t(`policies.nextcloudModes.${value}`) }))}
+          />
+        </>
+      )}
 
       <Group justify="flex-end">
         <Button variant="subtle" onClick={onClose}>

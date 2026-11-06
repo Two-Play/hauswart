@@ -29,11 +29,24 @@ type DirectoryUser struct {
 // goes by the subject, and never takes over an account by its name: otherwise
 // whoever may name themselves "admin" there would become the local admin here.
 func (s *Store) SaveDirectoryUser(ctx context.Context, d DirectoryUser) (User, error) {
+	// Local accounts have an empty subject, and this must never find one of them.
+	if d.Subject == "" {
+		return User{}, errors.New("no subject")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return User{}, err
 	}
 	defer tx.Rollback()
+
+	// Names move around in a directory: an account comes back with a new subject,
+	// or two people swap. The other side gets its name at its own turn.
+	_, err = tx.ExecContext(ctx, `
+		UPDATE users SET username = 'former-' || id, linux_user = 'former-' || id
+		WHERE username = ? AND oidc_subject != '' AND oidc_subject != ?`, d.Username, d.Subject)
+	if err != nil {
+		return User{}, err
+	}
 
 	var u User
 	err = tx.QueryRowContext(ctx, `SELECT id, disabled FROM users WHERE oidc_subject = ?`, d.Subject).Scan(&u.ID, &u.Disabled)
@@ -54,7 +67,7 @@ func (s *Store) SaveDirectoryUser(ctx context.Context, d DirectoryUser) (User, e
 		// A demotion must not leave nobody in charge, as in SetRole.
 		_, err := tx.ExecContext(ctx, `
 			UPDATE users SET username = ?, linux_user = ?, role = CASE
-				WHEN role = 'admin' AND ? != 'admin' AND (SELECT COUNT(*) FROM users WHERE role = 'admin') <= 1 THEN role
+				WHEN role = 'admin' AND ? != 'admin' AND (SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0) <= 1 THEN role
 				ELSE ? END
 			WHERE id = ?`, d.Username, d.Username, d.Role, d.Role, u.ID)
 		if err != nil {
@@ -85,8 +98,16 @@ func (s *Store) SetDirectoryUserDisabled(ctx context.Context, subject string, di
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE users SET disabled = ? WHERE oidc_subject = ?`, disabled, subject); err != nil {
+	// Nobody who could log in as an admin must not be the result, as in DeleteUser.
+	res, err := tx.ExecContext(ctx, `
+		UPDATE users SET disabled = ? WHERE oidc_subject = ?
+		AND NOT (? AND role = 'admin' AND disabled = 0
+			AND (SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0) <= 1)`, disabled, subject, disabled)
+	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return tx.Commit()
 	}
 	if disabled {
 		_, err := tx.ExecContext(ctx, `

@@ -24,7 +24,7 @@ func ValidRole(role string) bool {
 func (s *Store) SetRole(ctx context.Context, id int64, role string) error {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE users SET role = ? WHERE id = ?
-		AND (role != 'admin' OR ? = 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1)`, role, id, role)
+		AND (role != 'admin' OR ? = 'admin' OR (SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0) > 1)`, role, id, role)
 	if err != nil {
 		return err
 	}

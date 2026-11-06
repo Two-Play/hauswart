@@ -213,6 +213,28 @@ An account is matched by its subject and never by its name, so a new account cal
 password: it works without Authentik. The client secret and the API token are in
 `/etc/hauswart/oidc.env`, and a hacked server has them.
 
+### Directory login
+
+A policy with a directory makes Authentik decide who can log in on a device, so:
+
+- **Whoever controls Authentik can log in on these devices** as any of its accounts,
+  or create new ones. An account that has sudo there gives them root on that device.
+  Signed tasks stay out of their reach, but they would be on the device itself.
+- **The reading account's password is on every device and on the server.** A hacked
+  server or any root user can read it. It can see names and groups of the family.
+- **Offline, a device trusts its cache without an end.** A password changed in
+  Authentik still opens a laptop that has not been online since, and so does an
+  account that was deleted there. There is no way to reach a lost laptop that stays
+  offline, so disk encryption matters on those.
+- **Only the CA in the policy vouches for the directory,** and it must not be the
+  Hauswart CA. With that one, a hacked server could pose as the directory and log in
+  as anyone, sudo included.
+- **Local accounts are shielded by name.** The list comes from the device at every
+  check, so a new local account is exposed for up to 15 minutes to a directory
+  account of the same name.
+- **Shares get the login password** in the moment of the login, as the login does.
+  It is kept in memory by pam_mount and is written nowhere.
+
 ### With control of a device
 
 - Act as that one device: send false reports and results for its own tasks.
