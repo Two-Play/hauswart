@@ -91,6 +91,12 @@ dist/hauswart-server -data /tmp/hauswart -dev-http 127.0.0.1:8080
 `-dev-http` serves the dashboard without TLS on a loopback address. For the
 frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 
+To try everything by hand, `make playground` starts a server and a protected Fedora VM
+with a desktop and the desktop app, in its own window. Add `ARGS=--kde` for Plasma. The
+first run takes 10 to 20 minutes, later runs start from the same state. It prints the
+dashboard address, the password and how to sign tasks. It needs KVM, QEMU and
+`make packages`, and keeps its data in `~/.cache/hauswart-playground`.
+
 | Command | Checks |
 | --- | --- |
 | `make regression` | All suites below at once, with a table of how long each took. `make regression-fast` leaves out the virtual machines |
