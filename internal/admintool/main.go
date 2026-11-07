@@ -44,7 +44,7 @@ const (
 
 	// maxCounterJump is how far a device's reported counter may lie above the
 	// local one. A device gets ahead when a second admin computer signs, or after
-	// an old admin.json comes back, and a family will not sign a million tasks in
+	// an old admin.json comes back, and a household will not sign a million tasks in
 	// between. A hacked server gains little within it: skipped counters do no
 	// harm, and using them all up would take 2^44 real signatures.
 	maxCounterJump = 1 << 20

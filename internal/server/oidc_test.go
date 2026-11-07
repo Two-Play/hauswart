@@ -138,7 +138,7 @@ func oidcEnv(t *testing.T, change func(*OIDCConfig)) (*env, *fakeProvider, *Serv
 	p := newProvider(t)
 	srv := e.server
 	srv.publicURL = e.ts.URL
-	cfg := OIDCConfig{Issuer: p.ts.URL, ClientID: "hauswart", ClientSecret: "secret", AdminGroup: "family-admins", ParentGroup: "parents"}
+	cfg := OIDCConfig{Issuer: p.ts.URL, ClientID: "hauswart", ClientSecret: "secret", AdminGroup: "family-admins", ApproverGroup: "parents"}
 	if change != nil {
 		change(&cfg)
 	}
@@ -197,7 +197,7 @@ func TestOIDCLoginCreatesTheAccount(t *testing.T) {
 		t.Fatalf("login failed: %s", code)
 	}
 	u := me(t, e, c)
-	if u.Username != "lena" || u.LinuxUser != "lena" || u.Role != store.RoleParent || u.Source != "authentik" {
+	if u.Username != "lena" || u.LinuxUser != "lena" || u.Role != store.RoleApprover || u.Source != "authentik" {
 		t.Fatalf("got %+v", u)
 	}
 
@@ -402,7 +402,7 @@ func TestSyncBringsAccountsOver(t *testing.T) {
 	}
 	srv.syncDirectory(context.Background())
 	users := listed(t, e)
-	if users["lena"].Role != store.RoleParent || users["max"].Role != store.RoleMember || users["lena"].Source != "authentik" {
+	if users["lena"].Role != store.RoleApprover || users["max"].Role != store.RoleMember || users["lena"].Source != "authentik" {
 		t.Fatalf("got %+v", users)
 	}
 	if _, ok := users["outpost"]; ok {
@@ -468,6 +468,16 @@ func TestOIDCConfigChecks(t *testing.T) {
 		change(&cfg)
 		if cfg.check() == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// A configuration from before the rename keeps working.
+func TestOIDCOldApproverName(t *testing.T) {
+	for _, key := range []string{"OIDC_APPROVER_GROUP", "OIDC_PARENT_GROUP"} {
+		var cfg OIDCConfig
+		if !cfg.set(key, "approvers") || cfg.ApproverGroup != "approvers" {
+			t.Errorf("%s: %+v", key, cfg)
 		}
 	}
 }

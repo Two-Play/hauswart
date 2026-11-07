@@ -148,7 +148,7 @@ A passkey approves a task in the browser, without the signing tool. It is weaker
 see [the security model](security.md), so it runs alongside signatures and shares
 only the envelope with them.
 
-1. A parent or admin registers a passkey in the dashboard. On the server, that is
+1. An approver or admin registers a passkey in the dashboard. On the server, that is
    only a candidate and means nothing to any device.
 2. `hauswart-admin passkeys pin` signs a `keys.set` holding the keys and the
    passkeys with their RP ID, origin and expiry. The agent stores them in
@@ -260,7 +260,7 @@ through the same code.
 | Role | May do |
 | --- | --- |
 | `admin` | Everything |
-| `parent` | Decide requests of others, approve listed tasks with a passkey |
+| `approver` | Decide requests of others, approve listed tasks with a passkey |
 | `member` | File requests for the devices assigned to them |
 
 A member sees only assigned devices. A device enrolled later is assigned to nobody
@@ -270,7 +270,7 @@ existing members, so nothing disappears for them.
 ## Requests
 
 A member files a request for software, a Flatpak or sudo. Nothing reaches the
-device until an admin or parent approves it, which creates the task. A single conditional
+device until an admin or approver approves it, which creates the task. A single conditional
 update decides a request, so a double click cannot create two tasks. The expiry
 of a sudo grant counts from the approval.
 

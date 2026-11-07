@@ -7,12 +7,12 @@
 Name:           hauswart
 Version:        %{hw_version}
 Release:        1
-Summary:        Linux management for families
+Summary:        Linux management for small groups
 License:        AGPL-3.0-only
 ExclusiveArch:  x86_64
 
 %description
-Hauswart manages Linux devices of a household from a web dashboard.
+Hauswart manages Linux devices of a household or small office from a web dashboard.
 
 %package server
 Summary:        Hauswart management server with web dashboard
@@ -33,7 +33,7 @@ Summary:        Hauswart admin tool for signing tasks
 Runs on the admin's own computer and signs tasks for protected devices.
 
 %package tray
-Summary:        Hauswart desktop app for family members
+Summary:        Hauswart desktop app for members
 Recommends:     libsecret
 
 %description tray

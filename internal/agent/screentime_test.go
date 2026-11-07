@@ -290,7 +290,7 @@ func TestSystemAccountsAreNeverEnded(t *testing.T) {
 	}
 }
 
-// A child renames their Authentik account. The ID stays, and with it the rule.
+// A member renames their Authentik account. The ID stays, and with it the rule.
 func TestRenamingAnAccountLeadsNowhere(t *testing.T) {
 	pe, system, _ := newScreenEngine(t)
 	system.accounts = map[string]string{"mia": "2007"}

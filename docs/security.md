@@ -1,6 +1,6 @@
 # Security model
 
-Hauswart gives one server control over the computers of a household. This
+Hauswart gives one server control over the computers of a household or a small office. This
 document says what that means, what is defended, and where the limits are.
 
 ## The most important point
@@ -59,7 +59,7 @@ hacked server can:
   and it cannot show you what the hash stands for. The dialog says what the server
   wants it to say.
 - **Collect several touches.** A fake "failed, try again" gets another approval
-  each time, for any device the passkey is pinned on. Touching for the child's PC
+  each time, for any device the passkey is pinned on. Touching for someone else's PC
   can approve something for your laptop.
 - **Pick the expiry and the counter**, within the limits below.
 
@@ -143,8 +143,8 @@ everything else:
 
 Passkeys need the screen lock or PIN of the authenticator on every use, and the
 device refuses an approval without that. Whoever knows the phone's PIN and has a
-dashboard session can approve listed tasks. That includes a child who knows a
-parent's PIN.
+dashboard session can approve listed tasks. That includes a member who knows an
+approver's PIN.
 
 - **Removing a lost passkey takes `hauswart-admin`**, because only a signed
   `keys.set` reaches the device. Deleting it in the dashboard does nothing there.
@@ -186,7 +186,7 @@ hacked server cannot change or remove one. Its limits:
 
 ### Screen time
 
-Screen time is meant for children who have no root rights. Its limits:
+Screen time is meant for people who have no root rights. Its limits:
 
 - **Anyone with sudo can get around all of it,** by stopping the agent or changing
   the clock. That includes a running sudo grant from Hauswart.
@@ -196,7 +196,7 @@ Screen time is meant for children who have no root rights. Its limits:
 - **It needs the agent.** There are no PAM rules behind it. Up to 15 seconds in a
   session outside the allowed time remain possible.
 - **The clock is the device's.** Changing the time zone does not help, but changing
-  the time does, for whoever has the right to. Check that children do not.
+  the time does, for whoever has the right to. Check that the people it limits do not.
 - **An extension by passkey can be abused by a hacked server** like any passkey
   approval, for up to four hours until midnight, within the daily limit of approvals.
 
@@ -221,7 +221,7 @@ A policy with a directory makes Authentik decide who can log in on a device, so:
   or create new ones. An account that has sudo there gives them root on that device.
   Signed tasks stay out of their reach, but they would be on the device itself.
 - **The reading account's password is on every device and on the server.** A hacked
-  server or any root user can read it. It can see names and groups of the family.
+  server or any root user can read it. It can see names and groups of everyone.
 - **Offline, a device trusts its cache without an end.** A password changed in
   Authentik still opens a laptop that has not been online since, and so does an
   account that was deleted there. There is no way to reach a lost laptop that stays
@@ -263,9 +263,9 @@ programs, and they end where a program that is allowed runs what it is given:
   Python can also make its own mount namespace with a file system nothing watches. An
   ordinary program fails there, as the loader is caught, but a statically linked one
   runs: the VM tests measure this. It takes code and such a program, and the only way
-  to stop it is to forbid the interpreter, if nothing the child needs depends on it.
+  to stop it is to forbid the interpreter, if nothing the person needs depends on it.
   Namespaces cannot be turned off for one person, and Flatpak needs them.
-- **Bubblewrap and FUSE.** Flatpaks need them, so a child who may use a Flatpak can call
+- **Bubblewrap and FUSE.** Flatpaks need them, so a person who may use a Flatpak can call
   them too, and with bubblewrap also start the files of another Flatpak. Without Flatpaks
   a strict rule blocks them, and some desktops then show no previews of images. `unshare`
   and `nsenter` are always blocked.
@@ -300,8 +300,8 @@ it out at once.
 ### Desktop messages
 
 A popup always carries the title `Hauswart`, so it cannot pose as the system. It
-can still lie: whoever is allowed to send one can write "call this number". Family
-members should know that Hauswart never asks for a password.
+can still lie: whoever is allowed to send one can write "call this number". Everyone
+should know that Hauswart never asks for a password.
 
 ### Linux groups
 
@@ -316,7 +316,7 @@ sessions that are already running.
 ### Service certificates
 
 Every device trusts the CA, so a service key lets its holder impersonate that one
-name in the household. This is why names stay inside the CA's constraints, and why
+name on your network. This is why names stay inside the CA's constraints, and why
 the server's own names are refused: a NAS with that key could otherwise collect
 dashboard passwords. Issuing needs no signature, because the CA key is on the
 server, and an attacker with the server can issue on their own anyway. Certificates
@@ -336,7 +336,7 @@ address, and no details or free text, because they leave the house when ntfy or
 mail run elsewhere. A device name comes from the device and is cleaned, so that it
 adds no lines, headers or links. With `SMTP_TLS=starttls`, mail is not sent if the
 server offers no STARTTLS, so nobody in between can downgrade the connection.
-### With a parent account
+### With an approver account
 
 - See all device names and all requests, and approve or deny requests.
 - Approve queued tasks with their own passkey, on devices where it is pinned.
@@ -344,8 +344,8 @@ server offers no STARTTLS, so nobody in between can downgrade the connection.
 - Not approve their own requests, or those for their own Linux user.
 
 **Approving is more than it sounds.** On an unprotected device, approving a sudo
-request creates the grant at once. Two parents can therefore give each other sudo
-there, and a parent can approve a sudo request for a member account they control.
+request creates the grant at once. Two approvers can therefore give each other sudo
+there, and an approver can approve a sudo request for a member account they control.
 Protect a device, and sudo needs `hauswart-admin` no matter who approves.
 
 Roles are checks of the server. They mean nothing against a hacked server, where
@@ -356,14 +356,14 @@ only what is pinned on a device still holds.
 **A sudo grant is full root for its duration, and root can outlast the grant.**
 The expiry removes the Hauswart rule, but it cannot undo what someone does while
 they have root, such as adding their own rule. The feature protects against
-accidents and keeps honest use limited in time. It does not protect against a
-family member who sets out to keep root. Grants limited to specific commands are
+accidents and keeps honest use limited in time. It does not protect against
+someone who sets out to keep root. Grants limited to specific commands are
 safer, but the task supports that through the API only, not yet in the dashboard.
 Many commands also allow escaping to a shell.
 
 ### Registering passkeys
 
-The server does not inspect the key behind a registration. A parent, or someone
+The server does not inspect the key behind a registration. An approver, or someone
 with the server, can register a key held by a script that claims user presence and
 verification. **`hauswart-admin passkeys pin` is the decision:** pin only keys you
 registered yourself, on a device you can see. Whether a pinned passkey really asks

@@ -109,7 +109,7 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, dev
 		return
 	}
 	// Who approves goes by who asked. On a shared Linux account nobody can tell,
-	// and a child's request must not look like a parent's.
+	// and a member's request must not look like an approver's.
 	if len(candidates) > 1 {
 		fail(w, http.StatusConflict, api.ErrSharedAccount)
 		return
@@ -179,7 +179,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 		return
 	}
 	// A sudo grant goes to the Linux user, and two accounts can share one, so the
-	// account alone is not enough. Otherwise a parent could give themselves root
+	// account alone is not enough. Otherwise an approver could give themselves root
 	// on an unprotected device, which is more than approving.
 	if u.Role != store.RoleAdmin && (req.UserID == u.ID || req.LinuxUser == u.LinuxUser) {
 		fail(w, http.StatusForbidden, api.ErrOwnRequest)

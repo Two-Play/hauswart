@@ -150,7 +150,7 @@ func (s *Server) handleSignature(w http.ResponseWriter, r *http.Request, u store
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request, u store.User) {
 	id := r.PathValue("id")
 	if u.Role != store.RoleAdmin {
-		// Parents only ever see the types they can approve.
+		// Approvers only ever see the types they can approve.
 		task, err := s.store.WaitingTask(r.Context(), id)
 		if errors.Is(err, store.ErrNotFound) {
 			fail(w, http.StatusConflict, api.ErrNotWaiting)

@@ -192,7 +192,7 @@ func usableOn(report *api.Report, passkeys []store.PasskeyRow) [][]byte {
 }
 
 // handlePasskeyChallenge prepares what the approver confirms. Only types that a
-// passkey can approve get here: the answer holds the payload, which a parent may
+// passkey can approve get here: the answer holds the payload, which an approver may
 // not read for anything else.
 func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, u store.User) {
 	task, err := s.store.WaitingTask(r.Context(), r.PathValue("id"))

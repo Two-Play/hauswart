@@ -15,7 +15,7 @@ var DefaultPasskeyTypes = []string{
 	"power.shutdown",
 	"power.cancel",
 	"notify.send",
-	// At most a few hours of today, and a parent has to be able to give them
+	// At most a few hours of today, and an approver has to be able to give them
 	// from a phone.
 	TaskScreenExtend,
 }

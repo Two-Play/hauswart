@@ -249,13 +249,13 @@ await navigate(`${ORIGIN}/`);
 check('browser trusts the Hauswart CA on a DNS name', (await ev('window.isSecureContext')) === true);
 const created = (await (async () => {
   await call('POST', '/api/login', { username: 'admin', password: adminPassword });
-  return call('POST', '/api/users', { username: 'mama', password: PASSWORD, role: 'parent' });
+  return call('POST', '/api/users', { username: 'mama', password: PASSWORD, role: 'approver' });
 })());
-check('admin creates a parent', created.status === 201, String(created.status));
+check('admin creates an approver', created.status === 201, String(created.status));
 
 await loginAs('mama', PASSWORD);
 const nav = await ev(`document.querySelector('nav').innerText`);
-check('parent sees approvals, not admin views', nav.includes('Approvals') && !nav.includes('Audit') && !nav.includes('Users'), nav.replaceAll('\n', ' '));
+check('approver sees approvals, not admin views', nav.includes('Approvals') && !nav.includes('Audit') && !nav.includes('Users'), nav.replaceAll('\n', ' '));
 await until('the approvals link', () => clickButton('Approvals'));
 await until('the weakness notice', async () => (await pageText()).includes('it can show you one task here and have your passkey confirm another'));
 check('dashboard states the weakness', true);
