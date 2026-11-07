@@ -1,5 +1,7 @@
 # Hauswart
 
+[![CI](https://github.com/Two-Play/hauswart/actions/workflows/ci.yml/badge.svg)](https://github.com/Two-Play/hauswart/actions/workflows/ci.yml)
+
 Hauswart manages the Linux computers of a household from one web dashboard.
 Family members request software or temporary sudo rights, and an admin approves
 them with a click. It is built for Fedora and works on other distributions.
@@ -91,6 +93,7 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 
 | Command | Checks |
 | --- | --- |
+| `make regression` | All suites below at once, with a table of how long each took. `make regression-fast` leaves out the virtual machines |
 | `make test` | `go vet` and unit tests |
 | `make test-gui` | The desktop apps, clicked through without a screen. Needs the headers of Fyne, or use `make gui` to build in a container |
 | `make e2e` | Real agents as root in Fedora, Debian, Arch and openSUSE containers, the same four with a real journal, resource limits under systemd, certificate renewal, signed tasks against a simulated hacked server, and admin notifications |
@@ -101,6 +104,9 @@ frontend alone, use `npm run dev` in `web/`. It does not proxy the API.
 | `test/browsers.py` | Whether real browsers trust the CA. It reports a failure for Debian, which is a known gap |
 
 The privileged tests run inside throwaway containers and need Podman.
+
+GitHub runs the same suites on every pull request, and the virtual machines on pull
+requests to `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
