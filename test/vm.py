@@ -149,17 +149,18 @@ def debian_image():
 
 
 class VM:
-    def __init__(self, work, name, image, user, ssh_port, extra):
+    def __init__(self, work, name, image, user, ssh_port, extra, display="none"):
         self.user = user
         ssh_port += SSH_OFFSET
         self.port = ssh_port
         self.key = f"{work}/id"
         self.log = f"{work}/{name}.log"
         disk = f"{work}/{name}.qcow2"
-        subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", image, disk, "30G"], check=True)
+        if not os.path.exists(disk):  # the playground keeps its disk between runs
+            subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", image, disk, "30G"], check=True)
         self.process = subprocess.Popen(
             ["qemu-system-x86_64", "-enable-kvm", "-cpu", "host", "-m", "4096", "-smp", "4",
-             "-display", "none", "-serial", f"file:{self.log}",
+             "-display", display, "-serial", f"file:{self.log}",
              "-drive", f"file={disk},if=virtio",
              "-nic", f"user,model=virtio,hostfwd=tcp:127.0.0.1:{ssh_port}-:22", *extra])
 
