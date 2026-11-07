@@ -31,7 +31,7 @@ const (
 	userRequestSpan = time.Hour
 	userTimeout     = 10 * time.Second
 	// Anyone on the device can reach this socket, and the agent has more important
-	// things to do. A child must not be able to starve it of processes or files,
+	// things to do. A member must not be able to starve it of processes or files,
 	// which is what the end of a session needs as well.
 	maxUserConns   = 16
 	maxUserPerUID  = 4
@@ -151,7 +151,7 @@ func (u *userService) perUser(next http.Handler) http.Handler {
 }
 
 // allow is a sliding limit per person, as a loop on a desktop must not fill the
-// inbox of the parents.
+// inbox of the approvers.
 func (u *userService) allow(uid uint32, now time.Time) bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()

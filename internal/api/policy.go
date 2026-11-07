@@ -70,7 +70,7 @@ type Policy struct {
 	// Mounts are SMB shares that appear at login, with the login password. They
 	// need Directory, because the share has to know the same password.
 	Mounts []MountRule `json:"mounts,omitempty"`
-	// Nextcloud sets up the family's cloud for everyone on the device.
+	// Nextcloud sets up the shared cloud for everyone on the device.
 	Nextcloud *NextcloudRule `json:"nextcloud,omitempty"`
 	// Apps says what some people may start. Everyone else is left alone.
 	Apps []AppRule `json:"apps,omitempty"`
@@ -428,7 +428,7 @@ func checkAppRule(r AppRule) error {
 
 // These values end up in a configuration file of a daemon running as root, so a
 // line break must not be able to add settings. Only TLS is accepted, because the
-// passwords of the family go over this connection.
+// passwords of everyone go over this connection.
 func checkDirectory(d DirectoryRule) error {
 	if !ldapURIRe.MatchString(d.URI) {
 		return Fail(ErrInvalidDirectory, "uri")

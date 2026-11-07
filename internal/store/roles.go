@@ -10,13 +10,13 @@ import (
 // only what is pinned on a device still holds.
 const (
 	RoleAdmin = "admin"
-	// RoleParent may approve, but not start anything.
-	RoleParent = "parent"
-	RoleMember = "member"
+	// RoleApprover may approve, but not start anything.
+	RoleApprover = "approver"
+	RoleMember   = "member"
 )
 
 func ValidRole(role string) bool {
-	return role == RoleAdmin || role == RoleParent || role == RoleMember
+	return role == RoleAdmin || role == RoleApprover || role == RoleMember
 }
 
 // SetRole changes a role. A single statement decides, as in DeleteUser, so the

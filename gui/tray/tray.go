@@ -1,4 +1,4 @@
-// Package tray is the desktop app of a family member: how much screen time is
+// Package tray is the desktop app of a member: how much screen time is
 // left, what is connected, and a way to ask for something.
 package tray
 

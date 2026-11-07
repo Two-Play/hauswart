@@ -53,9 +53,9 @@ type OIDCConfig struct {
 	Issuer       string
 	ClientID     string
 	ClientSecret string
-	// AdminGroup and ParentGroup give those roles. Everyone else is a member.
-	AdminGroup  string
-	ParentGroup string
+	// AdminGroup and ApproverGroup give those roles. Everyone else is a member.
+	AdminGroup    string
+	ApproverGroup string
 	// AllowedGroup limits who may log in at all, if set.
 	AllowedGroup string
 	// CAFile is for a provider whose certificate comes from elsewhere.
@@ -67,11 +67,13 @@ type OIDCConfig struct {
 
 func (c *OIDCConfig) set(key, value string) bool {
 	target := map[string]*string{
-		"OIDC_ISSUER":        &c.Issuer,
-		"OIDC_CLIENT_ID":     &c.ClientID,
-		"OIDC_CLIENT_SECRET": &c.ClientSecret,
-		"OIDC_ADMIN_GROUP":   &c.AdminGroup,
-		"OIDC_PARENT_GROUP":  &c.ParentGroup,
+		"OIDC_ISSUER":         &c.Issuer,
+		"OIDC_CLIENT_ID":      &c.ClientID,
+		"OIDC_CLIENT_SECRET":  &c.ClientSecret,
+		"OIDC_ADMIN_GROUP":    &c.AdminGroup,
+		"OIDC_APPROVER_GROUP": &c.ApproverGroup,
+		// The old name, from before the role was renamed.
+		"OIDC_PARENT_GROUP":  &c.ApproverGroup,
 		"OIDC_ALLOWED_GROUP": &c.AllowedGroup,
 		"OIDC_CA_FILE":       &c.CAFile,
 		"AUTHENTIK_URL":      &c.DirectoryURL,
@@ -378,8 +380,8 @@ func (o *oidcLogin) role(groups []string) string {
 	switch {
 	case slices.Contains(groups, o.cfg.AdminGroup):
 		return store.RoleAdmin
-	case o.cfg.ParentGroup != "" && slices.Contains(groups, o.cfg.ParentGroup):
-		return store.RoleParent
+	case o.cfg.ApproverGroup != "" && slices.Contains(groups, o.cfg.ApproverGroup):
+		return store.RoleApprover
 	}
 	return store.RoleMember
 }
@@ -478,7 +480,7 @@ func (s *Server) syncDirectory(ctx context.Context) {
 		s.log.Warn("the sync of accounts failed", "err", err)
 		return
 	}
-	// Such an answer says more about the token than about the family.
+	// Such an answer says more about the token than about the people.
 	if len(users) == 0 && len(known) > 0 {
 		s.log.Warn("the sync of accounts got an empty list and changes nothing")
 		return

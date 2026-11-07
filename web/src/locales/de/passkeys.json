@@ -1,7 +1,7 @@
 {
   "nav": { "approvals": "Freigaben" },
   "users": {
-    "parent": "Elternteil",
+    "approver": "Freigabe",
     "devices": "Geräte",
     "allDevices": "Alle Geräte",
     "noDevices": "Kein Gerät zugewiesen",
@@ -40,7 +40,7 @@
     "deletePasskey": "Löschen"
   },
   "errors": {
-    "approver_only": "Das dürfen nur Admins und Eltern.",
+    "approver_only": "Das dürfen nur Admins und Personen mit der Rolle Freigabe.",
     "own_request": "Über deine eigene Anfrage muss jemand anderes entscheiden.",
     "device_not_assigned": "Dieses Gerät ist dir nicht zugewiesen.",
     "not_for_passkey": "{{value}} lässt sich nicht mit einem Passkey freigeben. Nutze hauswart-admin.",

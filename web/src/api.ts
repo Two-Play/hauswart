@@ -5,7 +5,7 @@ export interface User {
   id: number;
   username: string;
   linux_user: string;
-  role: 'admin' | 'parent' | 'member';
+  role: 'admin' | 'approver' | 'member';
   source?: string;
   disabled?: boolean;
 }
@@ -110,7 +110,7 @@ export class ApiError extends Error {
 
 /** Whether someone may approve requests and tasks. */
 export function isApprover(user: User): boolean {
-  return user.role === 'admin' || user.role === 'parent';
+  return user.role === 'admin' || user.role === 'approver';
 }
 
 let onUnauthorized = () => {};
