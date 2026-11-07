@@ -1,7 +1,7 @@
 VERSION ?= 0.1.0
 LDFLAGS := -X github.com/Two-Play/hauswart/internal/agent.Version=$(VERSION)
 
-.PHONY: build web gui test test-gui e2e test-vm packages test-packages clean
+.PHONY: build web gui test test-gui e2e test-vm regression regression-fast packages test-packages clean
 
 build: web
 	mkdir -p dist
@@ -30,6 +30,13 @@ e2e:
 
 test-vm:
 	python3 test/vm.py
+
+# All suites side by side, with a table of how long each took.
+regression:
+	python3 test/regression.py
+
+regression-fast:
+	python3 test/regression.py --fast
 
 test-packages: packages
 	VERSION=$(VERSION) python3 test/packages.py
