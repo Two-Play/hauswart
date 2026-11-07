@@ -21,6 +21,7 @@ import tempfile
 import time
 
 PORT = int(os.environ.get("PLAYGROUND_PORT", "18600"))
+PLAIN_PORT = PORT + 1  # the dashboard without TLS, so the browser has nothing to warn about
 os.environ["VM_PORT"] = str(PORT)  # read by vm.py on import
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, f"{ROOT}/test")
@@ -79,7 +80,7 @@ def start_server():
     log = open(f"{HOME}/server.log", "a")
     before = open(f"{HOME}/server.log").read().count("listening")
     server = subprocess.Popen([f"{HOME}/bin/hauswart-server", "-addr", f"127.0.0.1:{PORT}", "-data", f"{HOME}/data",
-                               "-url", vm.GUEST_URL, "-notify-env", f"{HOME}/notify.env", "-oidc-env", f"{HOME}/oidc.env"],
+                               "-url", vm.GUEST_URL, "-dev-http", f"127.0.0.1:{PLAIN_PORT}", "-notify-env", f"{HOME}/notify.env", "-oidc-env", f"{HOME}/oidc.env"],
                               stdout=log, stderr=log)
     for _ in range(100):
         if open(f"{HOME}/server.log").read().count("listening") > before:
@@ -125,8 +126,9 @@ def explain(signer, machine):
     print(f"""
 Hauswart is running. Your data stays in {HOME}.
 
-  Dashboard     https://localhost:{PORT}  as admin, password {password()}
-                The browser warns once: Hauswart has its own CA, in {HOME}/data/pki/ca.pem.
+  Dashboard     http://127.0.0.1:{PLAIN_PORT}  as admin, password {password()}
+                Passkeys need https://localhost:{PORT} instead, where the browser warns
+                once: Hauswart has its own CA, in {HOME}/data/pki/ca.pem.
   Desktop       the VM window, logged in as {PERSON} with the password {PERSON_PASSWORD}
   The device    is protected: policies and app rules need your signature.
 
