@@ -1,4 +1,4 @@
-// hauswart-tray is the desktop app of a family member.
+// hauswart-tray is the desktop app of a member.
 package main
 
 import (

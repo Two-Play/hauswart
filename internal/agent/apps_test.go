@@ -382,7 +382,7 @@ func TestSessionProgramsCannotBeForbidden(t *testing.T) {
 	}
 }
 
-// A launcher that was not chosen cannot take python away, a parent can.
+// A launcher that was not chosen cannot take python away, an exempt person can.
 func TestInterpretersOnlyGoWhenNamed(t *testing.T) {
 	pe, _ := appsEngine(t)
 	addProgram(t, pe.exec, "python3")

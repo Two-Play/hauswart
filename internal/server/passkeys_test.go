@@ -105,7 +105,7 @@ func setupPasskey(t *testing.T) passkeyEnv {
 	t.Helper()
 	e := setup(t)
 	id, agent := e.enroll()
-	e.addUser("mama", "mama", store.RoleParent)
+	e.addUser("mama", "mama", store.RoleApprover)
 	parent := e.login("mama")
 	a := authenticator(t)
 	e.register(parent, a)
@@ -220,7 +220,7 @@ func TestPasskeyApprovalRefusals(t *testing.T) {
 		t.Fatalf("delivered: %d", code)
 	}
 	// Approving needs one's own passkey, not somebody else's assertion.
-	p.addUser("papa", "papa", store.RoleParent)
+	p.addUser("papa", "papa", store.RoleApprover)
 	if code, _ := p.do(p.login("papa"), "POST", url, p.key.Assert(t, c.Envelope)); code != http.StatusForbidden {
 		t.Fatalf("assertion of another user: %d", code)
 	}
@@ -261,7 +261,7 @@ func TestPasskeyRoutesRefuseMembers(t *testing.T) {
 
 func TestPasskeysBelongToTheirOwner(t *testing.T) {
 	p := setupPasskey(t)
-	p.addUser("papa", "papa", store.RoleParent)
+	p.addUser("papa", "papa", store.RoleApprover)
 	papa := p.login("papa")
 	_, data := p.do(papa, "GET", "/api/passkeys", nil)
 	if strings.TrimSpace(string(data)) != "[]" {
@@ -287,7 +287,7 @@ func TestPasskeysBelongToTheirOwner(t *testing.T) {
 
 func TestPasskeyRegistrationRefusals(t *testing.T) {
 	e := setup(t)
-	e.addUser("mama", "mama", store.RoleParent)
+	e.addUser("mama", "mama", store.RoleApprover)
 	parent := e.login("mama")
 	a := authenticator(t)
 	public := a.Pin(t).PublicKey

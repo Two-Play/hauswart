@@ -169,7 +169,7 @@ func policyWarning(cfg *config, taskType string, payload []byte) string {
 
 // identicalPolicies says what the same policy would change on the other devices
 // that wait for it. The same document can mean something else on each of them,
-// such as the end of a child's screen time, and the server chooses which device
+// such as the end of someone's screen time, and the server chooses which device
 // comes first. So all of this is on the screen before anyone agrees to it. Only
 // devices named on this computer count: the admin has to know what they agree to.
 func identicalPolicies(cfg *config, rest []queued, fingerprint string) []string {

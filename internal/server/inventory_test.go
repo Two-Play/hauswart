@@ -115,7 +115,7 @@ func TestInventoryIsForAdmins(t *testing.T) {
 	e := setup(t)
 	id, agent := e.enroll()
 	e.do(agent, "POST", "/agent/inventory", sampleInventory())
-	e.addUser("paul", "", "parent")
+	e.addUser("paul", "", "approver")
 	e.assign("anna", id)
 	for _, name := range []string{"anna", "paul"} {
 		c := e.login(name)

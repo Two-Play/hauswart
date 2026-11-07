@@ -1,7 +1,7 @@
 {
   "nav": { "approvals": "Approvals" },
   "users": {
-    "parent": "Parent",
+    "approver": "Approver",
     "devices": "Devices",
     "allDevices": "All devices",
     "noDevices": "No device assigned",
@@ -40,7 +40,7 @@
     "deletePasskey": "Delete"
   },
   "errors": {
-    "approver_only": "Only admins and parents may do this.",
+    "approver_only": "Only admins and approvers may do this.",
     "own_request": "Someone else has to decide your own request.",
     "device_not_assigned": "This device is not assigned to you.",
     "not_for_passkey": "{{value}} cannot be approved with a passkey. Use hauswart-admin.",
