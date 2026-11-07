@@ -109,7 +109,7 @@ func (s *Store) WaitingTask(ctx context.Context, id string) (WaitingRow, error) 
 }
 
 // PasskeyQueue lists the tasks a passkey could approve, oldest first. Anything
-// else stays out of reach of parents.
+// else stays out of reach of approvers.
 func (s *Store) PasskeyQueue(ctx context.Context) ([]WaitingRow, error) {
 	rows, err := s.db.QueryContext(ctx, waitingSelect+` ORDER BY t.created_at, t.rowid`)
 	if err != nil {

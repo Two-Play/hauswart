@@ -408,7 +408,7 @@ func TestSharedLinuxAccountIsNotGuessed(t *testing.T) {
 	id, agent := e.enroll()
 	ctx := context.Background()
 	hash, _ := HashPassword(testPassword)
-	if _, err := e.store.CreateUser(ctx, "parent", "anna", hash, "parent"); err != nil {
+	if _, err := e.store.CreateUser(ctx, "approver", "anna", hash, "approver"); err != nil {
 		t.Fatal(err)
 	}
 	in := api.DeviceRequest{User: "anna", UserRequest: api.UserRequest{Kind: "sudo", Detail: "30"}}

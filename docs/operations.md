@@ -99,7 +99,7 @@ Use that address for `-addr`. For `-url` you can use the same address or the
 MagicDNS name, for example `https://hauswart.tailnet-name.ts.net:8443`, with
 `-hosts` listing the other one.
 
-Restrict access in the Tailscale ACLs to the devices of your household.
+Restrict access in the Tailscale ACLs to your own devices.
 
 ## Add a device
 
@@ -238,7 +238,7 @@ reaches no other websites from there.
 
 ### Register and pin
 
-1. Sign in to the dashboard as a parent or admin, and open **Approvals**. Choose
+1. Sign in to the dashboard as an approver or admin, and open **Approvals**. Choose
    **Add passkey** on the phone or computer that will approve. Do not do this while
    you have any doubt about the server.
 2. On the computer you sign on, pin it on each device where it should work:
@@ -294,7 +294,7 @@ Under **Users**, every account has a role:
 | Role | For | May do |
 | --- | --- | --- |
 | Admin | You | Everything |
-| Parent | Someone who approves, but does not administer | See all devices and requests, decide requests of others, approve tasks with a passkey |
+| Approver | Someone who decides, but does not administer, such as a parent or a team lead | See all devices and requests, decide requests of others, approve tasks with a passkey |
 | Member | Everyone else | File requests for the devices assigned to them |
 
 Assign devices to members in the same table. A new device is assigned to nobody at
@@ -516,9 +516,10 @@ OIDC_ISSUER=https://auth.example/application/o/hauswart/
 OIDC_CLIENT_ID=...
 OIDC_CLIENT_SECRET=...
 OIDC_ADMIN_GROUP=hauswart-admins
-OIDC_PARENT_GROUP=hauswart-parents
+OIDC_APPROVER_GROUP=hauswart-approvers
+# The old name OIDC_PARENT_GROUP still works.
 # Optional: only these people may log in.
-OIDC_ALLOWED_GROUP=family
+OIDC_ALLOWED_GROUP=hauswart-users
 # Optional: a certificate from elsewhere. The Hauswart CA is always trusted.
 OIDC_CA_FILE=/etc/hauswart/authentik-ca.pem
 # Optional: bring all accounts over every 5 minutes, and end access for those who

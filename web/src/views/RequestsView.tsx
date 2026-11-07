@@ -36,7 +36,7 @@ export function RequestsView({ user }: { user: User }) {
     requests.reload();
   }
 
-  // Parents leave their own requests to someone else, as the server insists.
+  // Approvers leave their own requests to someone else, as the server insists.
   function canDecide(r: AccessRequest) {
     return isApprover(user) && r.status === 'open' && (user.role === 'admin' || r.username !== user.username);
   }

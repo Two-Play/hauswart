@@ -273,7 +273,7 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		if devices, err := s.UserDevices(ctx, member); err != nil || len(devices) != 1 {
 			t.Fatalf("existing member lost the devices: %v %v", devices, err)
 		}
-		if _, err := s.CreateUser(ctx, fmt.Sprint("parent", i), "p", "hash", RoleParent); err != nil {
+		if _, err := s.CreateUser(ctx, fmt.Sprint("approver", i), "p", "hash", RoleApprover); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.CreateUser(ctx, fmt.Sprint("nobody", i), "n", "hash", "owner"); err == nil {
@@ -503,5 +503,47 @@ func TestSaveReportRoundTrip(t *testing.T) {
 	if got.Hostname != "new-name" || got.Report.MemTotal != 42 || got.LastSeen == 0 {
 		raw, _ := json.Marshal(got)
 		t.Fatalf("got %s", raw)
+	}
+}
+
+// The role approver was called parent before. Those accounts keep their rights.
+func TestMigrationRenamesParent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser(ctx, "paul", "paul", "hash", RoleApprover); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser(ctx, "mia", "mia", "hash", RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	// Back to the column as the migration before left it.
+	for _, stmt := range []string{
+		`ALTER TABLE users ADD COLUMN role_old TEXT NOT NULL DEFAULT 'member' CHECK (role_old IN ('admin','parent','member'))`,
+		`UPDATE users SET role_old = CASE role WHEN 'approver' THEN 'parent' ELSE role END`,
+		`ALTER TABLE users DROP COLUMN role`,
+		`ALTER TABLE users RENAME COLUMN role_old TO role`,
+		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-1),
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for name, want := range map[string]string{"paul": RoleApprover, "mia": RoleMember} {
+		if u, err := s.UserByName(ctx, name); err != nil || u.Role != want {
+			t.Errorf("%s: %+v %v", name, u, err)
+		}
+	}
+	if _, err := s.CreateUser(ctx, "old", "o", "hash", "parent"); err == nil {
+		t.Error("the old role is still accepted")
 	}
 }

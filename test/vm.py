@@ -1071,7 +1071,7 @@ def test_kde(admin, agent_bin, work, public_key):
 
 
 def test_apps(admin, agent_bin, work, public_key, desktop="kde"):
-    """Rules per person: a child is stopped, a parent on the same device is not."""
+    """Rules per person: one person is stopped, another on the same device is not."""
     group = f"apps-{desktop}"
     print(f"\n== {group} (real fapolicyd and Flatpak)", flush=True)
     debian = desktop == "debian"
@@ -1175,9 +1175,9 @@ for p in okapp badapp; do printf '[Desktop Entry]\nType=Application\nName=%s\nEx
         result = as_user("anna", "python3 /usr/local/bin/hw-namespace /home/anna/mytrue")
         check(group, "ATTACK a namespace from Python", denied(result) and "unshared" in result.stdout, result.stdout + result.stderr)
         result = as_user("ben", "python3 /usr/local/bin/hw-namespace /home/ben/mytrue")
-        check(group, "and that way works for a parent, so the rule stopped it", not blocked(result), result.stdout + result.stderr)
+        check(group, "and that way works for someone without the rule, so the rule stopped it", not blocked(result), result.stdout + result.stderr)
         result = as_user("ben", "/run/media/stick/mytrue")
-        check(group, "a parent may: a program on a stick", not blocked(result), result.stdout + result.stderr)
+        check(group, "someone without the rule may: a program on a stick", not blocked(result), result.stdout + result.stderr)
         # A known limit, see docs/security.md. Measured, so that the text stays true.
         for kind, program in (("dynamic", "/usr/bin/true"), ("static", "/usr/bin/hauswart-agent")):
             escape = as_user("anna", f"python3 /usr/local/bin/hw-escape {program}")
@@ -1189,14 +1189,14 @@ for p in okapp badapp; do printf '[Desktop Entry]\nType=Application\nName=%s\nEx
         check(group, "helpers keep working", not blocked(as_user("anna", "/usr/bin/id")))
         for label, command in (("a program from home", "/home/ben/mytrue"), ("a script", "/home/ben/s.sh"),
                                ("a forbidden program", "/usr/bin/hw-forbidden"), ("an application not on the list", "/usr/bin/hw-badapp")):
-            check(group, f"a parent may: {label}", not blocked(as_user("ben", command)))
+            check(group, f"someone without the rule may: {label}", not blocked(as_user("ben", command)))
 
         run = f"env HOME=/home/%s flatpak run --command=true {FLATPAK_APP}"
         denied = vm.ssh(f"cd /tmp; runuser -u anna -- {run % 'anna'} 2>&1")
         print("       " + denied.stdout[-200:].strip().replace("\n", " "), flush=True)
         check(group, "ATTACK a Flatpak not on the list", denied.returncode != 0 and "not allowed" in denied.stdout, denied.stdout[-300:])
         ben = vm.ssh(f"cd /tmp; runuser -u ben -- {run % 'ben'} 2>&1")
-        check(group, "a parent may use the Flatpak", "not allowed" not in ben.stdout, ben.stdout[-300:])
+        check(group, "someone without the rule may use the Flatpak", "not allowed" not in ben.stdout, ben.stdout[-300:])
 
         policy["apps"][0]["flatpaks"] = {"mode": "allow", "apps": [FLATPAK_APP]}
         admin.call("PUT", f"{path}/policy", policy)

@@ -229,7 +229,7 @@ func TestRefusalsSayWhyAndCostNothing(t *testing.T) {
 	}
 }
 
-// A child in a loop must not reach the processes or files of the agent.
+// A member in a loop must not reach the processes or files of the agent.
 func TestAskingInALoopCostsNothing(t *testing.T) {
 	e := newUserEnv(t)
 	var lookups atomic.Int64

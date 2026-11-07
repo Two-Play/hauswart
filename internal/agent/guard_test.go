@@ -350,7 +350,7 @@ func TestGuardAdmitsPasskeyTask(t *testing.T) {
 	}
 }
 
-// A parent has to be able to give more time from a phone.
+// An approver has to be able to give more time from a phone.
 func TestGuardAdmitsPasskeyExtension(t *testing.T) {
 	a := passkeytest.New(t)
 	env := passkeyEnvelope(1)

@@ -62,10 +62,10 @@ func (s *Server) admin(next userHandler) http.Handler {
 	})
 }
 
-// approver lets through those who may approve: admins and parents.
+// approver lets through those who may approve: admins and approvers.
 func (s *Server) approver(next userHandler) http.Handler {
 	return s.user(func(w http.ResponseWriter, r *http.Request, u store.User) {
-		if u.Role != store.RoleAdmin && u.Role != store.RoleParent {
+		if u.Role != store.RoleAdmin && u.Role != store.RoleApprover {
 			fail(w, http.StatusForbidden, api.ErrApproverOnly)
 			return
 		}

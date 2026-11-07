@@ -259,9 +259,9 @@ def test_login(work):
         proxies += tls_proxy(f"{work}/service.pem", f"{work}/service.key")
         auth.oidc_application(f"{URL}/auth/oidc/callback")
         admins = auth.group("family-admins")
-        parents = auth.group("family-parents")
+        approvers = auth.group("approvers")
         auth.user("lena", [admins])
-        auth.user("paul", [parents])
+        auth.user("paul", [approvers])
         kid = auth.user("mia")
         auth.user("admin2")
 
@@ -269,7 +269,7 @@ def test_login(work):
         env_file = f"{work}/oidc.env"
         with open(env_file, "w") as f:
             f.write(f"OIDC_ISSUER={base}/application/o/hauswart/\nOIDC_CLIENT_ID=hauswart\nOIDC_CLIENT_SECRET=client-secret\n"
-                    f"OIDC_ADMIN_GROUP=family-admins\nOIDC_PARENT_GROUP=family-parents\n"
+                    f"OIDC_ADMIN_GROUP=family-admins\nOIDC_APPROVER_GROUP=approvers\n"
                     f"AUTHENTIK_URL={base}\nAUTHENTIK_TOKEN={TOKEN}\n")
         os.chmod(env_file, 0o600)
         server.terminate()
@@ -278,7 +278,7 @@ def test_login(work):
         check(group, "the server enabled the login", "login through Authentik is on" in open(f"{work}/server.log").read(),
               open(f"{work}/server.log").read())
 
-        for name, role in (("lena", "admin"), ("paul", "parent"), ("mia", "member")):
+        for name, role in (("lena", "admin"), ("paul", "approver"), ("mia", "member")):
             browser = Browser(ca)
             landed = browser.login(name, base)
             check(group, f"{name} comes back without an error", "login_error" not in landed,
@@ -290,7 +290,7 @@ def test_login(work):
         check(group, "the local admin still logs in", code == 200)
 
         # The sync has to find the same people the logins created, by subject.
-        auth.user("nora", [parents])
+        auth.user("nora", [approvers])
         paul_id = auth.pk("core/users/", "paul", key="username")
         auth.api("PATCH", f"core/users/{paul_id}/", {"is_active": False})
         server.terminate()
@@ -301,7 +301,7 @@ def test_login(work):
         admin.call("POST", "/api/login", {"username": "admin", "password": password})
         _, users = admin.call("GET", "/api/users")
         by_name = {u["username"]: u for u in users}
-        check(group, "the sync brings in someone who never logged in", by_name.get("nora", {}).get("role") == "parent", str(users))
+        check(group, "the sync brings in someone who never logged in", by_name.get("nora", {}).get("role") == "approver", str(users))
         check(group, "the sync knows who already logged in", sum(u["username"] == "lena" for u in users) == 1 and by_name["lena"]["role"] == "admin", str(users))
         check(group, "a deactivated account is disabled", by_name["paul"].get("disabled"), str(users))
         check(group, "service accounts stay out", not any(u["username"].startswith("ak-") for u in users), str(users))

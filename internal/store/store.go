@@ -91,7 +91,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	// One connection serialises writes, which is plenty at family scale and
+	// One connection serialises writes, which is plenty at household scale and
 	// makes the claim-a-task transaction trivially safe.
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
@@ -217,6 +217,11 @@ var migrations = []string{
 		updated_by TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+	// parent became approver: Hauswart is for offices and shared PCs as well.
+	`ALTER TABLE users ADD COLUMN role_new TEXT NOT NULL DEFAULT 'member' CHECK (role_new IN ('admin','approver','member'));
+	UPDATE users SET role_new = CASE role WHEN 'parent' THEN 'approver' ELSE role END;
+	ALTER TABLE users DROP COLUMN role;
+	ALTER TABLE users RENAME COLUMN role_new TO role;`,
 }
 
 func migrate(db *sql.DB) error {

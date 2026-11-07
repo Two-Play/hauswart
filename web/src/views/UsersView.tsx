@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type User } from '../api';
 import { DataTable, Loaded, showError } from '../ui';
 
-const ROLES = ['member', 'parent', 'admin'];
+const ROLES = ['member', 'approver', 'admin'];
 
 /** The devices of a member. Everyone else is not limited to any. */
 function AssignedDevices({ target, devices }: { target: User; devices: Device[] }) {

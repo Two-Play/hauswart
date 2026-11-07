@@ -85,7 +85,7 @@ func TestParentMayApproveButNotStartAnything(t *testing.T) {
 	e := setup(t)
 	id, agent := e.enroll()
 	e.assign("anna", id)
-	e.addUser("mama", "mama", store.RoleParent)
+	e.addUser("mama", "mama", store.RoleApprover)
 	parent := e.login("mama")
 
 	if code, _ := e.do(parent, "GET", "/api/devices", nil); code != http.StatusOK {
@@ -126,12 +126,12 @@ func TestParentMayApproveButNotStartAnything(t *testing.T) {
 	}
 }
 
-// Without this, a parent could give themselves root on an unprotected device.
+// Without this, an approver could give themselves root on an unprotected device.
 func TestParentCannotApproveOwnRequest(t *testing.T) {
 	e := setup(t)
 	id, _ := e.enroll()
-	e.addUser("mama", "mama", store.RoleParent)
-	e.addUser("mama2", "mama", store.RoleParent)
+	e.addUser("mama", "mama", store.RoleApprover)
+	e.addUser("mama2", "mama", store.RoleApprover)
 	request := e.request(e.login("mama"), id, "sudo", "30")
 	if code, _ := e.do(e.login("mama"), "POST", "/api/requests/"+request+"/approve", nil); code != http.StatusForbidden {
 		t.Fatalf("own request: %d", code)
@@ -167,14 +167,14 @@ func TestAdminManagesRolesAndAssignments(t *testing.T) {
 	if _, data := e.do(admin, "GET", path+"/devices", nil); !strings.Contains(string(data), id) {
 		t.Fatalf("failed change was not undone: %s", data)
 	}
-	if code, _ := e.do(admin, "PUT", path+"/role", map[string]string{"role": store.RoleParent}); code != http.StatusNoContent {
+	if code, _ := e.do(admin, "PUT", path+"/role", map[string]string{"role": store.RoleApprover}); code != http.StatusNoContent {
 		t.Fatalf("role: %d", code)
 	}
 	if code, _ := e.do(admin, "PUT", path+"/role", map[string]string{"role": "owner"}); code != http.StatusBadRequest {
 		t.Fatalf("unknown role: %d", code)
 	}
 	if code, _ := e.do(admin, "POST", "/api/users", map[string]string{
-		"username": "papa", "password": testPassword, "role": store.RoleParent,
+		"username": "papa", "password": testPassword, "role": store.RoleApprover,
 	}); code != http.StatusCreated {
 		t.Fatalf("create parent: %d", code)
 	}

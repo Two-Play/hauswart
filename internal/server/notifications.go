@@ -13,7 +13,7 @@ import (
 const maxShownHostname = 64
 
 // StartNotifications reads the credentials and sends in the background until
-// ctx ends. A broken file must not take the household's server down, so it only
+// ctx ends. A broken file must not take the server down, so it only
 // costs the notifications, and the log says why.
 func (s *Server) StartNotifications(ctx context.Context, path string) {
 	cfg, err := notify.Load(path)

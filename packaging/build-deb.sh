@@ -39,7 +39,7 @@ Architecture: amd64
 Maintainer: Hauswart <noreply@localhost>
 Section: admin
 Priority: optional
-Description: Linux management for families ($component)
+Description: Linux management for small groups ($component)
 CONTROL
 case $component in
 tray | admin-gui)
