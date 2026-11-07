@@ -305,7 +305,15 @@ func countCalls(calls [][]string, name string) int {
 }
 
 // 2026-11-07 is a Saturday.
-var inWindow = time.Date(2026, 11, 7, 2, 30, 0, 0, time.UTC)
+// inWindow is 02:30 on a Saturday that is always ahead. A fixed date would let the
+// restart it schedules expire once that day has passed.
+var inWindow = func() time.Time {
+	day := time.Now().UTC().AddDate(0, 0, 7)
+	for day.Weekday() != time.Saturday {
+		day = day.AddDate(0, 0, 1)
+	}
+	return time.Date(day.Year(), day.Month(), day.Day(), 2, 30, 0, 0, time.UTC)
+}()
 
 func withPendingUpdates(pe *PolicyEngine) {
 	updateChecks["fake"] = func(*Executor, context.Context) ([]string, error) { return []string{"vim"}, nil }
