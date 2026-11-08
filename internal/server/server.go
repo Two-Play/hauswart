@@ -32,6 +32,8 @@ const (
 	enrollTokenTTL   = time.Hour
 	maxBody          = 2 << 20
 	maxPollWait      = 30 * time.Second
+	// requestHistory is how far back a device learns about its requests.
+	requestHistory   = 30 * 24 * time.Hour
 	staleTaskAfter   = 45 * time.Minute
 	startPasswordLen = 20
 	minPasswordLen   = 10

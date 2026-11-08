@@ -389,6 +389,26 @@ func TestRequestFromADevice(t *testing.T) {
 	if !strings.Contains(string(data), api.TaskScreenExtend) {
 		t.Fatalf("got %s", data)
 	}
+	// The device learns how the request stands, and the task says where it came from.
+	code, data := e.do(agent, "GET", "/agent/requests", nil)
+	var states []api.RequestState
+	if code != http.StatusOK || json.Unmarshal(data, &states) != nil || len(states) != 1 ||
+		states[0].State != api.RequestRunning || states[0].User != "anna" || strings.Contains(string(data), "homework") {
+		t.Fatalf("%d %s", code, data)
+	}
+	code, data = e.do(agent, "GET", "/agent/tasks?wait=0", nil)
+	var task api.Task
+	if code != http.StatusOK || json.Unmarshal(data, &task) != nil || task.Request != requests[0].ID {
+		t.Fatalf("%d %s", code, data)
+	}
+	e.do(agent, "POST", "/agent/tasks/"+task.ID+"/result", api.TaskResult{OK: true})
+	_, data = e.do(agent, "GET", "/agent/requests", nil)
+	if !strings.Contains(string(data), `"state":"done"`) {
+		t.Fatalf("got %s", data)
+	}
+	if code, _ := e.do(e.client(), "GET", "/agent/requests", nil); code != http.StatusUnauthorized {
+		t.Fatalf("got %d", code)
+	}
 
 	for name, bad := range map[string]api.DeviceRequest{
 		"too long a stay": {User: "anna", UserRequest: api.UserRequest{Kind: api.RequestScreen, Detail: "9999"}},

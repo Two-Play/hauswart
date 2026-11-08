@@ -18,6 +18,7 @@ func init() {
 		mux.Handle("POST /agent/inventory", s.agent(s.handleAgentInventory))
 		mux.Handle("POST /agent/renew", s.agent(s.handleRenew))
 		mux.Handle("GET /agent/tasks", s.agent(s.handlePoll))
+		mux.Handle("GET /agent/requests", s.agent(s.handleAgentRequests))
 		mux.Handle("POST /agent/tasks/{id}/result", s.agent(s.handleResult))
 	})
 }
@@ -197,4 +198,15 @@ func (s *Server) handleResult(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAgentRequests tells a device how the requests filed on it stand, so
+// it can tell the people who filed them.
+func (s *Server) handleAgentRequests(w http.ResponseWriter, r *http.Request, id string) {
+	requests, err := s.store.DeviceRequests(r.Context(), id, time.Now().Add(-requestHistory))
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, requests)
 }

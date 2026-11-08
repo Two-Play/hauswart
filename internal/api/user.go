@@ -46,6 +46,26 @@ const (
 	RequestApproved = "approved"
 )
 
+// The further states of a request, as a device learns them from the server.
+const (
+	RequestDenied  = "denied"
+	RequestSigning = "signing"
+	RequestRunning = "running"
+	RequestDone    = "done"
+	RequestFailed  = "failed"
+)
+
+// RequestState is a request filed on a device, for the person who filed it.
+// The reason stays on the server: whoever runs the device may read this.
+type RequestState struct {
+	ID        string `json:"id"`
+	User      string `json:"user"`
+	Kind      string `json:"kind"`
+	Detail    string `json:"detail"`
+	State     string `json:"state"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 // RequestAnswer is what filing a request returns.
 type RequestAnswer struct {
 	ID     string `json:"id,omitempty"`
