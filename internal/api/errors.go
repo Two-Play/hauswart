@@ -17,6 +17,7 @@ const (
 	ErrDeviceSuspended    = "device_suspended"
 	ErrInvalidAccessMode  = "invalid_access_mode"
 	ErrAccessEnded        = "access_ended"
+	ErrInvalidAccessImage = "invalid_access_image"
 	ErrInvalidQuota       = "invalid_quota"
 	ErrTooManyAttempts    = "too_many_attempts"
 	ErrWrongCredentials   = "wrong_credentials"
@@ -83,8 +84,9 @@ var Messages = map[string]string{
 	ErrClientCertRequired: "client certificate required",
 	ErrDeviceRefused:      "device revoked or unknown",
 	ErrDeviceSuspended:    "device is suspended in Hauswart",
-	ErrInvalidAccessMode:  "access mode %s is not screen, login or open, or open has users or an end",
+	ErrInvalidAccessMode:  "access mode %s is not screen, login, fullscreen or open, or carries what it cannot use",
 	ErrAccessEnded:        "the end of the block has passed",
+	ErrInvalidAccessImage: "the picture must be a PNG or JPEG of at most 512 KB",
 	ErrInvalidQuota:       "the daily minutes of %s must be 0 to 1440",
 	ErrTooManyAttempts:    "too many attempts, try again in a minute",
 	ErrWrongCredentials:   "wrong username or password",

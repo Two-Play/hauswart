@@ -43,6 +43,10 @@ type Access struct {
 	grace map[string]time.Time
 	// fresh says that the next check gives running sessions their grace.
 	fresh bool
+	// shown says that the full-screen block may be running, and returnTo is the
+	// console that was in front before it.
+	shown    bool
+	returnTo string
 }
 
 func OpenAccess(dir string, exec *Executor, notices *Notices, log *slog.Logger) *Access {
@@ -58,11 +62,13 @@ func OpenAccess(dir string, exec *Executor, notices *Notices, log *slog.Logger) 
 		a.block = api.AccessPayload{Mode: api.AccessLogin}
 	}
 	a.fresh = true
+	// A block from before a restart may still run, so the first check looks.
+	a.shown = true
 	return a
 }
 
 func (a *Access) activeLocked(now time.Time) bool {
-	return (a.block.Mode == api.AccessScreen || a.block.Mode == api.AccessLogin) &&
+	return (a.block.Mode == api.AccessScreen || a.block.Mode == api.AccessLogin || a.block.Mode == api.AccessFullscreen) &&
 		(a.block.Until.IsZero() || now.Before(a.block.Until))
 }
 
@@ -108,6 +114,11 @@ func (a *Access) Set(ctx context.Context, task api.Task) api.TaskResult {
 	if err := json.Unmarshal(task.Payload, &p); err != nil {
 		return api.TaskResult{OK: false, Output: err.Error()}
 	}
+	if p.Mode == api.AccessFullscreen {
+		if err := a.exec.prepareFullscreen(ctx, p); err != nil {
+			return api.TaskResult{OK: false, Output: err.Error()}
+		}
+	}
 	a.mu.Lock()
 	before := a.block
 	if p.Mode == api.AccessOpen {
@@ -127,7 +138,8 @@ func (a *Access) Set(ctx context.Context, task api.Task) api.TaskResult {
 	if p.Mode == api.AccessOpen {
 		a.tell(ctx, before, api.EventAccessOpen)
 	} else {
-		a.tell(ctx, p, map[string]string{api.AccessScreen: api.EventAccessScreen, api.AccessLogin: api.EventAccessLogin}[p.Mode])
+		a.tell(ctx, p, map[string]string{api.AccessScreen: api.EventAccessScreen, api.AccessLogin: api.EventAccessLogin,
+			api.AccessFullscreen: api.EventAccessScreen}[p.Mode])
 	}
 	a.Check(ctx)
 	return api.TaskResult{OK: true, Output: describeAccess(p)}
@@ -141,7 +153,8 @@ func describeAccess(p api.AccessPayload) string {
 	if len(p.Users) > 0 {
 		who = strings.Join(p.Users, ", ")
 	}
-	what := map[string]string{api.AccessScreen: "screen blocked", api.AccessLogin: "logins refused"}[p.Mode]
+	what := map[string]string{api.AccessScreen: "screen blocked", api.AccessLogin: "logins refused",
+		api.AccessFullscreen: "full-screen block"}[p.Mode]
 	if p.Until.IsZero() {
 		return what + " for " + who + " until access is opened"
 	}
@@ -200,8 +213,21 @@ func (a *Access) Check(ctx context.Context) {
 	}
 
 	a.syncNologin(active && block.Mode == api.AccessLogin && len(block.Users) == 0)
+	if !active || block.Mode != api.AccessFullscreen {
+		a.hideBlock(ctx)
+	}
 	if !active {
 		return
+	}
+	if block.Mode == api.AccessFullscreen {
+		// For single people, the block covers the screen while their session is
+		// in front, and stays while it is: the console cannot be switched from it.
+		front := a.exec.activeUser(ctx)
+		if len(block.Users) == 0 || affects(block, front) || front == blockUser {
+			a.showBlock(ctx)
+		} else {
+			a.hideBlock(ctx)
+		}
 	}
 	sessions, err := a.exec.loginSessions(ctx)
 	if err != nil {
@@ -213,7 +239,7 @@ func (a *Access) Check(ctx context.Context) {
 			continue
 		}
 		switch block.Mode {
-		case api.AccessScreen:
+		case api.AccessScreen, api.AccessFullscreen:
 			a.lockScreens(ctx, session)
 		case api.AccessLogin:
 			a.endSessions(ctx, uid, session, fresh, now)

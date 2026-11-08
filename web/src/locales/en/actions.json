@@ -21,9 +21,12 @@
     "access_mode_screen": "Block the screen",
     "access_mode_login": "Refuse logins",
     "access_mode_open": "Open access again",
-    "access_hint": "Refused logins end running sessions after a minute. Without names, local admins are locked out as well.",
+    "access_hint": "A full-screen notice covers the screen with your text and picture, and nobody at the device can close it. Refused logins end running sessions after a minute. Without names, local admins are locked out as well.",
     "access_users": "Linux users, separated by spaces, empty for everyone",
-    "access_hours": "Ends after hours, empty until opened again"
+    "access_hours": "Ends after hours, empty until opened again",
+    "access_mode_fullscreen": "Full-screen notice",
+    "access_message": "Text of the full-screen notice",
+    "access_image": "Picture of the full-screen notice (PNG or JPEG, up to 512 KB)"
   },
   "certificates": {
     "hint": "Certificates for home services, such as a NAS. Devices that trust the Hauswart CA accept them.",
@@ -50,6 +53,7 @@
     "ca_not_constrained": "This CA has no name constraints, so it must not issue service certificates.",
     "invalid_cert_days": "The validity must be 1 to {{value}} days.",
     "invalid_access_mode": "Choose a mode. Opening again takes no users and no end.",
-    "access_ended": "The end of the block has already passed."
+    "access_ended": "The end of the block has already passed.",
+    "invalid_access_image": "The picture must be a PNG or JPEG of at most 512 KB."
   }
 }

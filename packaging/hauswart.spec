@@ -37,7 +37,8 @@ Summary:        Hauswart desktop app for members
 Recommends:     libsecret
 
 %description tray
-Shows the screen time left and what is connected, and files requests.
+Shows the screen time left and what is connected, and files requests. Also
+hauswart-blocker, the full-screen notice of a blocked device.
 
 %package admin-gui
 Summary:        Hauswart desktop app for reviewing and signing tasks
@@ -50,6 +51,7 @@ install -Dm755 %{hw_root}/dist/hauswart-server %{buildroot}/usr/bin/hauswart-ser
 install -Dm755 %{hw_root}/dist/hauswart-agent %{buildroot}/usr/bin/hauswart-agent
 install -Dm755 %{hw_root}/dist/hauswart-admin %{buildroot}/usr/bin/hauswart-admin
 install -Dm755 %{hw_root}/dist/hauswart-tray %{buildroot}/usr/bin/hauswart-tray
+install -Dm755 %{hw_root}/dist/hauswart-blocker %{buildroot}/usr/bin/hauswart-blocker
 install -Dm755 %{hw_root}/dist/hauswart-admin-gui %{buildroot}/usr/bin/hauswart-admin-gui
 install -Dm644 %{hw_root}/packaging/desktop/hauswart-tray.desktop %{buildroot}/usr/share/applications/hauswart-tray.desktop
 install -Dm644 %{hw_root}/packaging/desktop/hauswart-admin-gui.desktop %{buildroot}/usr/share/applications/hauswart-admin-gui.desktop
@@ -99,6 +101,7 @@ fi
 
 %files tray
 /usr/bin/hauswart-tray
+/usr/bin/hauswart-blocker
 /usr/share/applications/hauswart-tray.desktop
 /etc/xdg/autostart/hauswart-tray.desktop
 /usr/share/icons/hicolor/scalable/apps/hauswart.svg

@@ -21,9 +21,12 @@
     "access_mode_screen": "Bildschirm blockieren",
     "access_mode_login": "Anmeldung verweigern",
     "access_mode_open": "Zugang wieder öffnen",
-    "access_hint": "Bei verweigerter Anmeldung enden laufende Sitzungen nach einer Minute. Ohne Namen sind auch lokale Admins ausgesperrt.",
+    "access_hint": "Ein Vollbild-Hinweis deckt den Bildschirm mit deinem Text und Bild ab, und niemand am Gerät kann ihn schließen. Bei verweigerter Anmeldung enden laufende Sitzungen nach einer Minute. Ohne Namen sind auch lokale Admins ausgesperrt.",
     "access_users": "Linux-Benutzer, getrennt durch Leerzeichen, leer für alle",
-    "access_hours": "Endet nach Stunden, leer bis zum Öffnen"
+    "access_hours": "Endet nach Stunden, leer bis zum Öffnen",
+    "access_mode_fullscreen": "Vollbild-Hinweis",
+    "access_message": "Text des Vollbild-Hinweises",
+    "access_image": "Bild des Vollbild-Hinweises (PNG oder JPEG, bis 512 KB)"
   },
   "certificates": {
     "hint": "Zertifikate für Dienste im Haus, zum Beispiel ein NAS. Geräte, die der Hauswart-CA vertrauen, akzeptieren sie.",
@@ -50,6 +53,7 @@
     "ca_not_constrained": "Diese CA hat keine Namensbeschränkung und darf deshalb keine Dienst-Zertifikate ausstellen.",
     "invalid_cert_days": "Die Gültigkeit muss 1 bis {{value}} Tage betragen.",
     "invalid_access_mode": "Wähle einen Modus. Wieder öffnen geht ohne Benutzer und ohne Ende.",
-    "access_ended": "Das Ende der Sperre ist schon vorbei."
+    "access_ended": "Das Ende der Sperre ist schon vorbei.",
+    "invalid_access_image": "Das Bild muss ein PNG oder JPEG mit höchstens 512 KB sein."
   }
 }
