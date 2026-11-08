@@ -27,8 +27,18 @@ type UserStatus struct {
 	// Suspended says that Hauswart holds the device back: no requests for now.
 	Suspended bool `json:"suspended,omitempty"`
 	// Access says that this person may not use the device right now.
-	Access    *AccessStatus `json:"access,omitempty"`
-	Dashboard string        `json:"dashboard"`
+	Access *AccessStatus `json:"access,omitempty"`
+	// Terminal says that an admin works on the device in a live shell.
+	Terminal  *TerminalStatus `json:"terminal,omitempty"`
+	Dashboard string          `json:"dashboard"`
+}
+
+// TerminalStatus is a live shell on the device, for the people at it.
+type TerminalStatus struct {
+	User     string    `json:"user"`
+	Approver string    `json:"approver"`
+	Since    time.Time `json:"since"`
+	Until    time.Time `json:"until"`
 }
 
 // ScreenStatus is how someone stands with their screen time.
@@ -95,6 +105,8 @@ const (
 	EventAccessLogin       = "access.login"
 	EventAccessEnding      = "access.ending"
 	EventAccessOpen        = "access.open"
+	EventTerminalStarted   = "terminal.started"
+	EventTerminalEnded     = "terminal.ended"
 )
 
 // DeviceEvent is a change Hauswart made that people at the device should know.

@@ -58,6 +58,7 @@ func run(log *slog.Logger) error {
 	notifyEnv := flag.String("notify-env", "/etc/hauswart/notify.env", "file with the credentials for admin notifications, mode 0600")
 	oidcEnv := flag.String("oidc-env", "/etc/hauswart/oidc.env", "file with the settings for login through Authentik, mode 0600")
 	flathubSearch := flag.Bool("flathub-search", true, "search Flatpaks on Flathub, which sends the search terms there")
+	allowPublic := flag.Bool("allow-public", false, "do not warn when the server listens on or is reached from a public address")
 	flag.Parse()
 
 	if *devHTTP != "" && !isLoopback(*devHTTP) {
@@ -131,6 +132,8 @@ func run(log *slog.Logger) error {
 	if *flathubSearch {
 		srv.SetFlathub(catalog.NewFlathub(catalog.FlathubURL))
 	}
+	srv.AllowPublic(*allowPublic)
+	srv.CheckListen(*addr)
 	go srv.Janitor(ctx)
 	go func() {
 		<-ctx.Done()

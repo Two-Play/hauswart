@@ -106,5 +106,8 @@
   "admin.signevery": "Alles signieren …",
   "admin.signevery.title": "Diese {{.Count}} Aufgaben signieren?",
   "history.event.software.flatpak_arrived": "Flatpak installiert, neue Apps erscheinen nach dem nächsten Anmelden",
-  "blocker.default": "Dieses Gerät ist gerade gesperrt."
+  "blocker.default": "Dieses Gerät ist gerade gesperrt.",
+  "terminal.live": "Live-Zugriff: Ein Admin arbeitet hier seit {{.Since}} als {{.User}}, freigegeben von {{.Approver}}, spätestens bis {{.Until}}.",
+  "history.event.terminal.started": "Live-Terminal als {{.Detail}} bis {{.Until}}",
+  "history.event.terminal.ended": "Live-Terminal beendet"
 }

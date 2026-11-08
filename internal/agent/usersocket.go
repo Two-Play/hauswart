@@ -89,7 +89,9 @@ type userService struct {
 	suspended func() bool
 	// access says how a person is blocked from the device.
 	access func(user string) *api.AccessStatus
-	now    func() time.Time
+	// terminal says whether an admin works on the device in a live shell.
+	terminal func() *api.TerminalStatus
+	now      func() time.Time
 
 	mu       sync.Mutex
 	asked    map[uint32][]time.Time
@@ -247,6 +249,9 @@ func (u *userService) handleStatus(w http.ResponseWriter, r *http.Request) {
 		status.Suspended = u.suspended != nil && u.suspended()
 		if u.access != nil {
 			status.Access = u.access(name)
+		}
+		if u.terminal != nil {
+			status.Terminal = u.terminal()
 		}
 		u.mu.Lock()
 		u.recent[uid] = recentStatus{status, now}
@@ -512,6 +517,7 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		filed:     a.askForRequests,
 		suspended: a.notices.Suspended,
 		access:    a.access.StatusFor,
+		terminal:  a.terminals.current,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

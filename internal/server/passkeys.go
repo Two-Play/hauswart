@@ -22,8 +22,6 @@ const (
 	// passkeyEnvelopeLifetime stays below the limit on the device, and a short
 	// value leaves a hacked server less time to sit on an approval.
 	passkeyEnvelopeLifetime = 12 * time.Hour
-	// A prepared envelope is replaced when too little of it is left to use.
-	passkeyEnvelopeMinimum = time.Hour
 )
 
 func init() {
@@ -208,6 +206,11 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 		fail(w, http.StatusConflict, api.ErrNotForPasskey, task.Type)
 		return
 	}
+	if task.Type == api.TaskTerminalOpen && task.CreatedBy != u.Username {
+		// A shell is for the admin who opens it, and no one approves it for them.
+		fail(w, http.StatusForbidden, api.ErrAdminOnly)
+		return
+	}
 	// The device checks this as well; asking here saves a touch that would fail.
 	if err := api.PasskeyLimits(task.Type, task.Payload, time.Now()); err != nil {
 		failErr(w, http.StatusConflict, err)
@@ -238,7 +241,7 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	envelope := task.Envelope()
-	if !envelopeUsable(envelope, report.PasskeyFreshness) {
+	if !envelopeUsable(envelope, report.PasskeyFreshness, task.Type) {
 		counter, err := s.store.NextPasskeyCounter(r.Context(), task.DeviceID, report.PasskeyCounter)
 		if err != nil {
 			s.internal(w, err)
@@ -249,7 +252,7 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 			Payload:   task.Payload,
 			DeviceID:  task.DeviceID,
 			Counter:   counter,
-			NotAfter:  time.Now().Add(passkeyEnvelopeLifetime).UTC(),
+			NotAfter:  time.Now().Add(envelopeLifetime(task.Type)).UTC(),
 			Freshness: report.PasskeyFreshness,
 		})
 		if err != nil {
@@ -269,12 +272,23 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-func envelopeUsable(raw []byte, freshness string) bool {
+// envelopeUsable says whether a prepared envelope can be shown again. One with
+// less than a twelfth of its lifetime left is replaced.
+func envelopeUsable(raw []byte, freshness, taskType string) bool {
 	var env sign.Envelope
 	if len(raw) == 0 || json.Unmarshal(raw, &env) != nil {
 		return false
 	}
-	return env.Freshness == freshness && time.Until(env.NotAfter) > passkeyEnvelopeMinimum
+	return env.Freshness == freshness && time.Until(env.NotAfter) > envelopeLifetime(taskType)/12
+}
+
+// envelopeLifetime is how long an approval holds: a live terminal must start
+// within minutes, everything else within hours.
+func envelopeLifetime(taskType string) time.Duration {
+	if window := api.ApprovalWindow(taskType); window > 0 {
+		return window * 2 / 3
+	}
+	return passkeyEnvelopeLifetime
 }
 
 // handlePasskeyApproval checks the assertion for early feedback and an honest
