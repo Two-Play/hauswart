@@ -354,6 +354,13 @@ as long as an approver decides their kind and the policy does not forbid them.
 Where groups disagree, the strictest rule wins. sudo always needs a person. On a
 protected device, an automatic approval still waits for a signature.
 
+Once approved, a request shows how its task went: waiting for a signature,
+running, done or failed. For a failure, admins and approvers also see what the
+device said. Members see only that it failed.
+
+A device without Flatpak, such as a minimal desktop, gets the package `flatpak`
+from its package manager before the first Flatpak is installed.
+
 ## Browser trust
 
 Whether a browser honours the system store depends on the distribution. This is
