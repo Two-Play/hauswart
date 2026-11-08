@@ -574,6 +574,30 @@ def test_tpm(admin, agent_bin, work, public_key):
         accepted = boot()
         check(group, "an admin accepts the new boot", code == 204 and accepted["changes"] == []
               and "hauswart-test" in accepted["baseline"]["command_line"], str(accepted))
+
+        # The TLS key moved into the TPM after the first proof, and came back
+        # after both restarts.
+        files = vm.ssh("ls /var/lib/hauswart").stdout.split()
+        check(group, "the TLS key lives in the TPM", "agent-key.tpm" in files and "agent-key.pem" not in files, str(files))
+        check(group, "the dashboard says so", accepted.get("key_in_tpm") is True, str(accepted))
+        _, devices = admin.call("GET", f"/api/devices")
+        entry = next((d for d in devices if d["id"] == device), {})
+        check(group, "the device keeps its ID and reports", entry and time.time() - entry["last_seen"] < 120, str(entry)[:300])
+        key_of = vm.ssh("openssl x509 -in /var/lib/hauswart/agent.pem -noout -subject").stdout
+        check(group, "with a certificate for its ID", device in key_of, key_of)
+
+        # A copy of the agent's files is of no use on another computer.
+        copy = f"{work}/stolen"
+        os.makedirs(copy)
+        archive = subprocess.run(["ssh", "-i", vm.key, "-p", str(vm.port), "-o", "StrictHostKeyChecking=no",
+                                  "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
+                                  f"{vm.user}@127.0.0.1", "sudo tar -C /var/lib/hauswart -cf - ."],
+                                 capture_output=True, timeout=120).stdout
+        subprocess.run(["tar", "-C", copy, "-xf", "-"], input=archive, check=True)
+        # This computer is another one: its TPM, if it has one, does not hold the key.
+        stolen = subprocess.run(["timeout", "30", agent_bin, "run", "--dir", copy], capture_output=True, text=True, timeout=60)
+        check(group, "copied files do not get in", stolen.returncode != 0 and "enroll this device again" in stolen.stdout + stolen.stderr,
+              f"rc={stolen.returncode} {(stolen.stdout + stolen.stderr)[-600:]}")
     finally:
         vm.stop()
 

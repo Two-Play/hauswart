@@ -328,6 +328,11 @@ parameters with the boot an admin accepted.
   server that was.
 - **A device can refuse to prove anything.** That shows as a missing proof after
   three days, not as an alarm.
+- **The TLS key lives in the TPM** once the TPM is registered. The server issues its
+  certificate only for a key that the trusted attestation key certified as made in
+  the TPM and bound to it. Root on the device can use the key while it is there, but
+  not copy it, so stolen files of the agent connect from nowhere else. A device
+  whose owner set `"tpm_key": false` keeps a key file.
 
 ### With a member account
 
@@ -474,7 +479,7 @@ for a PIN is up to that passkey, not to Hauswart.
 | CA | Name constrained to the home network |
 | Agent authentication | mTLS with a client certificate per device, serial checked on every request |
 | First contact | One-time token, CA pinned by fingerprint |
-| Device identity | Derived from the device's public key, checked by the agent |
+| Device identity | Derived from the device's public key at enrollment, checked by the agent; kept when the key moves into the TPM |
 | Input to root | Validated on the agent: strict names, no options, paths or URLs as package names |
 | Privileged groups | `wheel`, `sudo`, `docker` and similar are refused in `user.create`, `group.add` and `group.remove`, as are groups with GID 0 or a rule in `sudoers` |
 | Power actions | Signed, at least a minute of warning, expire within 24 hours |

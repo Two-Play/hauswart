@@ -36,7 +36,9 @@
       "firmware": "Die Firmware hat sich geändert",
       "revocations": "Die Sperrliste für Bootloader hat sich geändert",
       "bootloader": "Ein anderer Bootloader ist gestartet"
-    }
+    },
+    "keyInTPM": "TLS-Schlüssel im TPM",
+    "keyInFile": "TLS-Schlüssel in einer Datei"
   },
   "errors": {
     "invalid_tpm": "Die TPM-Daten sind ungültig ({{value}}).",

@@ -27,6 +27,7 @@ interface BootStatus {
   changes: BootChange[];
   last_at?: string;
   other_tpm?: string;
+  key_in_tpm?: boolean;
 }
 
 const short = (digest?: string) => (digest ? digest.slice(0, 12) : '–');
@@ -99,6 +100,8 @@ export function BootTab({ device }: { device: Device }) {
               {status.last_at ? t('boot.lastAt', { time: formatTime(seconds(status.last_at)) }) : t('boot.waiting')}
               {' · '}
               {t('boot.tpm', { ek: short(status.ek) })}
+              {' · '}
+              {t(status.key_in_tpm ? 'boot.keyInTPM' : 'boot.keyInFile')}
             </Text>
             <Table>
               <Table.Thead>

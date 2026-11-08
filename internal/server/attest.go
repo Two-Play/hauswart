@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"github.com/google/go-attestation/attest"
+	"github.com/google/go-tpm/legacy/tpm2"
 
 	"github.com/Two-Play/hauswart/internal/api"
 	"github.com/Two-Play/hauswart/internal/notify"
+	"github.com/Two-Play/hauswart/internal/pki"
 	"github.com/Two-Play/hauswart/internal/store"
 )
 
@@ -41,6 +43,7 @@ func init() {
 		mux.Handle("POST /agent/tpm/activate", s.agent(s.handleTPMActivate))
 		mux.Handle("POST /agent/tpm/nonce", s.agent(s.handleTPMNonce))
 		mux.Handle("POST /agent/tpm/quote", s.agent(s.handleTPMQuote))
+		mux.Handle("POST /agent/tpm/rekey", s.agent(s.handleTPMRekey))
 		mux.Handle("GET /api/devices/{id}/boot", s.admin(s.handleBootStatus))
 		mux.Handle("POST /api/devices/{id}/boot/accept", s.admin(s.handleBootAccept))
 	})
@@ -303,7 +306,7 @@ func (s *Server) handleBootStatus(w http.ResponseWriter, r *http.Request, _ stor
 		return
 	}
 	status := api.BootStatus{Registered: true, EK: rec.EK, Baseline: rec.Baseline, Current: rec.Current,
-		Changes: rec.Changes, OtherTPM: rec.PendingEK}
+		Changes: rec.Changes, OtherTPM: rec.PendingEK, KeyInTPM: rec.TLSKey != ""}
 	if status.Changes == nil {
 		status.Changes = []api.BootChange{}
 	}
@@ -366,4 +369,100 @@ func bootWarnings(d store.Device, rec *store.TPMRecord, now time.Time) []api.War
 		warnings = append(warnings, api.Warning{Code: api.WarnAttestationMissing, Value: int(now.Sub(rec.LastAt) / (24 * time.Hour))})
 	}
 	return warnings
+}
+
+// keyFingerprint names a public key by its PKIX encoding.
+func keyFingerprint(pub crypto.PublicKey) (string, error) {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(der)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// handleTPMRekey issues a certificate for a TLS key that the device's trusted
+// AK certified as made in the TPM and bound to it. The device keeps its ID,
+// and from then on its identity cannot be copied with its files.
+func (s *Server) handleTPMRekey(w http.ResponseWriter, r *http.Request, device string) {
+	var in api.TPMRekey
+	if !readJSON(w, r, &in) {
+		return
+	}
+	// The certification needs no creation data, which the TPM may leave out.
+	for _, blob := range [][]byte{in.Public, in.CreateAttestation, in.CreateSignature} {
+		if len(blob) == 0 || len(blob) > api.MaxTPMBlob {
+			fail(w, http.StatusBadRequest, api.ErrInvalidTPM, "size")
+			return
+		}
+	}
+	if len(in.CreateData) > api.MaxTPMBlob {
+		fail(w, http.StatusBadRequest, api.ErrInvalidTPM, "size")
+		return
+	}
+	s.tpm.records.Lock()
+	defer s.tpm.records.Unlock()
+	rec, err := s.store.TPM(r.Context(), device)
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusConflict, api.ErrTPMUnknown)
+		return
+	}
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if rec.PendingEK != "" {
+		// Another TPM waits for an admin; it must not get a key before.
+		fail(w, http.StatusConflict, api.ErrTPMUnknown)
+		return
+	}
+	ak, err := attest.ParseAKPublic(rec.AKPublic)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	params := attest.CertificationParameters{Public: in.Public, CreateData: in.CreateData,
+		CreateAttestation: in.CreateAttestation, CreateSignature: in.CreateSignature}
+	if err := params.Verify(attest.VerifyOpts{Public: ak.Public, Hash: ak.Hash}); err != nil {
+		s.log.Warn("a TPM key certification did not verify", "device", device, "err", err)
+		fail(w, http.StatusBadRequest, api.ErrInvalidTPM, "certification")
+		return
+	}
+	certified, err := tpm2.DecodePublic(in.Public)
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidTPM, "key")
+		return
+	}
+	key, err := certified.Key()
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidTPM, "key")
+		return
+	}
+	csr, err := pki.ParseCSR([]byte(in.CSR))
+	if err != nil {
+		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
+		return
+	}
+	want, err1 := keyFingerprint(key)
+	got, err2 := keyFingerprint(csr.PublicKey)
+	if err1 != nil || err2 != nil || want != got {
+		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
+		return
+	}
+	cert, serial, err := s.ca.SignDeviceAs(csr, device)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	rec.TLSKey = got
+	if err := s.store.SaveTPM(r.Context(), device, rec); err != nil {
+		s.internal(w, err)
+		return
+	}
+	if err := s.store.SetNextSerial(r.Context(), device, serial); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.audit(r, "agent:"+device, "tpm.key", serial)
+	writeJSON(w, http.StatusOK, api.RenewResponse{Cert: string(cert)})
 }

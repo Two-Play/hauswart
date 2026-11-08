@@ -71,6 +71,9 @@ type Config struct {
 	// means api.DefaultPasskeyTypes, an empty list means nothing at all, so this
 	// field must never get omitempty.
 	PasskeyTypes []string `json:"passkey_types"`
+	// TPMKey moves the TLS key into the TPM once the TPM is registered. Off,
+	// the key stays a file, which survives a cleared TPM. null means on.
+	TPMKey *bool `json:"tpm_key,omitempty"`
 }
 
 // passkeyTypes applies the default.
@@ -296,6 +299,8 @@ type Agent struct {
 	requestsChanged chan struct{}
 	// terminals are the live shells that run.
 	terminals terminals
+	// keyInTPM says that the TLS key lives in the TPM. Guarded by mu.
+	keyInTPM bool
 }
 
 // Load reads the enrolled state from dir.
@@ -308,7 +313,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
-	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, certFile), filepath.Join(dir, keyFile))
+	cert, leaf, keyInTPM, err := loadIdentity(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -324,10 +329,6 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	leaf, err := x509.ParseCertificate(cert.Certificate[0])
-	if err != nil {
-		return nil, err
-	}
 	var guard *Guard
 	if len(cfg.SigningKeys) > 0 {
 		if guard, err = OpenGuard(filepath.Join(dir, guardFile), cfg.SigningKeys); err != nil {
@@ -337,12 +338,13 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	}
 	platform := Detect()
 	a := &Agent{
-		guard: guard,
-		cfg:   cfg,
-		dir:   dir,
-		cert:  cert,
-		leaf:  leaf,
-		pool:  pool,
+		guard:    guard,
+		cfg:      cfg,
+		dir:      dir,
+		cert:     cert,
+		leaf:     leaf,
+		keyInTPM: keyInTPM,
+		pool:     pool,
 		exec: &Executor{
 			Root:         "/",
 			AllowedPaths: cfg.AllowedPaths,

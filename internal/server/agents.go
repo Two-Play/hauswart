@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
+	"crypto"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
 	"github.com/Two-Play/hauswart/internal/store"
 )
 
@@ -91,10 +94,15 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request, id string) 
 	if !readJSON(w, r, &in) {
 		return
 	}
-	cert, csrID, serial, err := s.ca.SignDevice([]byte(in.CSR))
-	if err != nil || csrID != id {
+	csr, err := pki.ParseCSR([]byte(in.CSR))
+	if err != nil || !s.deviceKey(r.Context(), id, csr.PublicKey) {
 		// Identity is the key, so a renewal must keep it.
 		fail(w, http.StatusBadRequest, api.ErrInvalidCSR)
+		return
+	}
+	cert, serial, err := s.ca.SignDeviceAs(csr, id)
+	if err != nil {
+		s.internal(w, err)
 		return
 	}
 	if err := s.store.SetNextSerial(r.Context(), id, serial); err != nil {
@@ -103,6 +111,20 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	s.audit(r, "agent:"+id, "device.renewed", serial)
 	writeJSON(w, http.StatusOK, api.RenewResponse{Cert: string(cert)})
+}
+
+// deviceKey says whether a key is the device's: the one its ID came from, or
+// the one it moved into its TPM.
+func (s *Server) deviceKey(ctx context.Context, id string, pub crypto.PublicKey) bool {
+	if derived, err := pki.DeviceID(pub); err == nil && derived == id {
+		return true
+	}
+	rec, err := s.store.TPM(ctx, id)
+	if err != nil || rec.TLSKey == "" {
+		return false
+	}
+	fingerprint, err := keyFingerprint(pub)
+	return err == nil && fingerprint == rec.TLSKey
 }
 
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string) {
