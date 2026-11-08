@@ -290,6 +290,8 @@ type Agent struct {
 	policy *PolicyEngine
 	// notices tell people at the device what changed for them.
 	notices *Notices
+	// access blocks the device for some or all of its people.
+	access *Access
 	// requestsChanged asks for the state of requests now, after one was filed.
 	requestsChanged chan struct{}
 }
@@ -353,6 +355,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	}
 	a.policy = OpenPolicy(dir, a.exec, log)
 	a.notices = OpenNotices(dir, a.exec, a.policy.Language, log)
+	a.access = OpenAccess(dir, a.exec, a.notices, log)
 	a.requestsChanged = make(chan struct{}, 1)
 	a.client = &http.Client{
 		Timeout: (pollWaitSecs + 15) * time.Second,
@@ -399,6 +402,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })
 	wg.Go(func() { a.requestLoop(ctx) })
+	wg.Go(func() { a.access.Loop(ctx) })
 	wg.Wait()
 }
 
@@ -514,6 +518,9 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		report.Insight = a.exec.collectInsight(ctx)
 		report.Policy = a.policy.Status()
 		report.Apps = a.policy.Apps()
+		if a.access != nil {
+			report.Access = a.access.Current()
+		}
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()
@@ -539,9 +546,26 @@ func (a *Agent) reportLoop(ctx context.Context) {
 	}
 }
 
+// errSuspended says that the server holds this device back.
+var errSuspended = errors.New("this device is suspended")
+
+// suspendedRetry is how often a suspended device asks whether it is back.
+const suspendedRetry = 30 * time.Second
+
 func (a *Agent) taskLoop(ctx context.Context) {
 	for ctx.Err() == nil {
 		task, err := a.poll(ctx)
+		if errors.Is(err, errSuspended) {
+			a.suspend(ctx)
+			select {
+			case <-ctx.Done():
+			case <-time.After(suspendedRetry):
+			}
+			continue
+		}
+		if err == nil && a.notices.SetSuspended(ctx, false) {
+			a.log.Info("the server manages this device again")
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -598,6 +622,11 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 		return a.setPolicy(task)
 	case api.TaskScreenExtend:
 		return a.extendScreenTime(task)
+	case api.TaskAccessSet:
+		if a.access == nil {
+			return api.TaskResult{OK: false, Output: "access is not available"}
+		}
+		return a.access.Set(ctx, task)
 	}
 	return a.exec.Execute(ctx, task)
 }
@@ -663,6 +692,8 @@ func (a *Agent) poll(ctx context.Context) (*api.Task, error) {
 	switch resp.StatusCode {
 	case http.StatusNoContent:
 		return nil, nil
+	case http.StatusLocked:
+		return nil, errSuspended
 	case http.StatusOK:
 		var t api.Task
 		if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&t); err != nil {
@@ -749,4 +780,18 @@ func (a *Agent) get(ctx context.Context, path string, v any) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(v)
+}
+
+// suspend ends the sudo grants once, when the server starts to hold the device
+// back: whoever grants them is not looking after this device for now.
+func (a *Agent) suspend(ctx context.Context) {
+	if !a.notices.SetSuspended(ctx, true) {
+		return
+	}
+	a.log.Warn("the server suspended this device")
+	for user := range a.exec.Grants.All() {
+		if _, err := a.exec.sudoRevoke(user); err != nil {
+			a.log.Error("ending a sudo grant failed", "user", user, "err", err)
+		}
+	}
 }

@@ -3,6 +3,7 @@ package admintool
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
@@ -72,5 +73,22 @@ func init() {
 	})
 	reviewer(api.TaskGroupRemove, func(p api.GroupPayload) (string, error) {
 		return fmt.Sprintf("REMOVE Linux user %s from group %s", p.User, p.Group), nil
+	})
+	reviewer(api.TaskAccessSet, func(p api.AccessPayload) (string, error) {
+		if p.Mode == api.AccessOpen {
+			return "OPEN ACCESS to this device again: lift the block of the screen or of logins", nil
+		}
+		who := "EVERYONE with an ordinary account, local admins included"
+		if len(p.Users) > 0 {
+			who = "Linux user(s) " + strings.Join(p.Users, ", ")
+		}
+		text := fmt.Sprintf("BLOCK THE SCREEN of %s. Sessions stay open, but are locked again at once.", who)
+		if p.Mode == api.AccessLogin {
+			text = fmt.Sprintf("REFUSE LOGINS of %s. Running sessions end after a minute, and unsaved work is lost.", who)
+		}
+		if p.Until.IsZero() {
+			return text + "\n  Until access is opened again.", nil
+		}
+		return text + "\n  Until " + p.Until.Local().Format(time.RFC1123) + ".", nil
 	})
 }

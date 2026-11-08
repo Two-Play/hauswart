@@ -91,5 +91,16 @@
   "history.event.account.group_added": "In die Gruppe {{.Detail}} aufgenommen",
   "history.event.account.group_removed": "Aus der Gruppe {{.Detail}} entfernt",
   "history.event.policy.changed": "Neue Regeln für dieses Gerät",
-  "history.event.policy.cleared": "Regeln für dieses Gerät entfernt"
+  "history.event.policy.cleared": "Regeln für dieses Gerät entfernt",
+  "suspended": "Hauswart hat dieses Gerät gesperrt. Anfragen gehen vorerst nicht.",
+  "request.refused.device_suspended": "Hauswart hat dieses Gerät gesperrt. Anfragen gehen vorerst nicht.",
+  "history.event.device.suspended": "Gerät in Hauswart gesperrt",
+  "history.event.device.resumed": "Gerät wird wieder von Hauswart verwaltet",
+  "access.screen": "Hauswart sperrt den Bildschirm dieses Geräts, bis {{.Until}}.",
+  "access.login": "Hauswart lässt an diesem Gerät keine Anmeldung zu, bis {{.Until}}.",
+  "access.lasting": "es wieder geöffnet wird",
+  "history.event.access.screen": "Bildschirm gesperrt bis {{.Until}}",
+  "history.event.access.login": "Anmeldung verweigert bis {{.Until}}",
+  "history.event.access.ending": "Sitzung endet um {{.Until}}",
+  "history.event.access.open": "Zugang wieder offen"
 }

@@ -308,6 +308,16 @@ A popup always carries the title `Hauswart`, so it cannot pose as the system. It
 can still lie: whoever is allowed to send one can write "call this number". Everyone
 should know that Hauswart never asks for a password.
 
+A hacked server can suspend a device. That ends sudo grants and stops requests,
+and nothing more.
+
+Blocking access is a signed task on a protected device, opening included, so a
+hacked server can neither lock people out nor let them back in. On an unprotected
+device it can do both. A block for the whole device also locks out local admins,
+and only root and the end of the block get around it. If `access.json` is broken,
+the agent refuses logins until access is set again, rather than opening what was
+blocked.
+
 A signed Flatpak install also installs the package `flatpak` where it is missing,
 from the device's own repositories. Approving a Flatpak means the device needs what
 runs it.

@@ -26,6 +26,9 @@ in containers and virtual machines, not on physical machines or over a real VPN.
 - Linux users: create, lock, set a start password that must be changed, and
   change group memberships
 - Restart and shutdown with a warning and a way to cancel
+- Suspend a device for a while and resume it, or remove it for good
+- Block the screen or refuse logins, for everyone at a device or for some, until a
+  set time or until you open it again
 - Messages to people as a popup on their desktop
 - Popups about what changed for someone, such as an answered request, sudo
   that ends soon or new software, and a history in the desktop app
