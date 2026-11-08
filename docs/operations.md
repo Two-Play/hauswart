@@ -300,6 +300,21 @@ Under **Users**, every account has a role:
 Assign devices to members in the same table. A new device is assigned to nobody at
 first, and a member without devices sees none.
 
+## Approval rules
+
+Under **Groups**, **Approval rules for all devices** decide who answers requests,
+and each group can make them stricter. For each kind of request, choose:
+
+- **Approve automatically**: the request is approved when it is filed.
+- **Approver decides**: an admin or approver decides. This is the default.
+- **Only an admin decides**: approvers see the request, but cannot decide it.
+- **Not allowed**: the request is refused when it is filed.
+
+Packages and Flatpaks on the lists of automatic apps are installed without asking,
+as long as an approver decides their kind and the policy does not forbid them.
+Where groups disagree, the strictest rule wins. sudo always needs a person. On a
+protected device, an automatic approval still waits for a signature.
+
 ## Browser trust
 
 Whether a browser honours the system store depends on the distribution. This is

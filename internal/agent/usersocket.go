@@ -74,8 +74,9 @@ type userService struct {
 	exec      *Executor
 	policy    *PolicyEngine
 	dashboard string
-	// send hands a request to the server.
-	send func(context.Context, api.DeviceRequest) error
+	// send hands a request to the server and returns its status, approved
+	// when a rule approved it at once.
+	send func(context.Context, api.DeviceRequest) (string, error)
 	now  func() time.Time
 
 	mu     sync.Mutex
@@ -257,7 +258,7 @@ func (u *userService) handleRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
-	err := u.send(r.Context(), api.DeviceRequest{User: name, UserRequest: in})
+	status, err := u.send(r.Context(), api.DeviceRequest{User: name, UserRequest: in})
 	var refused *api.Error
 	switch {
 	case errors.As(err, &refused):
@@ -268,7 +269,9 @@ func (u *userService) handleRequest(w http.ResponseWriter, r *http.Request) {
 		u.giveBack(uid)
 		http.Error(w, "the server cannot be reached", http.StatusBadGateway)
 	default:
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(api.RequestAnswer{Status: status})
 	}
 }
 
@@ -360,33 +363,37 @@ func (u *userService) serve(ctx context.Context, listener net.Listener) error {
 	return nil
 }
 
-// sendRequest hands a request to the server. An *api.Error says that it refused
-// the request, which is something else than not reaching it.
-func (a *Agent) sendRequest(ctx context.Context, r api.DeviceRequest) error {
+// sendRequest hands a request to the server and returns the status it got. An
+// *api.Error says that the server refused the request, which is something else
+// than not reaching it.
+func (a *Agent) sendRequest(ctx context.Context, r api.DeviceRequest) (string, error) {
 	body, err := json.Marshal(r)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.Server+"/agent/requests", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 300 {
-		return nil
+		var answer api.RequestAnswer
+		// An older server says nothing, which means that someone decides.
+		json.NewDecoder(io.LimitReader(resp.Body, maxUserBody)).Decode(&answer)
+		return answer.Normalized(), nil
 	}
 	if resp.StatusCode >= 500 {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return "", fmt.Errorf("status %d", resp.StatusCode)
 	}
 	var answer struct {
 		Code string `json:"code"`
 	}
 	json.NewDecoder(io.LimitReader(resp.Body, maxUserBody)).Decode(&answer)
-	return api.Fail(answer.Code)
+	return "", api.Fail(answer.Code)
 }
 
 // serveUsers must never take the agent down: desktops are a convenience.

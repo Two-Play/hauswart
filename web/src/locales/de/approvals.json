@@ -1,0 +1,38 @@
+{
+  "approvalRules": {
+    "title": "Freigaberegeln",
+    "defaultTitle": "Freigaberegeln für alle Geräte",
+    "defaultHint": "Diese Regeln gelten für jedes Gerät. Eine Gruppe kann sie strenger machen. Widersprechen sich Gruppen, gilt die strengste Regel.",
+    "groupHint": "Regeln für die Geräte dieser Gruppe. Eine Art auf „wie für alle Geräte“ nutzt die Regeln für alle Geräte. Widersprechen sich Gruppen, gilt die strengste Regel.",
+    "inherit": "Wie für alle Geräte",
+    "inheritsAll": "Wie für alle Geräte.",
+    "noneSet": "Über jede Anfrage entscheidet ein Approver.",
+    "modes": {
+      "auto": "Automatisch freigeben",
+      "approver": "Approver entscheidet",
+      "admin": "Nur ein Admin entscheidet",
+      "blocked": "Nicht erlaubt"
+    },
+    "autoPackages": "Automatisch freigegebene Pakete",
+    "autoFlatpaks": "Automatisch freigegebene Flatpaks",
+    "autoHint": "Anfragen dafür werden ohne Rückfrage installiert, solange über ihre Art ein Approver entscheidet und die Policy sie nicht verbietet.",
+    "autoApps": "Automatisch freigegeben",
+    "edit": "Bearbeiten",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "saved": "Freigaberegeln gespeichert."
+  },
+  "requests": {
+    "decidedBy": "Entschieden von",
+    "automatic": "automatisch",
+    "adminDecides": "einem Admin",
+    "filed": "Anfrage gesendet.",
+    "autoApproved": "Automatisch freigegeben. Sie ist unterwegs zum Gerät."
+  },
+  "errors": {
+    "invalid_approval_mode": "Die Freigabeart {{value}} ist ungültig.",
+    "approvals_too_large": "Eine Freigabeliste hat mehr als {{value}} Einträge.",
+    "request_blocked": "Anfragen dieser Art sind auf diesem Gerät nicht erlaubt.",
+    "admin_decides": "Über diese Anfrage entscheidet nur ein Admin."
+  }
+}

@@ -269,10 +269,35 @@ existing members, so nothing disappears for them.
 
 ## Requests
 
-A member files a request for software, a Flatpak or sudo. Nothing reaches the
-device until an admin or approver approves it, which creates the task. A single conditional
-update decides a request, so a double click cannot create two tasks. The expiry
-of a sudo grant counts from the approval.
+A member files a request for software, a Flatpak, sudo or screen time. Nothing
+reaches the device until an admin or approver approves it, or an approval rule
+does, which creates the task. A single conditional update decides a request, so a
+double click cannot create two tasks. The expiry of a sudo grant counts from the
+approval.
+
+### Approval rules
+
+Approval rules say who decides a request. They exist once for all devices and
+once per group, and they set a mode for each kind of request:
+
+| Mode | Effect |
+| --- | --- |
+| `auto` | Approved when it is filed |
+| `approver` | An admin or approver decides, the default |
+| `admin` | Only an admin decides |
+| `blocked` | Refused when it is filed |
+
+A group leaves a kind open to use the rule for all devices. For a device in
+several groups, the strictest mode wins, so no group can loosen what another
+group or the default made strict. On top, lists of packages and Flatpaks are
+approved at once, but only for a kind that an approver decides, only when every
+package of the request is on a list, and never when the policy of the device
+forbids one. sudo cannot be `auto`.
+
+The rules stay on the server and are not part of the signed policy. They take the
+place of the approver, never of the signature: on a protected device, an
+automatically approved task still waits in the signing queue. An approval checks
+the rules again, since they may have changed since the request was filed.
 
 A new request notifies admins through ntfy, email or both, if
 `/etc/hauswart/notify.env` configures them. A queue and one background worker do

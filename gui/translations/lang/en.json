@@ -63,5 +63,7 @@
   "request.refused.device_not_assigned": "This device is not assigned to you. Ask whoever runs Hauswart here.",
   "request.refused.shared_account": "Several people use this Linux account. Please ask in the dashboard.",
   "request.refused.invalid_duration": "That is too much time for one request.",
-  "request.refused.invalid_package": "That does not look like the name of a package."
+  "request.refused.invalid_package": "That does not look like the name of a package.",
+  "request.approved": "Approved at once. It is on its way to this device.",
+  "request.refused.request_blocked": "Requests of this kind are not allowed on this device."
 }

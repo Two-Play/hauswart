@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -34,7 +35,38 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request, u st
 		s.internal(w, err)
 		return
 	}
+	// Open requests say who decides them now, so that the dashboard offers the
+	// buttons only to those who may press them.
+	rules := map[string]api.ApprovalRules{}
+	for i, req := range requests {
+		if req.Status != "open" {
+			continue
+		}
+		mode, err := s.cachedMode(r.Context(), rules, req)
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		requests[i].Mode = mode
+	}
 	writeJSON(w, http.StatusOK, requests)
+}
+
+// cachedMode is requestMode for a list, with the rules of each device read once.
+func (s *Server) cachedMode(ctx context.Context, rules map[string]api.ApprovalRules, req store.Request) (string, error) {
+	merged, ok := rules[req.DeviceID]
+	if !ok {
+		var err error
+		if merged, err = s.deviceApprovals(ctx, req.DeviceID); err != nil {
+			return "", err
+		}
+		rules[req.DeviceID] = merged
+	}
+	policy, _, err := s.effectivePolicy(ctx, req.DeviceID)
+	if err != nil {
+		return "", err
+	}
+	return merged.Decide(req.Kind, req.Detail, policy), nil
 }
 
 func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u store.User) {
@@ -62,14 +94,53 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
+	mode, err := s.requestMode(r.Context(), in.DeviceID, in.Kind, in.Detail)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if mode == api.ApprovalBlocked {
+		fail(w, http.StatusForbidden, api.ErrRequestBlocked)
+		return
+	}
 	id, err := s.store.CreateRequest(r.Context(), u.ID, in.DeviceID, in.Kind, in.Detail, in.Reason)
 	if err != nil {
 		fail(w, http.StatusBadRequest, api.ErrNoSuchDevice)
 		return
 	}
 	s.audit(r, u.Username, "request.created", in.Kind+" "+in.Detail)
-	s.notifyRequest(r.Context(), id)
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	s.finishFiling(w, r, id, mode, in.DeviceID, in.Kind, in.Detail, u)
+}
+
+// finishFiling approves a request at once when a rule says so, and otherwise
+// tells those who decide. The answer says which of the two happened.
+func (s *Server) finishFiling(w http.ResponseWriter, r *http.Request, id, mode, device, kind, detail string, u store.User) {
+	status := api.RequestOpen
+	if mode == api.ApprovalAuto {
+		taskType, payload, err := requestTask(kind, detail, u.LinuxUser)
+		if err != nil {
+			failErr(w, http.StatusBadRequest, err)
+			return
+		}
+		won, err := s.store.DecideRequest(r.Context(), id, "approved", api.DecidedAutomatically)
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		if won {
+			// A protected device still waits for a signature: the rule decides
+			// for the approver, never for the admin tool.
+			if _, err := s.enqueue(r, device, taskType, payload, api.DecidedAutomatically+":"+u.Username); err != nil {
+				s.internal(w, err)
+				return
+			}
+			s.audit(r, api.DecidedAutomatically, "request.approved", id+" "+kind+" "+detail)
+			status = api.RequestApproved
+		}
+	} else {
+		s.notifyRequest(r.Context(), id)
+	}
+	writeJSON(w, http.StatusCreated, api.RequestAnswer{ID: id, Status: status})
 }
 
 // handleDeviceRequest takes a request someone filed on the device itself. The
@@ -119,14 +190,22 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, dev
 		failErr(w, http.StatusBadRequest, err)
 		return
 	}
+	mode, err := s.requestMode(r.Context(), device, in.Kind, in.Detail)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if mode == api.ApprovalBlocked {
+		fail(w, http.StatusForbidden, api.ErrRequestBlocked)
+		return
+	}
 	id, err := s.store.CreateRequest(r.Context(), u.ID, device, in.Kind, in.Detail, in.Reason)
 	if err != nil {
 		s.internal(w, err)
 		return
 	}
 	s.audit(r, "agent:"+device, "request.created", u.Username+" "+in.Kind+" "+in.Detail)
-	s.notifyRequest(r.Context(), id)
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	s.finishFiling(w, r, id, mode, device, in.Kind, in.Detail, u)
 }
 
 // requestTask converts a request into the task it causes once approved. A
@@ -135,13 +214,13 @@ func requestTask(kind, detail, linuxUser string) (string, []byte, error) {
 	var taskType string
 	var payload any
 	switch kind {
-	case "software", "flatpak":
+	case api.RequestSoftware, api.RequestFlatpak:
 		taskType = api.TaskPkgInstall
-		if kind == "flatpak" {
+		if kind == api.RequestFlatpak {
 			taskType = api.TaskFlatpakInstall
 		}
 		payload = api.PackagesPayload{Packages: strings.Fields(detail)}
-	case "sudo":
+	case api.RequestSudo:
 		minutes, err := strconv.Atoi(strings.TrimSpace(detail))
 		if err != nil || minutes < 1 || minutes > maxSudoMinutes {
 			return "", nil, api.Fail(api.ErrInvalidDuration, strconv.Itoa(maxSudoMinutes))
@@ -193,6 +272,17 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 	}
 	if !allowed {
 		fail(w, http.StatusConflict, api.ErrDeviceNotAssigned)
+		return
+	}
+	// The rules may have changed since the request was filed, so they count as
+	// they are now. A kind that is blocked by now stays with an admin as well.
+	mode, err := s.requestMode(r.Context(), req.DeviceID, req.Kind, req.Detail)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if u.Role != store.RoleAdmin && (mode == api.ApprovalAdmin || mode == api.ApprovalBlocked) {
+		fail(w, http.StatusForbidden, api.ErrAdminDecides)
 		return
 	}
 	taskType, payload, err := requestTask(req.Kind, req.Detail, req.LinuxUser)

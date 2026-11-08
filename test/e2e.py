@@ -850,6 +850,25 @@ def test_socket(admin, agent_bin):
         check(name, "ATTACK ben cannot speak for anna", forged.stdout.strip().endswith("400"), forged.stdout)
         unknown = as_user("ben", "/request", '{"kind":"software","detail":"vim"}')
         check(name, "someone without an account gets nowhere", not unknown.stdout.strip().endswith("201"), unknown.stdout)
+
+        # Approval rules: a listed package is installed without anyone deciding,
+        # and a blocked kind is refused where it is asked for.
+        code, out = admin.call("PUT", "/api/approval-rules", {"kinds": {"screen": "blocked"}, "auto_packages": ["tree"]})
+        check(name, "approval rules stored", code == 204, str(out))
+        try:
+            auto = as_user("anna", "/request", '{"kind":"software","detail":"tree"}')
+            check(name, "a listed package is approved at once", '"status":"approved"' in auto.stdout and auto.stdout.strip().endswith("201"), auto.stdout)
+            installed = False
+            for _ in range(60):
+                if inside("rpm -q tree").returncode == 0:
+                    installed = True
+                    break
+                time.sleep(2)
+            check(name, "and installed without anyone deciding", installed, inside("tail -20 /var/log/agent.log").stdout)
+            blocked = as_user("anna", "/request", '{"kind":"screen","detail":"30"}')
+            check(name, "a blocked kind is refused", "request_blocked" in blocked.stdout and blocked.stdout.strip().endswith("422"), blocked.stdout)
+        finally:
+            admin.call("PUT", "/api/approval-rules", {})
     finally:
         sh("podman", "rm", "-f", container, check_rc=False)
 
