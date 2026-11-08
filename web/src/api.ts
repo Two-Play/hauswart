@@ -95,6 +95,10 @@ export interface AccessRequest {
   created_at: number;
   // mode says who decides an open request, by the rules of now.
   mode?: ApprovalMode;
+  // outcome follows an approved request into its task.
+  outcome?: 'open' | 'denied' | 'signing' | 'running' | 'done' | 'failed';
+  // outcome_detail is what the device said about a failure, for those who decide.
+  outcome_detail?: string;
 }
 
 export interface ApprovalRules {

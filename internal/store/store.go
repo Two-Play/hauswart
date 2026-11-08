@@ -781,6 +781,10 @@ type Request struct {
 	// Mode says who decides an open request, by the rules of now. The server
 	// fills it in, the database does not keep it.
 	Mode string `json:"mode,omitempty"`
+	// Outcome follows an approved request into its task: signing, running,
+	// done or failed. OutcomeDetail is what the device said, for those who decide.
+	Outcome       string `json:"outcome"`
+	OutcomeDetail string `json:"outcome_detail,omitempty"`
 }
 
 func (s *Store) CreateRequest(ctx context.Context, userID int64, deviceID, kind, detail, reason string) (string, error) {
@@ -793,13 +797,21 @@ func (s *Store) CreateRequest(ctx context.Context, userID int64, deviceID, kind,
 
 const requestSelect = `
 	SELECT r.id, r.user_id, u.username, u.linux_user, r.device_id, d.hostname,
-	       r.kind, r.detail, r.reason, r.status, r.decided_by, r.created_at
-	FROM requests r JOIN users u ON u.id = r.user_id JOIN devices d ON d.id = r.device_id`
+	       r.kind, r.detail, r.reason, r.status, r.decided_by, r.created_at,
+	       COALESCE(t.status, ''), COALESCE(t.output, '')
+	FROM requests r JOIN users u ON u.id = r.user_id JOIN devices d ON d.id = r.device_id
+	LEFT JOIN tasks t ON t.id = r.task_id AND r.task_id != ''`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
+	var task string
 	err := row.Scan(&r.ID, &r.UserID, &r.Username, &r.LinuxUser, &r.DeviceID, &r.Hostname,
-		&r.Kind, &r.Detail, &r.Reason, &r.Status, &r.DecidedBy, &r.CreatedAt)
+		&r.Kind, &r.Detail, &r.Reason, &r.Status, &r.DecidedBy, &r.CreatedAt, &task, &r.OutcomeDetail)
+	r.Outcome = requestState(r.Status, task)
+	if r.Outcome != api.RequestFailed {
+		r.OutcomeDetail = ""
+	}
+	r.OutcomeDetail = clipDetail(r.OutcomeDetail)
 	return r, err
 }
 
@@ -840,6 +852,15 @@ func (s *Store) DecideRequest(ctx context.Context, id, status, decidedBy string)
 	}
 	n, err := res.RowsAffected()
 	return n == 1, err
+}
+
+// clipDetail keeps what a device said short enough for a table.
+func clipDetail(s string) string {
+	const limit = 300
+	if r := []rune(s); len(r) > limit {
+		return string(r[:limit]) + "…"
+	}
+	return s
 }
 
 // SetRequestTask remembers the task an approved request became.

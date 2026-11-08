@@ -39,6 +39,10 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request, u st
 	// buttons only to those who may press them.
 	rules := map[string]api.ApprovalRules{}
 	for i, req := range requests {
+		// Members learn that their request failed, the output is for those who decide.
+		if u.Role == store.RoleMember {
+			requests[i].OutcomeDetail = ""
+		}
 		if req.Status != "open" {
 			continue
 		}
