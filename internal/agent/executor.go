@@ -41,6 +41,8 @@ type Executor struct {
 	// Has looks for a program. Platform is from the start of the agent, and a
 	// policy can install what was missing then. Tests leave it empty.
 	Has func(name string) bool
+	// FlatpakArrived hears that the agent installed Flatpak itself.
+	FlatpakArrived func()
 
 	insight insightState
 }
@@ -176,6 +178,9 @@ func (e *Executor) ensureFlatpak(ctx context.Context) (string, error) {
 		return out, fmt.Errorf("flatpak is not installed, and installing it failed: %w", err)
 	}
 	e.Platform.Flatpak = true
+	if e.FlatpakArrived != nil {
+		e.FlatpakArrived()
+	}
 	return out, nil
 }
 

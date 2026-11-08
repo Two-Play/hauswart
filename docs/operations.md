@@ -365,7 +365,9 @@ running, done or failed. For a failure, admins and approvers also see what the
 device said. Members see only that it failed.
 
 A device without Flatpak, such as a minimal desktop, gets the package `flatpak`
-from its package manager before the first Flatpak is installed.
+from its package manager before the first Flatpak is installed. GNOME and Plasma
+read the folder of Flatpak apps at login only, so everyone logged in is told that
+new apps show in the menu after the next login.
 
 ## Browser trust
 
