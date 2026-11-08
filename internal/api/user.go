@@ -66,6 +66,42 @@ type RequestState struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+// What happened on a device, as the desktop app names it.
+const (
+	EventSudoGranted       = "sudo.granted"
+	EventSudoRevoked       = "sudo.revoked"
+	EventSudoExpiring      = "sudo.expiring"
+	EventSudoExpired       = "sudo.expired"
+	EventSoftwareInstalled = "software.installed"
+	EventSoftwareRemoved   = "software.removed"
+	EventSoftwareUpgraded  = "software.upgraded"
+	EventSoftwareFailed    = "software.failed"
+	EventAccountLocked     = "account.locked"
+	EventAccountUnlocked   = "account.unlocked"
+	EventAccountPassword   = "account.password"
+	EventGroupAdded        = "account.group_added"
+	EventGroupRemoved      = "account.group_removed"
+	EventPolicyChanged     = "policy.changed"
+	EventPolicyCleared     = "policy.cleared"
+)
+
+// DeviceEvent is a change Hauswart made that people at the device should know.
+type DeviceEvent struct {
+	Kind string `json:"kind"`
+	// User is the person it is about. Empty means the whole device.
+	User   string    `json:"user,omitempty"`
+	Detail string    `json:"detail,omitempty"`
+	Until  time.Time `json:"until,omitzero"`
+	At     time.Time `json:"at"`
+}
+
+// History is what the desktop app shows someone: their requests, and what
+// changed for them or for the whole device. Newest first.
+type History struct {
+	Requests []RequestState `json:"requests"`
+	Events   []DeviceEvent  `json:"events"`
+}
+
 // RequestAnswer is what filing a request returns.
 type RequestAnswer struct {
 	ID     string `json:"id,omitempty"`
