@@ -1,7 +1,8 @@
-# Operating Hauswart at home
+# Operating Hauswart
 
-The server runs on one machine at home. Devices reach it through a VPN, both at
-home and on the road, so it never needs a port on the internet.
+The server runs on one machine on site, at home or in the office. Devices reach it
+through a VPN, both on site and on the road, so it never needs a port on the
+internet.
 
 ## Install the server
 
@@ -678,7 +679,7 @@ why this needs the directory login. Local accounts get no shares. A share out of
 adds at most 8 seconds to a login.
 
 If the password changes in Authentik, a laptop that was offline knows the old one
-until it has logged in once at home.
+until it has logged in once on site.
 
 ### Nextcloud
 
