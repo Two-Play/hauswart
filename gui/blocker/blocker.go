@@ -23,6 +23,9 @@ import (
 // Dir is where the agent puts the message and the picture.
 const Dir = "/run/hauswart/block"
 
+// maxPixels is api.MaxAccessPixels, without importing the server's types here.
+const maxPixels = 4096
+
 // Read takes the message and the picture the agent left. Either may be missing.
 func Read(dir string) (string, image.Image) {
 	message := ""
@@ -31,8 +34,12 @@ func Read(dir string) (string, image.Image) {
 	}
 	var picture image.Image
 	if raw, err := os.ReadFile(filepath.Join(dir, "image")); err == nil {
-		if decoded, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
-			picture = decoded
+		// The agent checked the size, but a picture that claims to be huge would
+		// take this program down before anyone could see the text.
+		if config, _, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && config.Width <= maxPixels && config.Height <= maxPixels {
+			if decoded, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
+				picture = decoded
+			}
 		}
 	}
 	return message, picture

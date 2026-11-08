@@ -166,11 +166,13 @@ run **Block access** on it:
 - **Full-screen notice:**
   - It needs the package `hauswart-tray` on the device. The agent installs the kiosk
     compositor `cage` itself.
-  - It runs as the system account `hauswart-block` on console 9, and cage lets
-    nobody switch away. If someone gets away anyway, the block comes back within
-    seconds.
+  - It runs as the system account `hauswart-block` on console 9. Whoever switches
+    away to a session it is about gets it back within seconds, while others can
+    reach the login screen.
   - For single people it shows while their session is in front.
-  - The picture is a PNG or JPEG of at most 512 KB, and travels in the signed task.
+  - It ends with the agent, so a stopped or removed agent leaves no block behind.
+  - The picture is a PNG or JPEG of at most 512 KB and 4096 by 4096 pixels, and
+    travels in the signed task.
 
 ## Protect devices with signatures
 
@@ -566,8 +568,8 @@ Each rule names a Linux user and their times per day. A day without a time means
 session on that day. Warnings come 15, 5 and 1 minutes before the end. At the end
 the session locks, and a minute later it ends. **Unsaved work is lost then.**
 
-A rule can also have **minutes per day**. The device counts the time someone is at
-an unlocked desktop, and the session ends when the minutes are used up or the time
+A rule can also have **minutes per day**. The device counts the time someone's
+session is in front, locked or not, because a session can claim to be locked, and the session ends when the minutes are used up or the time
 window closes, whichever comes first. A rule with minutes and no windows allows any
 time of the day. The count starts over at midnight in the policy's time zone.
 

@@ -737,6 +737,7 @@ func (a *Agent) requestLoop(ctx context.Context) {
 	asked := false
 	for {
 		if asked || a.someoneAtDesktop(ctx) {
+			a.notices.Asked()
 			var requests []api.RequestState
 			if err := a.get(ctx, "/agent/requests", &requests); err != nil {
 				if ctx.Err() == nil {
@@ -790,10 +791,11 @@ func (a *Agent) get(ctx context.Context, path string, v any) error {
 // suspend ends the sudo grants once, when the server starts to hold the device
 // back: whoever grants them is not looking after this device for now.
 func (a *Agent) suspend(ctx context.Context) {
-	if !a.notices.SetSuspended(ctx, true) {
-		return
+	if a.notices.SetSuspended(ctx, true) {
+		a.log.Warn("the server suspended this device")
 	}
-	a.log.Warn("the server suspended this device")
+	// Every time, not only at the start: a revoke that failed, or a crash between
+	// noting the suspension and revoking, must not leave a grant in place.
 	for user := range a.exec.Grants.All() {
 		if _, err := a.exec.sudoRevoke(user); err != nil {
 			a.log.Error("ending a sudo grant failed", "user", user, "err", err)
