@@ -94,8 +94,14 @@ func policyLines(p api.Policy) []string {
 			windows = append(windows, windowText(window))
 		}
 		times := "NEVER"
-		if len(windows) > 0 {
+		switch {
+		case len(windows) > 0:
 			times = strings.Join(windows, "; ")
+		case rule.DailyMinutes > 0:
+			times = "any time"
+		}
+		if rule.DailyMinutes > 0 {
+			times += fmt.Sprintf(", at most %d minutes a day", rule.DailyMinutes)
 		}
 		add("user %s may be logged in: %s", rule.User, times)
 	}

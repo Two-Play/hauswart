@@ -7,6 +7,7 @@ import {
   Group,
   Modal,
   MultiSelect,
+  NumberInput,
   Paper,
   PasswordInput,
   Select,
@@ -42,12 +43,13 @@ interface CARule {
   pem: string;
 }
 
-interface ScreenRule {
+export interface ScreenRule {
   user: string;
   windows: Window[];
+  daily_minutes?: number;
 }
 
-interface Policy {
+export interface Policy {
   required_packages?: string[];
   forbidden_packages?: string[];
   required_flatpaks?: string[];
@@ -84,7 +86,7 @@ interface DevicePolicy {
   apps?: { id: string; name: string }[];
 }
 
-interface PolicyView {
+export interface PolicyView {
   policy: Policy | null;
   devices: DevicePolicy[];
 }
@@ -141,6 +143,71 @@ function replaced<T>(list: T[], index: number, next: T): T[] {
 
 function without<T>(list: T[], index: number): T[] {
   return list.filter((_, i) => i !== index);
+}
+
+/** ScreenTimeRules edits the screen time of people: windows and a daily quota. */
+export function ScreenTimeRules({ rules, onChange }: { rules: ScreenRule[]; onChange: (rules: ScreenRule[]) => void }) {
+  const { t } = useTranslation();
+  const set = (i: number, next: ScreenRule) => onChange(replaced(rules, i, next));
+  return (
+    <Stack gap="xs">
+      {rules.map((rule, i) => (
+        <Paper withBorder p="xs" key={i}>
+          <Stack gap="xs">
+            <Group align="flex-end" grow>
+              <NameInput of="users" label={t('policies.linuxUser')} value={rule.user} onChange={(user) => set(i, { ...rule, user })} />
+              <NumberInput
+                label={t('policies.dailyMinutes')}
+                description={t('policies.dailyMinutesHint')}
+                min={0}
+                max={1440}
+                step={15}
+                value={rule.daily_minutes ?? ''}
+                onChange={(value) => set(i, { ...rule, daily_minutes: typeof value === 'number' && value > 0 ? value : undefined })}
+              />
+            </Group>
+            {rule.windows.map((window, w) => (
+              <Group key={w} align="flex-end" wrap="nowrap">
+                <div style={{ flex: 1 }}>
+                  <WindowInput value={window} onChange={(next) => set(i, { ...rule, windows: replaced(rule.windows, w, next) })} />
+                </div>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  aria-label={t('policies.remove')}
+                  onClick={() => set(i, { ...rule, windows: without(rule.windows, w) })}
+                >
+                  ×
+                </ActionIcon>
+              </Group>
+            ))}
+            {rule.windows.length === 0 && (
+              <Text size="xs" c="dimmed">
+                {t(rule.daily_minutes ? 'policies.quotaAllDay' : 'policies.noWindows')}
+              </Text>
+            )}
+            <Group>
+              <Button
+                size="xs"
+                variant="light"
+                onClick={() =>
+                  set(i, { ...rule, windows: [...rule.windows, { days: DAYS.slice(0, 5), start: '15:00', end: '19:00' }] })
+                }
+              >
+                {t('policies.addWindow')}
+              </Button>
+              <Button size="xs" variant="subtle" color="red" onClick={() => onChange(without(rules, i))}>
+                {t('policies.remove')}
+              </Button>
+            </Group>
+          </Stack>
+        </Paper>
+      ))}
+      <Button size="xs" variant="light" onClick={() => onChange([...rules, { user: '', windows: [], daily_minutes: 120 }])}>
+        {t('policies.addRule')}
+      </Button>
+    </Stack>
+  );
 }
 
 function AppRuleForm({
@@ -415,66 +482,10 @@ function PolicyForm({
         value={p.time_zone ?? ''}
         onChange={(e) => change({ time_zone: e.currentTarget.value })}
       />
-      {rules.map((rule, i) => (
-        <Paper withBorder p="xs" key={i}>
-          <Stack gap="xs">
-            <NameInput
-              of="users"
-              label={t('policies.linuxUser')}
-              value={rule.user}
-              onChange={(user) => change({ screen_time: replaced(rules, i, { ...rule, user }) })}
-            />
-            {rule.windows.map((window, w) => (
-              <Group key={w} align="flex-end" wrap="nowrap">
-                <div style={{ flex: 1 }}>
-                  <WindowInput
-                    value={window}
-                    onChange={(next) =>
-                      change({ screen_time: replaced(rules, i, { ...rule, windows: replaced(rule.windows, w, next) }) })
-                    }
-                  />
-                </div>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  aria-label={t('policies.remove')}
-                  onClick={() => change({ screen_time: replaced(rules, i, { ...rule, windows: without(rule.windows, w) }) })}
-                >
-                  ×
-                </ActionIcon>
-              </Group>
-            ))}
-            <Group>
-              <Button
-                size="xs"
-                variant="light"
-                onClick={() =>
-                  change({
-                    screen_time: replaced(rules, i, {
-                      ...rule,
-                      windows: [...rule.windows, { days: DAYS.slice(0, 5), start: '15:00', end: '19:00' }],
-                    }),
-                  })
-                }
-              >
-                {t('policies.addWindow')}
-              </Button>
-              <Button size="xs" variant="subtle" color="red" onClick={() => change({ screen_time: without(rules, i) })}>
-                {t('policies.remove')}
-              </Button>
-            </Group>
-          </Stack>
-        </Paper>
-      ))}
-      <Button
-        size="xs"
-        variant="light"
-        onClick={() =>
-          change({ screen_time: [...rules, { user: '', windows: [] }], time_zone: p.time_zone || zone })
-        }
-      >
-        {t('policies.addRule')}
-      </Button>
+      <ScreenTimeRules
+        rules={rules}
+        onChange={(screen_time) => change({ screen_time, time_zone: p.time_zone || zone })}
+      />
 
       <Divider />
       <Title order={5}>{t('policies.apps')}</Title>
@@ -613,7 +624,7 @@ function PolicyForm({
 }
 
 // What the server would treat as nothing should not reach it as empty lists.
-function normalized(p: Policy, language: string): Policy {
+export function normalized(p: Policy, language: string): Policy {
   const out: Policy = { ...p };
   // Warnings come in the language of whoever sets the rules.
   if (p.screen_time?.length) out.language = language.startsWith('de') ? 'de' : 'en';

@@ -82,6 +82,88 @@ func sessionEnd(rule api.ScreenTimeRule, now, extension time.Time) (time.Time, b
 	return end, allowed
 }
 
+// ruleEnd is sessionEnd with the daily quota: what is left of it today ends the
+// session early, and an extension still goes beyond it.
+func ruleEnd(rule api.ScreenTimeRule, now, extension time.Time, used time.Duration) (time.Time, bool) {
+	if rule.DailyMinutes == 0 {
+		return sessionEnd(rule, now, extension)
+	}
+	windowed := rule
+	if len(windowed.Windows) == 0 {
+		windowed.Windows = []api.Window{api.AllDay}
+	}
+	end, allowed := sessionEnd(windowed, now, time.Time{})
+	if left := time.Duration(rule.DailyMinutes)*time.Minute - used; left <= 0 {
+		allowed = false
+	} else if quota := now.Add(left); quota.Before(end) {
+		end = quota
+	}
+	if extension.After(now) && (!allowed || extension.After(end)) {
+		end, allowed = extension, true
+	}
+	return end, allowed
+}
+
+// usedToday is how long a user ID was at the desktop on the day of now.
+func (pe *PolicyEngine) usedToday(uid string, now time.Time) time.Duration {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	usage := pe.state.ScreenUsage[uid]
+	if usage.Day != now.Format(time.DateOnly) {
+		return 0
+	}
+	return time.Duration(usage.Seconds) * time.Second
+}
+
+// countScreenTime adds the time since the last check for someone at an unlocked
+// session. A gap longer than two checks, such as a suspended device, does not
+// count. The state is written once a minute, which is all a quota needs.
+func (pe *PolicyEngine) countScreenTime(ctx context.Context, uid string, ids []string, now time.Time) {
+	pe.mu.Lock()
+	last, seen := pe.counted[uid]
+	pe.counted[uid] = now
+	pe.mu.Unlock()
+	if !seen || !pe.atDesktop(ctx, ids) {
+		return
+	}
+	elapsed := now.Sub(last)
+	if elapsed <= 0 || elapsed > 2*screenTick {
+		return
+	}
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	if pe.state.ScreenUsage == nil {
+		pe.state.ScreenUsage = map[string]screenUsage{}
+	}
+	usage := pe.state.ScreenUsage[uid]
+	if day := now.Format(time.DateOnly); usage.Day != day {
+		usage = screenUsage{Day: day}
+	}
+	before := usage.Seconds / 60
+	usage.Seconds += int64(elapsed / time.Second)
+	pe.state.ScreenUsage[uid] = usage
+	if usage.Seconds/60 != before {
+		if err := pe.saveState(); err != nil {
+			pe.log.Error("saving the screen time failed", "err", err)
+		}
+	}
+}
+
+// atDesktop says whether one of the sessions is active and not locked.
+func (pe *PolicyEngine) atDesktop(ctx context.Context, ids []string) bool {
+	for _, id := range ids {
+		shown, err := pe.exec.Run(ctx, "loginctl", "show-session", id, "-p", "State", "-p", "LockedHint")
+		if err != nil {
+			continue
+		}
+		props := parseProperties(shown)
+		if props["State"] == "active" && props["LockedHint"] != "yes" {
+			return true
+		}
+	}
+	return false
+}
+
 // ScreenLoop runs on its own, because a package task in the other loop can take
 // minutes and a time window does not wait.
 func (pe *PolicyEngine) ScreenLoop(ctx context.Context) {
@@ -251,7 +333,10 @@ func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {
 				pe.screen[uid] = state
 			}
 			extension := extensions[rule.User].In(zone)
-			if end, ok := sessionEnd(rule, local, extension); ok {
+			if rule.DailyMinutes > 0 {
+				pe.countScreenTime(ctx, uid, session.ids, local)
+			}
+			if end, ok := ruleEnd(rule, local, extension, pe.usedToday(uid, local)); ok {
 				pe.warnScreenUser(ctx, session.name, state, language, local, end)
 				continue
 			}
@@ -343,7 +428,8 @@ func (pe *PolicyEngine) ScreenStatus(uid string, now time.Time) *api.ScreenStatu
 		if !slices.Contains(pe.screenAccounts(rule), uid) {
 			continue
 		}
-		end, allowed := sessionEnd(rule, now.In(zone), extensions[rule.User].In(zone))
+		local := now.In(zone)
+		end, allowed := ruleEnd(rule, local, extensions[rule.User].In(zone), pe.usedToday(uid, local))
 		status := &api.ScreenStatus{Allowed: allowed}
 		if allowed {
 			status.Until = end

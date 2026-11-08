@@ -76,7 +76,11 @@
       "on": "an",
       "off": "aus",
       "unknown": "unbekannt"
-    }
+    },
+    "dailyMinutes": "Minuten pro Tag",
+    "dailyMinutesHint": "Leer für kein Limit",
+    "quotaAllDay": "Keine Zeitfenster: jederzeit am Tag, bis die Minuten pro Tag verbraucht sind.",
+    "noWindows": "Keine Zeitfenster und keine Minuten: gar keine Sitzung."
   },
   "errors": {
     "policy_too_large": "Die Policy hat zu viele Einträge oder ist größer als {{value}} KiB.",
