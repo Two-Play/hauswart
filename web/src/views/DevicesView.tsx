@@ -133,6 +133,20 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
                 setValues((v) => ({ ...v, [field.name]: value }));
               },
             };
+            if (field.kind === 'select') {
+              return (
+                <Select
+                  key={field.name}
+                  label={shared.label}
+                  required={field.required}
+                  allowDeselect={false}
+                  description={field.hint && t(`fields.${field.hint}`)}
+                  value={values[field.name] ?? null}
+                  onChange={(value) => setValues((v) => ({ ...v, [field.name]: value ?? '' }))}
+                  data={(field.options ?? []).map((option) => ({ value: option, label: t(`fields.${field.name}_${option}`) }))}
+                />
+              );
+            }
             return field.kind === 'textarea' ? (
               <Textarea key={field.name} autosize minRows={5} maxRows={14} ff="monospace" {...shared} />
             ) : (
@@ -234,6 +248,11 @@ export function DevicesView({ user }: { user: User }) {
                         {d.hostname}
                       </Text>
                       <Group gap={4} wrap="nowrap">
+                        {d.report?.access && (
+                          <Badge color="red" variant="light">
+                            {t(`devices.access_${d.report.access.mode}`)}
+                          </Badge>
+                        )}
                         {d.report?.protected && (
                           <Badge color="grape" variant="light">
                             {t('devices.protected')}

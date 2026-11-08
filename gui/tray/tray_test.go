@@ -346,3 +346,17 @@ func TestSuspendedDeviceTakesNoRequests(t *testing.T) {
 		t.Fatalf("%v %q", app.sendButton.Disabled(), app.notice.Text)
 	}
 }
+
+func TestBlockedAccessIsShown(t *testing.T) {
+	agent := &fakeAgent{status: api.UserStatus{User: "mia", Access: &api.AccessStatus{Mode: api.AccessScreen, Until: noon.Add(time.Hour)}}}
+	app, _ := newApp(t, agent)
+	app.Refresh()
+	if want := lang.L("access.screen", map[string]any{"Until": "13:00"}); app.notice.Text != want {
+		t.Fatalf("got %q, want %q", app.notice.Text, want)
+	}
+	agent.status.Access = &api.AccessStatus{Mode: api.AccessLogin}
+	app.Refresh()
+	if want := lang.L("access.login", map[string]any{"Until": lang.L("access.lasting")}); app.notice.Text != want {
+		t.Fatalf("got %q", app.notice.Text)
+	}
+}

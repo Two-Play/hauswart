@@ -46,7 +46,9 @@
     "protected": "Geschützt",
     "suspended": "Gesperrt",
     "suspend": "Sperren",
-    "resume": "Entsperren"
+    "resume": "Entsperren",
+    "access_screen": "Bildschirm gesperrt",
+    "access_login": "Anmeldung verweigert"
   },
   "actions": {
     "title": "Aktion für {{name}}",

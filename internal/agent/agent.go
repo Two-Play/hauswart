@@ -290,6 +290,8 @@ type Agent struct {
 	policy *PolicyEngine
 	// notices tell people at the device what changed for them.
 	notices *Notices
+	// access blocks the device for some or all of its people.
+	access *Access
 	// requestsChanged asks for the state of requests now, after one was filed.
 	requestsChanged chan struct{}
 }
@@ -353,6 +355,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	}
 	a.policy = OpenPolicy(dir, a.exec, log)
 	a.notices = OpenNotices(dir, a.exec, a.policy.Language, log)
+	a.access = OpenAccess(dir, a.exec, a.notices, log)
 	a.requestsChanged = make(chan struct{}, 1)
 	a.client = &http.Client{
 		Timeout: (pollWaitSecs + 15) * time.Second,
@@ -399,6 +402,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })
 	wg.Go(func() { a.requestLoop(ctx) })
+	wg.Go(func() { a.access.Loop(ctx) })
 	wg.Wait()
 }
 
@@ -514,6 +518,9 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		report.Insight = a.exec.collectInsight(ctx)
 		report.Policy = a.policy.Status()
 		report.Apps = a.policy.Apps()
+		if a.access != nil {
+			report.Access = a.access.Current()
+		}
 		if a.guard != nil {
 			report.Protected = true
 			report.Counter = a.guard.Counter()
@@ -615,6 +622,11 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 		return a.setPolicy(task)
 	case api.TaskScreenExtend:
 		return a.extendScreenTime(task)
+	case api.TaskAccessSet:
+		if a.access == nil {
+			return api.TaskResult{OK: false, Output: "access is not available"}
+		}
+		return a.access.Set(ctx, task)
 	}
 	return a.exec.Execute(ctx, task)
 }

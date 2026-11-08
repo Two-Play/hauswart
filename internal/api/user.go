@@ -25,8 +25,10 @@ type UserStatus struct {
 	PolicyIssues bool           `json:"policy_issues,omitempty"`
 	Nextcloud    *NextcloudRule `json:"nextcloud,omitempty"`
 	// Suspended says that Hauswart holds the device back: no requests for now.
-	Suspended bool   `json:"suspended,omitempty"`
-	Dashboard string `json:"dashboard"`
+	Suspended bool `json:"suspended,omitempty"`
+	// Access says that this person may not use the device right now.
+	Access    *AccessStatus `json:"access,omitempty"`
+	Dashboard string        `json:"dashboard"`
 }
 
 // ScreenStatus is how someone stands with their screen time.
@@ -88,6 +90,10 @@ const (
 	EventPolicyCleared     = "policy.cleared"
 	EventDeviceSuspended   = "device.suspended"
 	EventDeviceResumed     = "device.resumed"
+	EventAccessScreen      = "access.screen"
+	EventAccessLogin       = "access.login"
+	EventAccessEnding      = "access.ending"
+	EventAccessOpen        = "access.open"
 )
 
 // DeviceEvent is a change Hauswart made that people at the device should know.

@@ -46,7 +46,9 @@
     "protected": "Protected",
     "suspended": "Suspended",
     "suspend": "Suspend",
-    "resume": "Resume"
+    "resume": "Resume",
+    "access_screen": "Screen blocked",
+    "access_login": "Logins refused"
   },
   "actions": {
     "title": "Action for {{name}}",
