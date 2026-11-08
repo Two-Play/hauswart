@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
 import { Loaded, showError } from '../ui';
+import { knownNames, KnownNamesContext, NameInput } from './NameInput';
 import { PackageSearch, SearchScopeContext } from './PackageSearch';
 
 interface Window {
@@ -161,10 +162,11 @@ function AppRuleForm({
   return (
     <Paper withBorder p="xs">
       <Stack gap="xs">
-        <TextInput
+        <NameInput
+          of="users"
           label={t('policies.appUser')}
           value={rule.user}
-          onChange={(e) => onChange({ ...rule, user: e.currentTarget.value })}
+          onChange={(user) => onChange({ ...rule, user })}
         />
         <Checkbox
           label={t('policies.appDownloads')}
@@ -416,10 +418,11 @@ function PolicyForm({
       {rules.map((rule, i) => (
         <Paper withBorder p="xs" key={i}>
           <Stack gap="xs">
-            <TextInput
+            <NameInput
+              of="users"
               label={t('policies.linuxUser')}
               value={rule.user}
-              onChange={(e) => change({ screen_time: replaced(rules, i, { ...rule, user: e.currentTarget.value }) })}
+              onChange={(user) => change({ screen_time: replaced(rules, i, { ...rule, user }) })}
             />
             {rule.windows.map((window, w) => (
               <Group key={w} align="flex-end" wrap="nowrap">
@@ -724,7 +727,11 @@ export function PolicyPanel({ groupId, devices }: { groupId: number; devices: De
             )}
             <Modal opened={editing} onClose={() => setEditing(false)} title={t('policies.title')} size="xl">
               <SearchScopeContext.Provider value={{ group: groupId }}>
-                <PolicyForm initial={data.policy ?? {}} known={knownApps(data)} onSave={save} onClose={() => setEditing(false)} />
+                <KnownNamesContext.Provider
+                  value={knownNames(devices.filter((d) => data.devices.some((state) => state.id === d.id)))}
+                >
+                  <PolicyForm initial={data.policy ?? {}} known={knownApps(data)} onSave={save} onClose={() => setEditing(false)} />
+                </KnownNamesContext.Provider>
               </SearchScopeContext.Provider>
             </Modal>
           </Stack>

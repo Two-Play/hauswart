@@ -336,6 +336,8 @@ func TestParseMeminfo(t *testing.T) {
 func TestFlatpakComesFirstWhereItIsMissing(t *testing.T) {
 	e, runner := newExecutor(t)
 	e.Has = func(string) bool { return false }
+	arrived := 0
+	e.FlatpakArrived = func() { arrived++ }
 	res := e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.mozilla.firefox"}}))
 	if !res.OK {
 		t.Fatal(res.Output)
@@ -356,6 +358,9 @@ func TestFlatpakComesFirstWhereItIsMissing(t *testing.T) {
 	res = e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.gimp.GIMP"}}))
 	if !res.OK || strings.HasPrefix(strings.Join(runner.calls[0], " "), "dnf5") {
 		t.Fatalf("installed flatpak twice: %v", runner.calls)
+	}
+	if arrived != 1 {
+		t.Fatalf("told %d times that Flatpak arrived", arrived)
 	}
 
 	e.Platform.Flatpak, e.Platform.Backend = false, nil
