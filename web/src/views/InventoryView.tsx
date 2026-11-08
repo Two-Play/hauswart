@@ -231,7 +231,27 @@ function Details({ id, onSaved }: { id: string; onSaved: () => void }) {
                     <Fact label={t('inventory.updates')}>
                       {device.updates?.checked_at ? t('inventory.pending', { count: device.updates.pending }) : ''}
                     </Fact>
+                    <Fact label={t('inventory.tpm')}>
+                      <CheckBadge state={inventory.security.tpm} />
+                    </Fact>
+                    <Fact label={t('inventory.secureBoot')}>
+                      {inventory.security.secure_boot === 'legacy' ? (
+                        <Badge color="red" variant="light">
+                          {t('inventory.legacyBoot')}
+                        </Badge>
+                      ) : (
+                        <CheckBadge state={inventory.security.secure_boot} />
+                      )}
+                    </Fact>
+                    <Fact label={t('inventory.hsi')}>{inventory.security.hsi ?? t('inventory.check.unknown')}</Fact>
                   </SimpleGrid>
+                  {(inventory.security.tpm === 'off' ||
+                    inventory.security.secure_boot === 'off' ||
+                    inventory.security.secure_boot === 'legacy') && (
+                    <Alert color="gray" mt="md">
+                      {t('inventory.notAttestable')}
+                    </Alert>
+                  )}
                 </Tabs.Panel>
               </Tabs>
             )}

@@ -220,7 +220,14 @@ export interface StoredInventory {
   hardware: { vendor?: string; model?: string; serial?: string; bios?: string; cpu?: string };
   disks?: { name: string; model?: string; size: number; rotational?: boolean }[];
   network?: { name: string; mac?: string; addresses?: string[] }[];
-  security: { disk_encryption?: string; screen_lock?: string; firewall?: string };
+  security: {
+    disk_encryption?: string;
+    screen_lock?: string;
+    firewall?: string;
+    tpm?: string;
+    secure_boot?: string;
+    hsi?: string;
+  };
   truncated?: boolean;
   package_count: number;
   updated_at: number;

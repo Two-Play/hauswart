@@ -455,6 +455,13 @@ themselves and snaps are not listed. All of it comes from the device, so a hacke
 can lie. It is as old as the time shown in the details, usually up to six hours, and
 longer for a device that was off. If a device cannot list its packages, the last list stays.
 
+The security state covers disk encryption, screen lock and firewall, and whether the
+device has a TPM 2.0, whether it starts with Secure Boot, and the Host Security ID of
+fwupd if that is installed (`fwupdmgr security`, from HSI:0 for unprotected firmware to
+HSI:4; a `!` means a runtime problem). A device without a TPM 2.0 or Secure Boot gets a
+note that it cannot prove how it started, not a warning: older PCs often have neither
+switched on, and the firmware settings usually can.
+
 Open a device to add what only you know: inventory number, person, location, purchase
 date, warranty and a note. A warranty shows a warning from 30 days before its end until
 30 days after. **Software** finds a package across all active devices, with its

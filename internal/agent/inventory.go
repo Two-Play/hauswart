@@ -250,7 +250,8 @@ func (e *Executor) collectInventory(ctx context.Context, log *slog.Logger) api.I
 		Hardware: e.hardware(),
 		Disks:    e.disks(),
 		Network:  e.network(),
-		Security: api.SecurityState{DiskEncryption: e.diskEncryption(ctx), ScreenLock: lock, Firewall: e.firewallState(ctx)},
+		Security: api.SecurityState{DiskEncryption: e.diskEncryption(ctx), ScreenLock: lock, Firewall: e.firewallState(ctx),
+			TPM: e.tpmState(), SecureBoot: e.secureBootState(), HSI: e.hsiLevel(ctx)},
 		Packages: packages, Truncated: truncated, KeepPackages: err != nil,
 	}
 }
