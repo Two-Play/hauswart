@@ -97,6 +97,7 @@ type Session struct {
 	devices func() (map[string]serverDevice, error)
 	sign    func(ssh.Signer, map[string]serverDevice, Item) error
 	signer  func() (ssh.Signer, error)
+	schema  func() (string, error)
 
 	// mu keeps one thing going at a time, as all of it changes cfg.
 	mu sync.Mutex
@@ -129,7 +130,21 @@ func Open() (*Session, error) {
 		return signItem(cfg, key, list, item)
 	}
 	s.signer = func() (ssh.Signer, error) { return signer(cfg) }
+	s.schema = func() (string, error) { return serverSchema(cfg) }
 	return s, nil
+}
+
+// Outdated says, in a sentence, whether this program knows other tasks than
+// the server, and so may refuse some. Empty if they agree.
+func (s *Session) Outdated() string {
+	if s.schema == nil {
+		return ""
+	}
+	schema, err := s.schema()
+	if err != nil {
+		return ""
+	}
+	return schemaWarning(schema)
 }
 
 // reload reads the settings again. The command line tool may have signed in the

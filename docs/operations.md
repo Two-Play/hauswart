@@ -235,6 +235,11 @@ hauswart-admin start-password --device <device-id> --user anna
 does the same with **Sign everything**. A security key still wants a touch per
 task, because each task carries a signature of its own.
 
+The tool and the admin app sign only what they know. Keep them at the version of the
+server: one that is older skips tasks with something new, such as a policy field that
+came later, and says "update hauswart-admin". Both compare the tasks they know with the
+server's and warn when they differ, the admin app with a red line at the top.
+
 `approve` shows each task in full. Read it, especially what it says about root.
 Start passwords can only come from this tool on a protected device.
 

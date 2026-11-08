@@ -21,6 +21,9 @@ type Backend interface {
 	Reject(admintool.Item) error
 	NameDevice(id, name string) error
 	LogIn(user, password string) error
+	// Outdated is not empty when this app and the server know different
+	// tasks, so that some will be skipped.
+	Outdated() string
 }
 
 // App is the window.
@@ -48,6 +51,8 @@ type App struct {
 	nameRow   *fyne.Container
 	nameText  *widget.Entry
 	status    *widget.Label
+	// banner says that this app is older or newer than the server.
+	banner *widget.Label
 }
 
 // New builds the window. Reload fills it.
@@ -91,7 +96,11 @@ func New(a fyne.App, backend Backend) *App {
 	right := container.NewBorder(t.head, actions, nil, nil, container.NewVScroll(t.body))
 	split := container.NewHSplit(left, container.NewPadded(right))
 	split.SetOffset(0.32)
-	t.window.SetContent(split)
+	t.banner = widget.NewLabel(lang.L("admin.outdated"))
+	t.banner.Wrapping = fyne.TextWrapWord
+	t.banner.Importance = widget.DangerImportance
+	t.banner.Hide()
+	t.window.SetContent(container.NewBorder(t.banner, nil, nil, nil, split))
 	t.show()
 	return t
 }
@@ -113,7 +122,13 @@ func (t *App) title(i int) string {
 func (t *App) Reload() {
 	t.background(func() {
 		items, err := t.backend.Items()
+		outdated := t.backend.Outdated() != ""
 		fyne.Do(func() {
+			if outdated {
+				t.banner.Show()
+			} else {
+				t.banner.Hide()
+			}
 			if err != nil {
 				t.failed(err)
 				return

@@ -627,6 +627,11 @@ func approve(args []string) error {
 	if err := cfg.call("GET", "/api/signing", nil, &queue); err != nil {
 		return err
 	}
+	if schema, err := serverSchema(cfg); err == nil {
+		if warning := schemaWarning(schema); warning != "" {
+			fmt.Fprintln(os.Stderr, "Warning:", warning)
+		}
+	}
 	if len(queue) == 0 {
 		fmt.Println("Nothing is waiting for a signature.")
 		return nil
@@ -844,4 +849,28 @@ func rotateKeys(args []string) error {
 		return err
 	}
 	return cfg.call("POST", "/api/devices/"+*id+"/signed-tasks", map[string]any{"type": api.TaskKeysSet, "signed": signed}, nil)
+}
+
+// serverSchema asks the server which tasks it knows. A server from before
+// the route has none, which counts as different.
+func serverSchema(cfg *config) (string, error) {
+	var out struct {
+		Schema string `json:"schema"`
+	}
+	if err := cfg.call("GET", "/api/version", nil, &out); err != nil {
+		if strings.Contains(err.Error(), "server said 404") {
+			return "", nil
+		}
+		return "", err
+	}
+	return out.Schema, nil
+}
+
+// schemaWarning explains a server that knows other tasks than this program.
+func schemaWarning(server string) string {
+	if server == api.Schema() {
+		return ""
+	}
+	return "This hauswart-admin and the server know different tasks: one of them is older. " +
+		"Update both to the same version, or tasks with something new are skipped."
 }

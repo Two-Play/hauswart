@@ -21,6 +21,7 @@ type fakeBackend struct {
 	named    map[string]string
 	err      error
 	logins   int
+	outdated string
 }
 
 func (f *fakeBackend) Items() ([]admintool.Item, error) { return f.items, nil }
@@ -39,6 +40,8 @@ func (f *fakeBackend) NameDevice(id, name string) error {
 	f.named[id] = name
 	return nil
 }
+func (f *fakeBackend) Outdated() string { return f.outdated }
+
 func (f *fakeBackend) LogIn(string, string) error {
 	f.logins++
 	return nil
@@ -225,5 +228,17 @@ func TestSigningEverythingShowsAllAndSkipsProblems(t *testing.T) {
 	a.signEverything(items)
 	if strings.Join(backend.signed, ",") != "1,2" {
 		t.Fatalf("got %v", backend.signed)
+	}
+}
+
+func TestOutdatedAppSaysSo(t *testing.T) {
+	app, backend := newApp(t)
+	if app.banner.Visible() {
+		t.Fatal("the banner shows for an app that matches the server")
+	}
+	backend.outdated = "older"
+	app.Reload()
+	if !app.banner.Visible() {
+		t.Fatal("no banner for an app that is older than the server")
 	}
 }
