@@ -479,24 +479,27 @@ it, and the next one becomes the boot to compare with.
 
 ### The TLS key in the TPM
 
-Once the TPM is registered, the agent moves its TLS key into it: the TPM makes a new
-key that never leaves it, the attestation key certifies that, and the server issues a
-certificate for the device's same ID. The key file `agent-key.pem` goes once the
-server took the new certificate; `agent-key.tpm` holds what only this TPM can load.
-From then on, a copy of `/var/lib/hauswart` does not get another computer in, and
-**Details**, tab **Boot**, says that the key is in the TPM.
-
-The price: **if the TPM is cleared, the device is locked out** and has to be enrolled
-again, as after a lost key. A firmware reset or a "clear TPM" in the firmware settings
-does that, and some AMD firmware TPMs ask for it on a firmware update. Enroll the device
-again with a new token; on a protected device with `hauswart-admin enroll-command`.
-
-To keep the key a file, set this in `/var/lib/hauswart/agent.json` before the agent
-first proves the boot, and restart it:
+A device can keep its TLS key in the TPM instead of the file `agent-key.pem`. It is
+off by default; a device needs no TPM for anything in Hauswart. Turn it on per device
+in `/var/lib/hauswart/agent.json` and restart the agent:
 
 ```json
-"tpm_key": false
+"tpm_key": true
 ```
+
+At the next proof of the boot, the TPM makes a new key that never leaves it, the
+attestation key certifies that, and the server issues a certificate for the device's
+same ID. The key file goes once the server took the new certificate; `agent-key.tpm`
+holds what only this TPM can load. From then on, a copy of `/var/lib/hauswart` does
+not get another computer in, and **Details**, tab **Boot**, says that the key is in
+the TPM.
+
+The price: **if the TPM is cleared or gone, the device is locked out** and has to be
+enrolled again, as after a lost key. A firmware reset, a "clear TPM" in the firmware
+settings or switching the TPM off does that, and some AMD firmware TPMs ask for it on
+a firmware update. The agent's journal then says "enroll this device again". Do that
+with a new token; on a protected device with `hauswart-admin enroll-command`.
+Turning `tpm_key` off again afterwards does not bring the old key back.
 
 ## Keep an inventory
 

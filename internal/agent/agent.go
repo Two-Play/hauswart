@@ -71,8 +71,10 @@ type Config struct {
 	// means api.DefaultPasskeyTypes, an empty list means nothing at all, so this
 	// field must never get omitempty.
 	PasskeyTypes []string `json:"passkey_types"`
-	// TPMKey moves the TLS key into the TPM once the TPM is registered. Off,
-	// the key stays a file, which survives a cleared TPM. null means on.
+	// TPMKey moves the TLS key into the TPM once the TPM is registered, so that
+	// a copy of the agent's files gets in nowhere else. It is off unless the
+	// device owner turns it on: a cleared or missing TPM then locks the device
+	// out until it is enrolled again.
 	TPMKey *bool `json:"tpm_key,omitempty"`
 }
 
