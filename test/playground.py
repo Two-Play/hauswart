@@ -84,6 +84,13 @@ def build():
     tray = f"{ROOT}/dist/hauswart-tray-{VERSION}-1.x86_64.rpm"
     if not os.path.exists(tray):
         sys.exit("the desktop app is missing, run make packages first")
+    # The desktop apps are built apart, so they can lag behind. An old admin app
+    # refuses to sign what it does not know, an old tray misses new notices.
+    changed = subprocess.run(["git", "log", "-1", "--format=%ct", "--", "gui", "internal/api", "internal/admintool"],
+                             cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    for app in (tray, f"{ROOT}/dist/hauswart-admin-gui"):
+        if changed and os.path.exists(app) and os.path.getmtime(app) < int(changed):
+            print(f"WARNING: {os.path.basename(app)} is older than the code it is built from, run make packages", flush=True)
     return tray
 
 
@@ -239,6 +246,14 @@ Hauswart is running. Your data stays in {HOME}.
     3. {admin} passkeys list
        {admin} passkeys pin --device {device_id} --passkey N
 
+  Live terminal on the VM: Terminal on the device card, with your passkey
+    pinned as above, or without one:
+    {admin} terminal --device {device_id}
+
+  Boot proof: Details of the device, tab Boot. The VM has a TPM and Secure Boot;
+    change the kernel parameters to see an alarm after a restart:
+    sudo grubby --update-kernel=ALL --args=hauswart-test && sudo reboot
+
   Root shell in the VM:
     ssh -i {HOME}/id -p {machine.port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null fedora@127.0.0.1
 
@@ -279,8 +294,15 @@ def main():
     seed = f"{HOME}/seed-{NAME}.iso"
     seed_args = ["-drive", f"file={seed},media=cdrom,readonly=on"] if os.path.exists(seed) else \
         vm.cloud_seed(HOME, NAME, open(f"{HOME}/id.pub").read().strip())
-    machine = vm.VM(HOME, NAME, vm.cloud_image(), "fedora", SSH_PORT - vm.SSH_OFFSET, [*seed_args, "-vga", "virtio"],
-                    display=DISPLAY)
+    # A TPM and Secure Boot, so that the device proves how it starts. They stay
+    # between runs like the disk; an older playground gets them on its next start.
+    machine_args = []
+    if vm.tpm_available():
+        machine_args = vm.tpm_machine(HOME, NAME, keep=True)
+    else:
+        print("no swtpm or OVMF with Secure Boot here, so the VM has no TPM: sudo dnf install swtpm edk2-ovmf", flush=True)
+    machine = vm.VM(HOME, NAME, vm.cloud_image(), "fedora", SSH_PORT - vm.SSH_OFFSET,
+                    [*seed_args, "-vga", "virtio", *machine_args], display=DISPLAY)
     try:
         if state.get("reenroll"):
             if not machine.wait_ssh():

@@ -492,20 +492,30 @@ OVMF = [("/usr/share/edk2/ovmf/OVMF_CODE_4M.secboot.qcow2", "/usr/share/edk2/ovm
         ("/usr/share/OVMF/OVMF_CODE_4M.secboot.fd", "/usr/share/OVMF/OVMF_VARS_4M.ms.fd")]
 
 
-def tpm_machine(work, name):
+def tpm_available():
+    """Whether this computer has swtpm and a firmware with Secure Boot."""
+    return shutil.which("swtpm") is not None and any(os.path.exists(c) and os.path.exists(v) for c, v in OVMF)
+
+
+def tpm_machine(work, name, keep=False):
     """Starts a software TPM and returns the QEMU arguments for a machine with
-    it and with UEFI Secure Boot, keys of Microsoft enrolled as on real PCs."""
+    it and with UEFI Secure Boot, keys of Microsoft enrolled as on real PCs.
+    keep holds on to the TPM and the firmware's variables between runs, as a
+    real computer does."""
     # Unix sockets allow only short paths, which the work directory may not be.
-    state = tempfile.mkdtemp(prefix="hw-tpm-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+    socket_dir = tempfile.mkdtemp(prefix="hw-tpm-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+    state = f"{work}/tpm-{name}" if keep else socket_dir
+    os.makedirs(state, exist_ok=True)
     subprocess.Popen(["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state}",
-                      "--ctrl", f"type=unixio,path={state}/sock", "--daemon"]).wait()
+                      "--ctrl", f"type=unixio,path={socket_dir}/sock", "--daemon"]).wait()
     code, variables = next((c, v) for c, v in OVMF if os.path.exists(c) and os.path.exists(v))
-    shutil.copy(variables, f"{work}/vars-{name}.fd")
+    if not keep or not os.path.exists(f"{work}/vars-{name}.fd"):
+        shutil.copy(variables, f"{work}/vars-{name}.fd")
     image = "qcow2" if code.endswith(".qcow2") else "raw"
     return ["-machine", "q35,smm=on", "-global", "driver=cfi.pflash01,property=secure,value=on",
             "-drive", f"if=pflash,format={image},unit=0,file={code},readonly=on",
             "-drive", f"if=pflash,format={image},unit=1,file={work}/vars-{name}.fd",
-            "-chardev", f"socket,id=chrtpm,path={state}/sock", "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
+            "-chardev", f"socket,id=chrtpm,path={socket_dir}/sock", "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
             "-device", "tpm-tis,tpmdev=tpm0"]
 
 
