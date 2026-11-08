@@ -22,9 +22,23 @@ import (
 	"github.com/Two-Play/hauswart/internal/envfile"
 )
 
+// Subject is the subject of a mail. It comes from this fixed set, so nothing
+// from a request or a device reaches a header.
+type Subject string
+
+const (
+	SubjectRequest   Subject = "New request in Hauswart"
+	SubjectAttention Subject = "Something needs attention in Hauswart"
+)
+
+// item is a message on its way.
+type item struct {
+	subject Subject
+	message string
+}
+
 const (
 	title        = "Hauswart"
-	subject      = "New request in Hauswart"
 	queueSize    = 64
 	maxPerHour   = 30
 	sendTimeout  = 30 * time.Second
@@ -163,7 +177,7 @@ type Notifier struct {
 	log    *slog.Logger
 	roots  *x509.CertPool
 	client *http.Client
-	queue  chan string
+	queue  chan item
 
 	mu          sync.Mutex
 	windowStart time.Time
@@ -176,7 +190,7 @@ func New(cfg Config, roots *x509.CertPool, log *slog.Logger) *Notifier {
 		cfg:   cfg,
 		log:   log,
 		roots: roots,
-		queue: make(chan string, queueSize),
+		queue: make(chan item, queueSize),
 		client: &http.Client{
 			Timeout:   sendTimeout,
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}},
@@ -189,13 +203,17 @@ func New(cfg Config, roots *x509.CertPool, log *slog.Logger) *Notifier {
 // Send queues a message and returns at once. A member can file requests at any
 // rate, so the number of messages is limited, and the dashboard still shows
 // everything that is dropped here.
-func (n *Notifier) Send(message string) {
+// Send queues a message about a new request.
+func (n *Notifier) Send(message string) { n.SendAs(SubjectRequest, message) }
+
+// SendAs queues a message with one of the fixed subjects.
+func (n *Notifier) SendAs(subject Subject, message string) {
 	if !n.allow(time.Now()) {
 		n.log.Warn("too many notifications this hour, dropping one")
 		return
 	}
 	select {
-	case n.queue <- message:
+	case n.queue <- item{subject, message}:
 	default:
 		n.log.Warn("notification queue is full, dropping one")
 	}
@@ -220,12 +238,12 @@ func (n *Notifier) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case message := <-n.queue:
+		case it := <-n.queue:
 			if n.cfg.NtfyURL != "" {
-				n.deliver(ctx, "ntfy", func(ctx context.Context) error { return n.sendNtfy(ctx, message) })
+				n.deliver(ctx, "ntfy", func(ctx context.Context) error { return n.sendNtfy(ctx, it.message) })
 			}
 			if n.cfg.SMTPHost != "" {
-				n.deliver(ctx, "email", func(ctx context.Context) error { return n.sendMail(ctx, message) })
+				n.deliver(ctx, "email", func(ctx context.Context) error { return n.sendMail(ctx, it.subject, it.message) })
 			}
 		}
 	}
@@ -284,7 +302,7 @@ func (n *Notifier) sendNtfy(ctx context.Context, message string) error {
 
 // sendMail refuses to go on without TLS when TLS was asked for: a server, or
 // someone in between, that leaves out STARTTLS must not get the password.
-func (n *Notifier) sendMail(ctx context.Context, message string) error {
+func (n *Notifier) sendMail(ctx context.Context, subject Subject, message string) error {
 	dialer := net.Dialer{}
 	address := net.JoinHostPort(n.cfg.SMTPHost, n.cfg.SMTPPort)
 	conn, err := dialer.DialContext(ctx, "tcp", address)
@@ -337,7 +355,7 @@ func (n *Notifier) sendMail(ctx context.Context, message string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := body.Write(n.mailText(message)); err != nil {
+	if _, err := body.Write(n.mailText(subject, message)); err != nil {
 		return err
 	}
 	if err := body.Close(); err != nil {
@@ -346,8 +364,8 @@ func (n *Notifier) sendMail(ctx context.Context, message string) error {
 	return client.Quit()
 }
 
-// mailText has a fixed subject, so nothing from a request reaches a header.
-func (n *Notifier) mailText(message string) []byte {
+// mailText has a subject from a fixed set, so nothing from a request reaches a header.
+func (n *Notifier) mailText(subject Subject, message string) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n", n.cfg.SMTPFrom, strings.Join(n.cfg.SMTPTo, ", "),
 		subject, time.Now().Format(time.RFC1123Z))
