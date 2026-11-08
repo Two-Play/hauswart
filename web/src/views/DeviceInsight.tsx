@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type UpdateStatus, type Warning } from '../api';
 import { DataTable, formatBytes, formatTime, Loaded, showError } from '../ui';
+import { BootTab } from './BootTab';
 import { HistoryChart, type Point } from './HistoryChart';
 
 const REFRESH_MS = 60_000;
@@ -62,6 +63,8 @@ export function useWarningText() {
   const { t } = useTranslation();
   return (warning: Warning) => {
     if (warning.code === 'disk_full') return t('insight.diskFull', { percent: warning.value });
+    if (warning.code === 'boot_changed') return t('boot.warning', { count: warning.value });
+    if (warning.code === 'attestation_missing') return t('boot.missing', { count: warning.value });
     if (warning.code === 'warranty_ending') {
       return warning.value < 0 ? t('insight.warrantyOver') : t('insight.warrantyEnding', { count: warning.value });
     }
@@ -85,7 +88,7 @@ export function InsightBadges({ device }: { device: Device }) {
   return (
     <Group gap={4}>
       {warnings.map((warning) => (
-        <Badge key={warning.code} color={warning.code === 'disk_full' ? 'red' : 'yellow'} variant="light">
+        <Badge key={warning.code} color={warning.code === 'disk_full' || warning.code === 'boot_changed' ? 'red' : 'yellow'} variant="light">
           {warningText(warning)}
         </Badge>
       ))}
@@ -125,7 +128,7 @@ function HistoryTab({ device }: { device: Device }) {
   return (
     <Stack>
       {device.warnings?.map((warning) => (
-        <Alert key={warning.code} color={warning.code === 'disk_full' ? 'red' : 'yellow'}>
+        <Alert key={warning.code} color={warning.code === 'disk_full' || warning.code === 'boot_changed' ? 'red' : 'yellow'}>
           {warningText(warning)}
           {warning.code === 'cert_expiring' && `. ${t('insight.certHint')}`}
         </Alert>
@@ -414,6 +417,7 @@ export function DeviceInsight({ device, onClose }: { device: Device; onClose: ()
           <Tabs.Tab value="updates">{t('insight.tabUpdates')}</Tabs.Tab>
           <Tabs.Tab value="accounts">{t('insight.tabAccounts')}</Tabs.Tab>
           <Tabs.Tab value="logs">{t('insight.tabLogs')}</Tabs.Tab>
+          <Tabs.Tab value="boot">{t('boot.tab')}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="history">
           <HistoryTab device={device} />
@@ -426,6 +430,9 @@ export function DeviceInsight({ device, onClose }: { device: Device; onClose: ()
         </Tabs.Panel>
         <Tabs.Panel value="logs">
           <LogsTab device={device} />
+        </Tabs.Panel>
+        <Tabs.Panel value="boot">
+          <BootTab device={device} />
         </Tabs.Panel>
       </Tabs>
     </Modal>

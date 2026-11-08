@@ -46,7 +46,7 @@ export interface UpdateStatus {
 }
 
 export interface Warning {
-  code: 'disk_full' | 'cert_expiring' | 'warranty_ending';
+  code: 'disk_full' | 'cert_expiring' | 'warranty_ending' | 'boot_changed' | 'attestation_missing';
   value: number;
 }
 

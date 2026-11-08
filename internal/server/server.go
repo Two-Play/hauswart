@@ -80,6 +80,8 @@ type Server struct {
 	oidc *oidcLogin
 	// flathub answers Flatpak searches, nil if they stay on the server.
 	flathub *catalog.Flathub
+	// tpm holds the steps of attestation that wait for a device.
+	tpm tpmState
 }
 
 type loginFailure struct {

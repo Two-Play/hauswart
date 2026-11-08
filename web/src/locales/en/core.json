@@ -27,7 +27,8 @@
     "screentime": "Screen time",
     "attention": {
       "tasks": "{{count}} failed in the last day",
-      "groups": "{{count}} devices differ from their policy"
+      "groups": "{{count}} devices differ from their policy",
+      "devices": "{{count}} devices started differently than accepted"
     }
   },
   "devices": {

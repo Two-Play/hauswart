@@ -27,7 +27,8 @@
     "screentime": "Bildschirmzeit",
     "attention": {
       "tasks": "{{count}} fehlgeschlagen am letzten Tag",
-      "groups": "{{count}} Geräte weichen von ihrer Richtlinie ab"
+      "groups": "{{count}} Geräte weichen von ihrer Richtlinie ab",
+      "devices": "{{count}} Geräte starteten anders als bestätigt"
     }
   },
   "devices": {
