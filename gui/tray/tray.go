@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,13 +20,18 @@ import (
 
 	"github.com/Two-Play/hauswart/gui/agentclient"
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/catalog"
 )
 
 // Agent is what the app needs from the agent on this device.
 type Agent interface {
 	Status() (api.UserStatus, error)
 	Request(api.UserRequest) (string, error)
+	Search(kind, q string) ([]catalog.Entry, error)
 }
+
+// searchDelay waits for a pause in typing before asking.
+const searchDelay = 300 * time.Millisecond
 
 // Keyring keeps the Nextcloud password of the person running this.
 type Keyring interface {
@@ -49,6 +55,13 @@ type App struct {
 	now     func() time.Time
 	// background keeps waiting for the agent away from the window.
 	background func(func())
+	// later runs a search after a pause in typing. Tests run it at once.
+	later func(time.Duration, func()) *time.Timer
+	// searches counts searches, so that a late answer does not win.
+	searches int
+	timer    *time.Timer
+	// options are what the name field offers now.
+	options []string
 
 	status api.UserStatus
 
@@ -59,7 +72,7 @@ type App struct {
 	request  *container.TabItem
 	cloud    *container.TabItem
 	kind     *widget.Select
-	detail   *widget.Entry
+	detail   *widget.SelectEntry
 	reason   *widget.Entry
 	result   *widget.Label
 	cloudURL *widget.Label
@@ -73,7 +86,7 @@ type App struct {
 
 // New builds the app. Refresh fills it.
 func New(a fyne.App, agent Agent, keyring Keyring) *App {
-	t := &App{app: a, agent: agent, keyring: keyring, now: time.Now, background: func(f func()) { go f() }}
+	t := &App{app: a, agent: agent, keyring: keyring, now: time.Now, background: func(f func()) { go f() }, later: time.AfterFunc}
 	t.window = a.NewWindow(lang.L("title"))
 	t.window.Resize(fyne.NewSize(420, 380))
 	// The window comes and goes, the app stays in the tray.
@@ -117,7 +130,8 @@ func (t *App) requestForm() fyne.CanvasObject {
 	for i, kind := range kinds {
 		labels[i] = lang.L("request.kind." + kind)
 	}
-	t.detail = widget.NewEntry()
+	t.detail = widget.NewSelectEntry(nil)
+	t.detail.OnChanged = t.suggest
 	t.reason = widget.NewEntry()
 	t.result = widget.NewLabel("")
 	t.result.Wrapping = fyne.TextWrapWord
@@ -129,6 +143,49 @@ func (t *App) requestForm() fyne.CanvasObject {
 		widget.NewFormItem(lang.L("request.reason"), t.reason),
 	)
 	return container.NewVBox(form, widget.NewButton(lang.L("request.send"), t.send), t.result)
+}
+
+// suggest offers names for the word being typed. The options are the whole
+// text, with the last word completed, as choosing one replaces the text.
+func (t *App) suggest(text string) {
+	kind := t.selectedKind()
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+	t.searches++
+	ticket := t.searches
+	words := strings.Fields(text)
+	if timed(kind) || len(words) == 0 || strings.HasSuffix(text, " ") || len(words[len(words)-1]) < catalog.MinQuery {
+		t.setOptions(nil)
+		return
+	}
+	search := api.SearchPackage
+	if kind == api.RequestFlatpak {
+		search = api.SearchFlatpak
+	}
+	prefix, last := words[:len(words)-1], words[len(words)-1]
+	t.timer = t.later(searchDelay, func() {
+		t.background(func() {
+			entries, err := t.agent.Search(search, last)
+			fyne.Do(func() {
+				if ticket != t.searches {
+					return
+				}
+				var options []string
+				for _, entry := range entries {
+					if err == nil && entry.Name != last {
+						options = append(options, strings.Join(append(slices.Clone(prefix), entry.Name), " "))
+					}
+				}
+				t.setOptions(options)
+			})
+		})
+	})
+}
+
+func (t *App) setOptions(options []string) {
+	t.options = options
+	t.detail.SetOptions(options)
 }
 
 func (t *App) selectedKind() string {

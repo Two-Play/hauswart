@@ -349,7 +349,9 @@ there, and an approver can approve a sudo request for a member account they cont
 Protect a device, and sudo needs `hauswart-admin` no matter who approves.
 
 Roles are checks of the server. They mean nothing against a hacked server, where
-only what is pinned on a device still holds.
+only what is pinned on a device still holds. The same goes for approval rules: they
+can approve a request without anyone looking, but on a protected device the task
+still needs a signature.
 
 ### During a sudo grant
 
@@ -435,6 +437,20 @@ for a PIN is up to that passkey, not to Hauswart.
   `sudo` rule granted before stays until it expires, as long as the agent runs.
 - **The development listener** `-dev-http` has no TLS. It accepts only loopback
   addresses. Do not use it in operation.
+
+## Package search
+
+Search fields in the dashboard and the desktop app suggest names. For packages, each
+device sends the names of all packages its repositories offer, once a day and only
+when they changed. The server keeps one copy per list, checks that the list is what
+its hash says, and a device can only point itself at a list. For Flatpaks, the
+server asks Flathub. Only the search term leaves the server, and answers are cached
+for an hour. Start the server with `-flathub-search=false` to keep searches at home;
+Flatpak searches then only find what devices have installed.
+
+Suggestions are a help to type a name and never decide anything. A hacked device can
+put names into its own list, which shows up in searches for that device and for
+groups it belongs to.
 
 ## The inventory
 

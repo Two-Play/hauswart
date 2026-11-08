@@ -10,10 +10,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/catalog"
 )
 
 // DefaultSocket is where the agent listens.
@@ -61,6 +63,21 @@ func (c *Client) Status() (api.UserStatus, error) {
 		return status, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return status, json.NewDecoder(resp.Body).Decode(&status)
+}
+
+// Search asks the agent for packages or Flatpaks whose names contain q. It is a
+// help while typing, so a failure is an empty list.
+func (c *Client) Search(kind, q string) ([]catalog.Entry, error) {
+	resp, err := c.http.Get("http://agent/search?" + url.Values{"kind": {kind}, "q": {q}}.Encode())
+	if err != nil {
+		return nil, ErrUnreachable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	var entries []catalog.Entry
+	return entries, json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&entries)
 }
 
 // Request files a request.
