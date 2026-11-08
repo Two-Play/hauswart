@@ -27,6 +27,8 @@ type passkeyTypesView struct {
 	// Capable is everything a passkey could ever approve; the rest always
 	// needs a signature.
 	Capable []string `json:"capable"`
+	// Unsigned run on a protected device without any approval.
+	Unsigned []string `json:"unsigned"`
 	// Devices counts the protected devices by what they have.
 	Devices struct {
 		Applied int `json:"applied"`
@@ -41,7 +43,7 @@ func (s *Server) handlePasskeyTypes(w http.ResponseWriter, r *http.Request, _ st
 		s.internal(w, err)
 		return
 	}
-	view := passkeyTypesView{Types: types, Chosen: chosen, Capable: api.PasskeyCapable}
+	view := passkeyTypesView{Types: types, Chosen: chosen, Capable: api.PasskeyCapable, Unsigned: api.UnsignedTypes()}
 	devices, err := s.store.ListDevices(r.Context())
 	if err != nil {
 		s.internal(w, err)

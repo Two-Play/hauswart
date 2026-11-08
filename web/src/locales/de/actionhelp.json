@@ -1,0 +1,33 @@
+{
+  "actionHelp": {
+    "pkg_install": "Installiert Pakete aus den Paketquellen des Geräts. Ihre Skripte laufen als root.",
+    "flatpak_install": "Installiert Apps von Flathub für alle auf dem Gerät.",
+    "pkg_remove": "Entfernt Pakete, mit allem, was von ihnen abhängt.",
+    "pkg_upgrade": "Aktualisiert alle Pakete jetzt statt beim nächsten geplanten Mal.",
+    "access_set": "Sperrt den Bildschirm, verweigert die Anmeldung oder deckt den Bildschirm ab, für einzelne oder alle, oder öffnet das Gerät wieder.",
+    "screen_extend": "Gibt jemandem mehr Bildschirmzeit, nur für heute.",
+    "sudo_grant": "Gibt jemandem für begrenzte Zeit Admin-Rechte auf diesem Gerät.",
+    "sudo_revoke": "Nimmt Admin-Rechte sofort zurück.",
+    "user_create": "Legt ein Linux-Konto auf dem Gerät an.",
+    "user_lock": "Sperrt ein Konto, sodass sich niemand damit anmelden kann.",
+    "user_unlock": "Entsperrt ein Konto wieder.",
+    "user_passwd": "Setzt ein Startpasswort, einmal angezeigt, das bei der ersten Anmeldung geändert werden muss.",
+    "group_add": "Nimmt jemanden in eine Linux-Gruppe auf, etwa fürs Drucken oder für Medien.",
+    "group_remove": "Nimmt jemanden aus einer Linux-Gruppe heraus.",
+    "limit_set": "Begrenzt, wie viel Prozessor und Speicher die Programme von jemandem nutzen dürfen.",
+    "power_reboot": "Startet das Gerät nach einer Warnung auf dem Bildschirm neu.",
+    "power_shutdown": "Fährt das Gerät nach einer Warnung auf dem Bildschirm herunter.",
+    "power_cancel": "Bricht einen wartenden Neustart oder das Herunterfahren ab.",
+    "notify_send": "Zeigt eine Nachricht auf den Desktops des Geräts.",
+    "file_put": "Legt eine Datei in einen erlaubten Ordner des Geräts.",
+    "ca_install": "Lässt das Gerät einer Zertifizierungsstelle vertrauen.",
+    "terminal_open": "Öffnet eine Live-Shell auf dem Gerät, als root oder als eines seiner Konten."
+  },
+  "actions": {
+    "approval": {
+      "passkey": "Passkey oder Signatur",
+      "signature": "Signatur",
+      "direct": "Ohne Freigabe"
+    }
+  }
+}
