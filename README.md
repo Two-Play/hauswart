@@ -27,6 +27,8 @@ in containers and virtual machines, not on physical machines or over a real VPN.
   change group memberships
 - Restart and shutdown with a warning and a way to cancel
 - Messages to people as a popup on their desktop
+- Popups about what changed for someone, such as an answered request, sudo
+  that ends soon or new software, and a history in the desktop app
 - CPU and memory limits per user
 - Built-in certificate authority with automatic certificate renewal, and
   certificates for home services

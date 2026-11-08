@@ -84,6 +84,7 @@
   "history.event.software.removed": "Entfernt: {{.Detail}}",
   "history.event.software.upgraded": "Software aktualisiert",
   "history.event.software.failed": "Software-Änderung fehlgeschlagen: {{.Detail}}",
+  "history.event.software.update_failed": "Update fehlgeschlagen",
   "history.event.account.locked": "Konto gesperrt",
   "history.event.account.unlocked": "Konto entsperrt",
   "history.event.account.password": "Passwort geändert",

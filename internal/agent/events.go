@@ -39,6 +39,7 @@ var eventTexts = map[string]map[string]string{
 		api.EventSoftwareRemoved:   "Removed: {detail}",
 		api.EventSoftwareUpgraded:  "The software on this device was updated.",
 		api.EventSoftwareFailed:    "A software change did not work: {detail}",
+		api.EventUpdateFailed:      "The update of this device did not work.",
 		api.EventAccountLocked:     "Your account was locked.",
 		api.EventAccountUnlocked:   "Your account was unlocked.",
 		api.EventAccountPassword:   "Your password was changed.",
@@ -60,6 +61,7 @@ var eventTexts = map[string]map[string]string{
 		api.EventSoftwareRemoved:   "Entfernt: {detail}",
 		api.EventSoftwareUpgraded:  "Die Software auf diesem Gerät wurde aktualisiert.",
 		api.EventSoftwareFailed:    "Eine Änderung an der Software hat nicht geklappt: {detail}",
+		api.EventUpdateFailed:      "Das Update dieses Geräts hat nicht geklappt.",
 		api.EventAccountLocked:     "Dein Konto wurde gesperrt.",
 		api.EventAccountUnlocked:   "Dein Konto wurde entsperrt.",
 		api.EventAccountPassword:   "Dein Passwort wurde geändert.",
@@ -118,6 +120,8 @@ type Notices struct {
 	mu       sync.Mutex
 	state    noticeState
 	requests []api.RequestState
+	// asked is when the server last said how the requests stand.
+	asked time.Time
 	// warned is the end of the grant each person was warned about.
 	warned map[string]time.Time
 	// told are the requests whose task already showed a popup of its own.
@@ -201,7 +205,7 @@ func (n *Notices) AfterTask(ctx context.Context, task api.Task, result api.TaskR
 		n.mu.Unlock()
 	}
 	urgency := urgencyNormal
-	if event.Kind == api.EventSoftwareFailed || event.Kind == api.EventAccountLocked {
+	if event.Kind == api.EventSoftwareFailed || event.Kind == api.EventUpdateFailed || event.Kind == api.EventAccountLocked {
 		urgency = urgencyCritical
 	}
 	n.record(ctx, event, urgency)
@@ -230,7 +234,7 @@ func taskEvent(task api.Task, result api.TaskResult) (api.DeviceEvent, bool) {
 		return api.DeviceEvent{Kind: api.EventSoftwareInstalled, Detail: detail}, true
 	case api.TaskPkgUpgrade:
 		if !result.OK {
-			return api.DeviceEvent{Kind: api.EventSoftwareFailed}, true
+			return api.DeviceEvent{Kind: api.EventUpdateFailed}, true
 		}
 		return api.DeviceEvent{Kind: api.EventSoftwareUpgraded}, true
 	case api.TaskScreenExtend:
@@ -331,6 +335,7 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 		}
 	}
 	n.requests = requests
+	n.asked = n.now()
 	n.state.Seen = seen
 	n.saveLocked()
 	n.mu.Unlock()
@@ -342,6 +347,13 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 		}
 		n.show(ctx, r.User, eventText(language, r.State, requestName(language, r), time.Time{}), urgency)
 	}
+}
+
+// Stale says that the requests are older than the loop would let them get.
+func (n *Notices) Stale() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.now().Sub(n.asked) >= requestInterval
 }
 
 // History is what one person may see: their requests, their events and those
