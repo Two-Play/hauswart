@@ -49,9 +49,9 @@ func newUserEnv(t *testing.T) *userEnv {
 	env.service = &userService{
 		exec: pe.exec, policy: pe, dashboard: "https://hauswart.example", now: func() time.Time { return monday(16, 0) },
 		asked: map[uint32][]time.Time{}, active: map[uint32]int{}, names: map[uint32]knownName{}, recent: map[uint32]recentStatus{},
-		send: func(_ context.Context, r api.DeviceRequest) error {
+		send: func(_ context.Context, r api.DeviceRequest) (string, error) {
 			env.sent = append(env.sent, r)
-			return nil
+			return api.RequestOpen, nil
 		},
 	}
 	path := filepath.Join(t.TempDir(), "run", "user.sock")
@@ -212,15 +212,23 @@ func TestRequestsAreLimited(t *testing.T) {
 
 func TestServerAwayIsSaidPlainly(t *testing.T) {
 	e := newUserEnv(t)
-	e.service.send = func(context.Context, api.DeviceRequest) error { return errors.New("no route") }
+	e.service.send = func(context.Context, api.DeviceRequest) (string, error) { return "", errors.New("no route") }
 	if code, body := e.post(t, `{"kind":"software","detail":"vim"}`); code != http.StatusBadGateway || strings.Contains(body, "route") {
+		t.Fatalf("%d %s", code, body)
+	}
+}
+
+func TestAutomaticApprovalReachesTheDesktop(t *testing.T) {
+	e := newUserEnv(t)
+	e.service.send = func(context.Context, api.DeviceRequest) (string, error) { return api.RequestApproved, nil }
+	if code, body := e.post(t, `{"kind":"software","detail":"vim"}`); code != http.StatusCreated || !strings.Contains(body, `"status":"approved"`) {
 		t.Fatalf("%d %s", code, body)
 	}
 }
 
 func TestRefusalsSayWhyAndCostNothing(t *testing.T) {
 	e := newUserEnv(t)
-	e.service.send = func(context.Context, api.DeviceRequest) error { return api.Fail(api.ErrNoSuchUser) }
+	e.service.send = func(context.Context, api.DeviceRequest) (string, error) { return "", api.Fail(api.ErrNoSuchUser) }
 	for range userRequestsMax + 3 {
 		code, body := e.post(t, `{"kind":"software","detail":"vim"}`)
 		if code != http.StatusUnprocessableEntity || !strings.Contains(body, api.ErrNoSuchUser) {
@@ -262,10 +270,10 @@ func TestAtMostSomeRequestsPerPersonAtOnce(t *testing.T) {
 	e := newUserEnv(t)
 	release := make(chan struct{})
 	started := make(chan struct{}, maxUserPerUID)
-	e.service.send = func(context.Context, api.DeviceRequest) error {
+	e.service.send = func(context.Context, api.DeviceRequest) (string, error) {
 		started <- struct{}{}
 		<-release
-		return nil
+		return api.RequestOpen, nil
 	}
 	var wg sync.WaitGroup
 	for range maxUserPerUID {

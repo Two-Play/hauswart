@@ -1,8 +1,10 @@
 import { Button, Group, Paper, Select, SimpleGrid, Stack, TextInput, Title } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, isApprover, useResource, type AccessRequest, type Device, type User } from '../api';
 import { DataTable, formatTime, Loaded, showError, StatusBadge } from '../ui';
+import { REQUEST_KINDS } from './ApprovalRulesPanel';
 
 export function RequestsView({ user }: { user: User }) {
   const { t } = useTranslation();
@@ -18,7 +20,11 @@ export function RequestsView({ user }: { user: User }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
-      await api('POST', '/api/requests', { device_id: deviceId, kind, detail, reason });
+      const out = await api<{ status: string }>('POST', '/api/requests', { device_id: deviceId, kind, detail, reason });
+      notifications.show({
+        color: 'teal',
+        message: t(out.status === 'approved' ? 'requests.autoApproved' : 'requests.filed'),
+      });
       setDetail('');
       setReason('');
       requests.reload();
@@ -36,9 +42,17 @@ export function RequestsView({ user }: { user: User }) {
     requests.reload();
   }
 
-  // Approvers leave their own requests to someone else, as the server insists.
+  // Approvers leave their own requests to someone else, and admin-only ones to
+  // an admin, as the server insists.
   function canDecide(r: AccessRequest) {
-    return isApprover(user) && r.status === 'open' && (user.role === 'admin' || r.username !== user.username);
+    if (!isApprover(user) || r.status !== 'open') return false;
+    if (user.role === 'admin') return true;
+    return r.username !== user.username && r.mode !== 'admin' && r.mode !== 'blocked';
+  }
+
+  function decider(r: AccessRequest) {
+    if (r.status === 'open') return r.mode === 'admin' || r.mode === 'blocked' ? t('requests.adminDecides') : '';
+    return r.decided_by === 'auto' ? t('requests.automatic') : r.decided_by;
   }
 
   function describe(r: AccessRequest) {
@@ -68,7 +82,7 @@ export function RequestsView({ user }: { user: User }) {
                 allowDeselect={false}
                 value={kind}
                 onChange={(next) => setKind(next ?? kind)}
-                data={['software', 'flatpak', 'sudo', 'screen'].map((k) => ({ value: k, label: t(`requests.kinds.${k}`) }))}
+                data={REQUEST_KINDS.map((k) => ({ value: k, label: t(`requests.kinds.${k}`) }))}
               />
               <TextInput
                 label={t(kind === 'sudo' || kind === 'screen' ? 'requests.minutes' : 'requests.packages')}
@@ -104,6 +118,7 @@ export function RequestsView({ user }: { user: User }) {
                 t('requests.request'),
                 t('requests.reason'),
                 t('requests.status'),
+                t('requests.decidedBy'),
                 '',
               ]}
               rows={list.map((r) => ({
@@ -115,6 +130,7 @@ export function RequestsView({ user }: { user: User }) {
                   describe(r),
                   r.reason,
                   <StatusBadge status={r.status} />,
+                  decider(r),
                   canDecide(r) && (
                     <Group gap="xs" wrap="nowrap">
                       <Button size="xs" onClick={() => decide(r.id, 'approve')}>

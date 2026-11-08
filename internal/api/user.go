@@ -11,7 +11,7 @@ const RequestScreen = "screen"
 const maxRequestText = 200
 
 // requestKinds are what someone can ask for from their desktop.
-var requestKinds = []string{"software", "flatpak", "sudo", RequestScreen}
+var requestKinds = []string{RequestSoftware, RequestFlatpak, RequestSudo, RequestScreen}
 
 // UserStatus is what the desktop app of a person learns from the agent, about
 // that person only.
@@ -38,6 +38,26 @@ type UserRequest struct {
 	Kind   string `json:"kind"`
 	Detail string `json:"detail"`
 	Reason string `json:"reason,omitempty"`
+}
+
+// The status of a request just filed.
+const (
+	RequestOpen     = "open"
+	RequestApproved = "approved"
+)
+
+// RequestAnswer is what filing a request returns.
+type RequestAnswer struct {
+	ID     string `json:"id,omitempty"`
+	Status string `json:"status"`
+}
+
+// Normalized reads a missing or unknown status as open: someone still decides.
+func (a RequestAnswer) Normalized() string {
+	if a.Status == RequestApproved {
+		return RequestApproved
+	}
+	return RequestOpen
 }
 
 // DeviceRequest is a UserRequest on its way to the server, with who filed it.

@@ -222,6 +222,19 @@ var migrations = []string{
 	UPDATE users SET role_new = CASE role WHEN 'parent' THEN 'approver' ELSE role END;
 	ALTER TABLE users DROP COLUMN role;
 	ALTER TABLE users RENAME COLUMN role_new TO role;`,
+	// Approval rules stay on the server. The defaults are a single row.
+	`CREATE TABLE group_approvals (
+		group_id INTEGER PRIMARY KEY REFERENCES device_groups(id) ON DELETE CASCADE,
+		document TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE default_approvals (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		document TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -746,6 +759,9 @@ type Request struct {
 	Status    string `json:"status"`
 	DecidedBy string `json:"decided_by"`
 	CreatedAt int64  `json:"created_at"`
+	// Mode says who decides an open request, by the rules of now. The server
+	// fills it in, the database does not keep it.
+	Mode string `json:"mode,omitempty"`
 }
 
 func (s *Store) CreateRequest(ctx context.Context, userID int64, deviceID, kind, detail, reason string) (string, error) {

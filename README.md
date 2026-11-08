@@ -17,7 +17,7 @@ in containers and virtual machines, not on physical machines or over a real VPN.
   reboots, accounts with their groups and sudo rights, and system logs without
   anything from users
 - Warnings for a nearly full disk and a soon expiring device certificate
-- Requests for software and sudo, approved by an admin
+- Requests for software and sudo, approved by an admin, or by rules per group
 - Temporary sudo that ends on time, even if the server is unreachable
 - Package install, removal and system update through dnf, apt, zypper, pacman
   and rpm-ostree, and Flatpak installs from Flathub

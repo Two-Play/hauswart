@@ -36,6 +36,11 @@ const (
 	ErrInvalidInventory  = "invalid_inventory"
 	ErrInvalidAsset      = "invalid_asset"
 	ErrInventoryTooOften = "inventory_too_often"
+
+	ErrInvalidApprovalMode = "invalid_approval_mode"
+	ErrApprovalsTooLarge   = "approvals_too_large"
+	ErrRequestBlocked      = "request_blocked"
+	ErrAdminDecides        = "admin_decides"
 )
 
 func init() {
@@ -72,5 +77,10 @@ func init() {
 		ErrInvalidInventory:  "the inventory is not valid: %s",
 		ErrInvalidAsset:      "this value is too long or not valid: %s",
 		ErrInventoryTooOften: "this device sends its inventory too often",
+
+		ErrInvalidApprovalMode: "invalid approval mode %s",
+		ErrApprovalsTooLarge:   "an approval list has more than %s entries",
+		ErrRequestBlocked:      "requests of this kind are not allowed on this device",
+		ErrAdminDecides:        "only an admin may decide this request",
 	})
 }
