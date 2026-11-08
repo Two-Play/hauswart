@@ -1,19 +1,29 @@
 {
-  "nav": { "certificates": "Zertifikate" },
+  "nav": {
+    "certificates": "Zertifikate"
+  },
   "taskTypes": {
     "power_reboot": "Gerät neu starten",
     "power_shutdown": "Gerät herunterfahren",
     "power_cancel": "Neustart oder Herunterfahren abbrechen",
     "notify_send": "Desktop-Nachricht senden",
     "group_add": "Benutzer zu Linux-Gruppe hinzufügen",
-    "group_remove": "Benutzer aus Linux-Gruppe entfernen"
+    "group_remove": "Benutzer aus Linux-Gruppe entfernen",
+    "access_set": "Zugang blockieren"
   },
   "fields": {
     "delay_minutes": "Vorwarnzeit in Minuten",
     "power_message": "Zusatz zur Warnung",
     "notify_message": "Nachricht, erscheint unter dem Titel Hauswart",
     "notify_user": "Linux-Benutzer, leer für alle Angemeldeten",
-    "group": "Linux-Gruppe"
+    "group": "Linux-Gruppe",
+    "access_mode": "Modus",
+    "access_mode_screen": "Bildschirm blockieren",
+    "access_mode_login": "Anmeldung verweigern",
+    "access_mode_open": "Zugang wieder öffnen",
+    "access_hint": "Bei verweigerter Anmeldung enden laufende Sitzungen nach einer Minute. Ohne Namen sind auch lokale Admins ausgesperrt.",
+    "access_users": "Linux-Benutzer, getrennt durch Leerzeichen, leer für alle",
+    "access_hours": "Endet nach Stunden, leer bis zum Öffnen"
   },
   "certificates": {
     "hint": "Zertifikate für Dienste im Haus, zum Beispiel ein NAS. Geräte, die der Hauswart-CA vertrauen, akzeptieren sie.",
@@ -38,6 +48,8 @@
     "cert_outside_ca": "{{value}} liegt außerhalb der Namen, für die diese CA ausstellen darf.",
     "cert_server_name": "{{value}} gehört dem Hauswart-Server selbst.",
     "ca_not_constrained": "Diese CA hat keine Namensbeschränkung und darf deshalb keine Dienst-Zertifikate ausstellen.",
-    "invalid_cert_days": "Die Gültigkeit muss 1 bis {{value}} Tage betragen."
+    "invalid_cert_days": "Die Gültigkeit muss 1 bis {{value}} Tage betragen.",
+    "invalid_access_mode": "Wähle einen Modus. Wieder öffnen geht ohne Benutzer und ohne Ende.",
+    "access_ended": "Das Ende der Sperre ist schon vorbei."
   }
 }

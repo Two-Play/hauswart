@@ -253,6 +253,8 @@ var migrations = []string{
 	);`,
 	// The task an approval created, so the device can tell how a request ended.
 	`ALTER TABLE requests ADD COLUMN task_id TEXT NOT NULL DEFAULT '';`,
+	// A suspended device stays enrolled and reports, but gets no tasks.
+	`ALTER TABLE devices ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func migrate(db *sql.DB) error {
@@ -460,11 +462,13 @@ func (s *Store) ConsumeEnrollToken(ctx context.Context, token string) (bool, err
 // --- devices ---
 
 type Device struct {
-	ID       string      `json:"id"`
-	Hostname string      `json:"hostname"`
-	Revoked  bool        `json:"revoked"`
-	LastSeen int64       `json:"last_seen"`
-	Report   *api.Report `json:"report"`
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Revoked  bool   `json:"revoked"`
+	// Suspended devices come back with a resume, revoked ones never.
+	Suspended bool        `json:"suspended"`
+	LastSeen  int64       `json:"last_seen"`
+	Report    *api.Report `json:"report"`
 	// Warnings is set for admins only, like the report it comes from.
 	Warnings []api.Warning `json:"warnings,omitempty"`
 	serial   string
@@ -526,7 +530,7 @@ func (s *Store) TouchDevice(ctx context.Context, id string) error {
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, hostname, revoked, last_seen, report FROM devices ORDER BY hostname`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, hostname, revoked, suspended, last_seen, report FROM devices ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +539,7 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 	for rows.Next() {
 		var d Device
 		var raw string
-		if err := rows.Scan(&d.ID, &d.Hostname, &d.Revoked, &d.LastSeen, &raw); err != nil {
+		if err := rows.Scan(&d.ID, &d.Hostname, &d.Revoked, &d.Suspended, &d.LastSeen, &raw); err != nil {
 			return nil, err
 		}
 		d.Report = &api.Report{}
@@ -545,6 +549,29 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 		devices = append(devices, d)
 	}
 	return devices, rows.Err()
+}
+
+// SuspendDevice holds a device back from tasks and requests, or lets it go on.
+// A revoked device stays revoked.
+func (s *Store) SuspendDevice(ctx context.Context, id string, suspended bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE devices SET suspended = ? WHERE id = ? AND revoked = 0`, suspended, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeviceSuspended reports whether a device is suspended. An unknown one is not.
+func (s *Store) DeviceSuspended(ctx context.Context, id string) (bool, error) {
+	var suspended bool
+	err := s.db.QueryRowContext(ctx, `SELECT suspended FROM devices WHERE id = ?`, id).Scan(&suspended)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return suspended, err
 }
 
 func (s *Store) RevokeDevice(ctx context.Context, id string) error {
