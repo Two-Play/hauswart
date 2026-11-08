@@ -13,6 +13,7 @@ import {
   type Envelope,
 } from '../passkey';
 import { taskKey } from '../tasks';
+import { PasskeyTypesPanel } from './PasskeyTypesPanel';
 import { DataTable, formatTime, Loaded, showError } from '../ui';
 
 function Weakness() {
@@ -273,6 +274,7 @@ export function ApprovalsView({ user }: { user: User }) {
       <Queue />
       {user.role === 'admin' && <SigningQueue />}
       <PasskeyList />
+      {user.role === 'admin' && <PasskeyTypesPanel />}
     </Stack>
   );
 }

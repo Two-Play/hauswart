@@ -168,7 +168,7 @@ func windowText(w api.Window) string {
 // policyFingerprint identifies a policy task's effect, and is empty for all other
 // tasks. It is made from what would be signed.
 func policyFingerprint(taskType string, payload []byte) string {
-	if taskType != api.TaskPolicySet && taskType != api.TaskPolicyClear {
+	if taskType != api.TaskPolicySet && taskType != api.TaskPolicyClear && taskType != api.TaskPasskeyTypes {
 		return ""
 	}
 	return fmt.Sprintf("%s %x", taskType, sha256.Sum256(payload))
@@ -197,7 +197,7 @@ func policyWarning(cfg *config, taskType string, payload []byte) string {
 // such as the end of someone's screen time, and the server chooses which device
 // comes first. So all of this is on the screen before anyone agrees to it. Only
 // devices named on this computer count: the admin has to know what they agree to.
-func identicalPolicies(cfg *config, rest []queued, fingerprint string) []string {
+func identicalPolicies(cfg *config, list map[string]serverDevice, rest []queued, fingerprint string) []string {
 	var lines []string
 	for _, task := range rest {
 		known := cfg.Devices[task.DeviceID]
@@ -205,7 +205,7 @@ func identicalPolicies(cfg *config, rest []queued, fingerprint string) []string 
 			continue
 		}
 		if _, payload, err := review(task.Type, task.Payload); err == nil && policyFingerprint(task.Type, payload) == fingerprint {
-			lines = append(lines, fmt.Sprintf("  On %s:\n%s", clean(known.Name), policyChanges(task.DeviceID, task.Type, payload)))
+			lines = append(lines, fmt.Sprintf("  On %s:\n%s", clean(known.Name), changesOf(list, task.DeviceID, task.Type, payload)))
 		}
 	}
 	return lines
@@ -301,3 +301,14 @@ func diffPolicies(before, after api.Policy) string {
 	}
 	return "  Changes since you last signed for this device:\n" + strings.Join(changes, "\n")
 }
+
+// changesOf says what signing would change on a device: against the last policy
+// signed here, or for passkey types against what the device reports.
+func changesOf(list map[string]serverDevice, device, taskType string, payload []byte) string {
+	if taskType == api.TaskPasskeyTypes {
+		return passkeyTypeChanges(list[device].Report, payload)
+	}
+	return policyChanges(device, taskType, payload)
+}
+
+func jsonUnmarshal(raw []byte, v any) error { return json.Unmarshal(raw, v) }

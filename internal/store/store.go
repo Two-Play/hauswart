@@ -261,6 +261,13 @@ var migrations = []string{
 		document TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+	// What a passkey may approve on protected devices, one row for all.
+	`CREATE TABLE passkey_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		document TEXT NOT NULL,
+		updated_by TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {

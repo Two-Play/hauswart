@@ -63,9 +63,9 @@ func prepare(cfg *config, list map[string]serverDevice, task queued, rest []queu
 	item.Text, item.payload = text, payload
 	item.Group = policyFingerprint(task.Type, payload)
 	if item.Group != "" {
-		item.Changes = policyChanges(task.DeviceID, task.Type, payload)
+		item.Changes = changesOf(list, task.DeviceID, task.Type, payload)
 		item.Warning = policyWarning(cfg, task.Type, payload)
-		item.Others = identicalPolicies(cfg, rest, item.Group)
+		item.Others = identicalPolicies(cfg, list, rest, item.Group)
 	}
 	return item
 }
@@ -83,7 +83,7 @@ func signItem(cfg *config, key ssh.Signer, list map[string]serverDevice, item It
 	if err := cfg.call("POST", "/api/tasks/"+item.ID+"/signature", signed, nil); err != nil {
 		return err
 	}
-	if item.Group != "" {
+	if item.Type == api.TaskPolicySet || item.Type == api.TaskPolicyClear {
 		return rememberPolicy(item.DeviceID, item.Type, item.payload)
 	}
 	return nil

@@ -1,0 +1,31 @@
+{
+  "taskTypes": { "passkeys_types": "Festlegen, was ein Passkey freigeben darf" },
+  "passkeyTypes": {
+    "title": "Was ein Passkey freigeben darf",
+    "hint": "Jede Aktion geht entweder per Passkey, auch vom Handy, oder braucht eine Signatur mit hauswart-admin oder der Admin-App. Eine Änderung erreicht die geschützten Geräte erst, wenn du sie mit hauswart-admin approve signierst: Ein Passkey kann sich nicht selbst mehr erlauben.",
+    "notChosen": "Noch hat niemand gewählt, also behält jedes Gerät die Liste von seiner Einrichtung. Angezeigt ist die Voreinstellung.",
+    "applied": "{{count}} von {{total}} geschützten Geräten haben das",
+    "waiting": "{{count}} warten auf deine Signatur",
+    "passkey": "Passkey erlaubt",
+    "signature": "Nur Signatur",
+    "always": "Immer nur mit Signatur: {{list}}.",
+    "save": "Speichern und zum Signieren vorlegen",
+    "saved": "Gespeichert. Signiere die Änderung mit hauswart-admin approve.",
+    "risk": {
+      "pkg_install": "Pakete führen Skripte als root aus.",
+      "pkg_remove": "Kann alles entfernen, auch den Agent und die Firewall.",
+      "pkg_upgrade": "Aktualisiert, was die Paketquellen des Geräts anbieten.",
+      "flatpak_install": "Apps von Flathub mit den Rechten, die sie verlangen.",
+      "power_reboot": "Nicht gespeicherte Arbeit kann verloren gehen.",
+      "power_shutdown": "Das Gerät bleibt aus, bis jemand es einschaltet.",
+      "power_cancel": "Hält einen Neustart oder das Herunterfahren auf.",
+      "notify_send": "Eine Nachricht auf den Desktops.",
+      "screen_extend": "Mehr Bildschirmzeit, nur für heute.",
+      "access_set": "Sperrt oder öffnet das Gerät, höchstens für einen Tag.",
+      "terminal_open": "Eine root-Shell für bis zu vier Stunden, Start innerhalb von 15 Minuten."
+    }
+  },
+  "errors": {
+    "invalid_passkey_types": "Ein Passkey kann {{value}} nie freigeben."
+  }
+}

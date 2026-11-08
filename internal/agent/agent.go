@@ -66,9 +66,10 @@ type Config struct {
 	// Passkeys may approve tasks in a browser. Like the keys, they only arrive
 	// through a signed keys.set.
 	Passkeys []sign.Passkey `json:"passkeys,omitempty"`
-	// PasskeyTypes limits what a passkey may approve on this device. It is the
-	// device owner's: no task changes it, and the agent reads it at start. null
-	// means api.DefaultPasskeyTypes, an empty list means nothing at all, so this
+	// PasskeyTypes limits what a passkey may approve on this device. A signed
+	// passkeys.types sets it from the admins' choice in the dashboard; the
+	// device owner can edit it too, until the next one. null means
+	// api.DefaultPasskeyTypes, an empty list means nothing at all, so this
 	// field must never get omitempty.
 	PasskeyTypes []string `json:"passkey_types"`
 	// TPMKey moves the TLS key into the TPM once the TPM is registered, so that
@@ -630,6 +631,8 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 	switch task.Type {
 	case api.TaskKeysSet:
 		return a.setKeys(task)
+	case api.TaskPasskeyTypes:
+		return a.setPasskeyTypes(task)
 	case api.TaskPolicySet, api.TaskPolicyClear:
 		return a.setPolicy(task)
 	case api.TaskScreenExtend:
@@ -690,6 +693,46 @@ func (a *Agent) setKeys(task api.Task) api.TaskResult {
 	a.guard.SetKeys(keys)
 	a.guard.SetPasskeys(usablePasskeys(p.Passkeys, a.log), cfg.passkeyTypes())
 	return api.TaskResult{OK: true, Output: fmt.Sprintf("%d signing keys and %d passkeys pinned", len(keys), len(p.Passkeys))}
+}
+
+// setPasskeyTypes takes the admins' signed choice of what a passkey may
+// approve here. Like keys, it is only reachable through the guard, and the
+// guard never lets a passkey approve it.
+func (a *Agent) setPasskeyTypes(task api.Task) api.TaskResult {
+	if a.guard == nil {
+		return api.TaskResult{OK: false, Output: "this device has no pinned keys"}
+	}
+	if err := api.Validate(task.Type, task.Payload); err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	var p api.PasskeyTypesPayload
+	if err := json.Unmarshal(task.Payload, &p); err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	path := filepath.Join(a.dir, configFile)
+	var cfg Config
+	raw, err := os.ReadFile(path)
+	if err == nil {
+		err = json.Unmarshal(raw, &cfg)
+	}
+	if err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	// An empty list stays a list: null would mean the default.
+	cfg.PasskeyTypes = append([]string{}, api.SortedTypes(p.Types)...)
+	raw, err = json.MarshalIndent(cfg, "", "  ")
+	if err == nil {
+		err = writeAtomicSync(path, raw, 0o600)
+	}
+	if err != nil {
+		return api.TaskResult{OK: false, Output: err.Error()}
+	}
+	a.cfg = cfg
+	a.guard.SetPasskeys(usablePasskeys(cfg.Passkeys, a.log), cfg.passkeyTypes())
+	if len(cfg.PasskeyTypes) == 0 {
+		return api.TaskResult{OK: true, Output: "a passkey approves nothing on this device now"}
+	}
+	return api.TaskResult{OK: true, Output: "a passkey may approve: " + strings.Join(cfg.PasskeyTypes, ", ")}
 }
 
 func (a *Agent) poll(ctx context.Context) (*api.Task, error) {

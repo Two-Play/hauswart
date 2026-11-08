@@ -58,6 +58,8 @@ type Server struct {
 
 	// policyMu keeps policy changes for a device one after the other.
 	policyMu sync.Mutex
+	// passkeyTypesMu does the same for the passkey types.
+	passkeyTypesMu sync.Mutex
 
 	mu       sync.Mutex
 	waiters  map[string]chan struct{}

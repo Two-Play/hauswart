@@ -1,0 +1,31 @@
+{
+  "taskTypes": { "passkeys_types": "Set what a passkey may approve" },
+  "passkeyTypes": {
+    "title": "What a passkey may approve",
+    "hint": "Each action either works with a passkey, from a phone too, or needs a signature from hauswart-admin or the admin app. A change reaches the protected devices only after you sign it with hauswart-admin approve: a passkey cannot widen its own reach.",
+    "notChosen": "Nobody chose yet, so every device keeps the list it was enrolled with. This shows the default.",
+    "applied": "{{count}} of {{total}} protected devices have this",
+    "waiting": "{{count}} wait for your signature",
+    "passkey": "Passkey allowed",
+    "signature": "Signature only",
+    "always": "Always only with a signature: {{list}}.",
+    "save": "Save and queue for signing",
+    "saved": "Saved. Sign the change with hauswart-admin approve.",
+    "risk": {
+      "pkg_install": "Packages run scripts as root.",
+      "pkg_remove": "Can remove anything, the agent and the firewall too.",
+      "pkg_upgrade": "Updates what the device's repositories offer.",
+      "flatpak_install": "Apps from Flathub with the permissions they ask for.",
+      "power_reboot": "Unsaved work can be lost.",
+      "power_shutdown": "The device stays off until someone switches it on.",
+      "power_cancel": "Stops a restart or shutdown.",
+      "notify_send": "A message on the desktops.",
+      "screen_extend": "More screen time, for today only.",
+      "access_set": "Blocks or opens the device, for at most a day.",
+      "terminal_open": "A root shell for up to four hours, started within 15 minutes."
+    }
+  },
+  "errors": {
+    "invalid_passkey_types": "A passkey can never approve {{value}}."
+  }
+}

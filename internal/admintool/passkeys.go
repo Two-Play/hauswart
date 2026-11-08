@@ -127,8 +127,17 @@ func sendPins(cfg *config, id string, known *device, pins []sign.Passkey) error 
 	if len(pins) == 0 {
 		fmt.Println("  none")
 	}
-	fmt.Println("A passkey can approve packages, Flatpaks, power and notifications on this device.\n" +
-		"Do not pin one on the computer you sign on: a Flatpak could reach your signing key there.")
+	what := "nothing yet"
+	if report := deviceReport(cfg, id); report != nil && len(report.PasskeyTypes) > 0 {
+		labels := make([]string, 0, len(report.PasskeyTypes))
+		for _, t := range report.PasskeyTypes {
+			labels = append(labels, passkeyTypeLabel(clean(t)))
+		}
+		what = strings.Join(labels, ", ")
+	}
+	fmt.Printf("On this device, the device says a passkey may approve: %s.\n"+
+		"Change that in the dashboard under Approvals; it takes a signature as well.\n"+
+		"Do not pin one on the computer you sign on: a Flatpak could reach your signing key there.\n", what)
 	ok, err := confirm(os.Stdin, "Sign?")
 	if err != nil {
 		return err
@@ -241,4 +250,13 @@ func passkeysRenew(args []string) error {
 		pins[i].NotAfter = time.Now().Add(passkeyLifetime)
 	}
 	return sendPins(cfg, *id, known, pins)
+}
+
+// deviceReport is what the server says a device reported last, nil if unknown.
+func deviceReport(cfg *config, id string) *api.Report {
+	list, err := fetchDevices(cfg)
+	if err != nil {
+		return nil
+	}
+	return list[id].Report
 }
