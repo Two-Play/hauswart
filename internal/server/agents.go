@@ -205,6 +205,7 @@ func (s *Server) handleResult(w http.ResponseWriter, r *http.Request, id string)
 	}
 	if !res.OK {
 		s.notifyFailure(r.Context(), r.PathValue("id"))
+		s.terminals.endTask(r.PathValue("id"), res.Output)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

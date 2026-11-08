@@ -12,12 +12,15 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type User } from '../api';
 import { useNavigation } from '../navigation';
 import { formatBytes, Loaded, showError } from '../ui';
 import { DeviceInsight, InsightBadges } from './DeviceInsight';
+
+// The terminal brings xterm.js along, which only those who open one need.
+const TerminalView = lazy(() => import('./TerminalView').then((m) => ({ default: m.TerminalView })));
 
 const ONLINE_SECONDS = 90;
 
@@ -76,6 +79,7 @@ export function DevicesView({ user }: { user: User }) {
   const { data, error, reload } = useResource<Device[]>('/api/devices', 10_000);
   const navigation = useNavigation();
   const [insightDevice, setInsightDevice] = useState<string>();
+  const [terminalDevice, setTerminalDevice] = useState<Device>();
   const [revokeDevice, setRevokeDevice] = useState<Device>();
   const [enrollCommand, setEnrollCommand] = useState<string>();
 
@@ -169,6 +173,11 @@ export function DevicesView({ user }: { user: User }) {
                         <Button size="xs" variant="default" onClick={() => setInsightDevice(d.id)}>
                           {t('insight.open')}
                         </Button>
+                        {d.report?.protected && (
+                          <Button size="xs" variant="default" onClick={() => setTerminalDevice(d)}>
+                            {t('terminal.open')}
+                          </Button>
+                        )}
                         <Button size="xs" variant="subtle" color="orange" onClick={() => suspend(d, !d.suspended)}>
                           {t(d.suspended ? 'devices.resume' : 'devices.suspend')}
                         </Button>
@@ -190,6 +199,11 @@ export function DevicesView({ user }: { user: User }) {
           device={data.find((d) => d.id === insightDevice)!}
           onClose={() => setInsightDevice(undefined)}
         />
+      )}
+      {terminalDevice && (
+        <Suspense>
+          <TerminalView device={terminalDevice} onClose={() => setTerminalDevice(undefined)} />
+        </Suspense>
       )}
       {enrollCommand && <EnrollModal command={enrollCommand} onClose={() => setEnrollCommand(undefined)} />}
       {revokeDevice && (
