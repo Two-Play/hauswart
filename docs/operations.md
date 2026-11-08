@@ -393,9 +393,20 @@ measured by `test/browsers.py`:
 | Fedora 44 | Google Chrome | trusted |
 | Debian 13 | Firefox ESR | not trusted |
 | Debian 13 | Chromium | not trusted |
+| Arch | Firefox | trusted |
+| Arch | Chromium | trusted |
+| openSUSE Tumbleweed | Firefox | not trusted |
+| openSUSE Tumbleweed | Chromium | not trusted |
 
-Not measured: Flatpak browsers, Arch and openSUSE. Flatpak apps run in a sandbox
-and may not see the system store.
+| Fedora 44 | Firefox (Flatpak from Flathub) | not trusted |
+
+Where the store is not trusted, as on Debian and openSUSE, the agent adds the CA
+through the policies of Firefox and Chromium, which the same test shows to work.
+
+Firefox from Flathub runs in a sandbox and trusts neither the system store nor the
+policies in `/etc/firefox`, and a policy in its `systemconfig` extension did not
+help in a measurement either. Import the CA by hand there, as described below.
+Chromium from Flathub is not measured yet.
 
 Where the store is not used, and on computers that are not enrolled, import the
 CA by hand. Download it from `https://<server>:8443/ca.pem`. Accept the warning
