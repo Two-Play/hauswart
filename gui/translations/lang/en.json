@@ -91,5 +91,16 @@
   "history.event.account.group_added": "Added to the group {{.Detail}}",
   "history.event.account.group_removed": "Removed from the group {{.Detail}}",
   "history.event.policy.changed": "New rules for this device",
-  "history.event.policy.cleared": "Rules of this device removed"
+  "history.event.policy.cleared": "Rules of this device removed",
+  "suspended": "Hauswart has suspended this device. Requests are not possible for now.",
+  "request.refused.device_suspended": "Hauswart has suspended this device. Requests are not possible for now.",
+  "history.event.device.suspended": "Device suspended in Hauswart",
+  "history.event.device.resumed": "Device managed by Hauswart again",
+  "access.screen": "Hauswart blocks the screen of this device, until {{.Until}}.",
+  "access.login": "Hauswart refuses logins on this device, until {{.Until}}.",
+  "access.lasting": "it is opened again",
+  "history.event.access.screen": "Screen blocked until {{.Until}}",
+  "history.event.access.login": "Logins refused until {{.Until}}",
+  "history.event.access.ending": "Session ends at {{.Until}}",
+  "history.event.access.open": "Access open again"
 }

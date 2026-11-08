@@ -94,6 +94,9 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
+	if s.refuseSuspended(w, r, in.DeviceID, http.StatusConflict) {
+		return
+	}
 	mode, err := s.requestMode(r.Context(), in.DeviceID, in.Kind, in.Detail)
 	if err != nil {
 		s.internal(w, err)
@@ -153,6 +156,9 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, dev
 	}
 	if err := api.CheckUserRequest(in.UserRequest); err != nil {
 		failErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if s.refuseSuspended(w, r, device, http.StatusLocked) {
 		return
 	}
 	accounts, err := s.store.UsersByLinuxName(r.Context(), in.User)
@@ -262,6 +268,9 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 	// on an unprotected device, which is more than approving.
 	if u.Role != store.RoleAdmin && (req.UserID == u.ID || req.LinuxUser == u.LinuxUser) {
 		fail(w, http.StatusForbidden, api.ErrOwnRequest)
+		return
+	}
+	if s.refuseSuspended(w, r, req.DeviceID, http.StatusConflict) {
 		return
 	}
 	// The request may be older than the decision to take the device away.

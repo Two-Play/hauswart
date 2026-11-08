@@ -25,54 +25,72 @@ const (
 	requestInterval = time.Minute
 	// popupDetail keeps a list of packages in a popup short.
 	popupDetail = 120
+	// lasting marks the text of an event that has no end.
+	lasting = "/lasting"
 )
 
 // eventTexts are the popups, in the language of the policy like screen time.
 // The desktop app has its own texts for its history, in the desktop's language.
 var eventTexts = map[string]map[string]string{
 	"en": {
-		api.EventSudoGranted:       "You have admin rights until {time}.",
-		api.EventSudoRevoked:       "Your admin rights were taken back.",
-		api.EventSudoExpiring:      "Your admin rights end at {time}.",
-		api.EventSudoExpired:       "Your admin rights have ended.",
-		api.EventSoftwareInstalled: "Installed: {detail}",
-		api.EventSoftwareRemoved:   "Removed: {detail}",
-		api.EventSoftwareUpgraded:  "The software on this device was updated.",
-		api.EventSoftwareFailed:    "A software change did not work: {detail}",
-		api.EventUpdateFailed:      "The update of this device did not work.",
-		api.EventAccountLocked:     "Your account was locked.",
-		api.EventAccountUnlocked:   "Your account was unlocked.",
-		api.EventAccountPassword:   "Your password was changed.",
-		api.EventGroupAdded:        "You are now in the group {detail}.",
-		api.EventGroupRemoved:      "You are no longer in the group {detail}.",
-		api.EventPolicyChanged:     "This device has new rules.",
-		api.EventPolicyCleared:     "The rules of this device were removed.",
-		api.RequestSigning:         "Your request for {detail} was approved and waits for a signature.",
-		api.RequestDenied:          "Your request for {detail} was denied.",
-		api.RequestFailed:          "Your request for {detail} was approved, but did not work.",
-		api.RequestDone:            "Your request for {detail} is done.",
+		api.EventSudoGranted:            "You have admin rights until {time}.",
+		api.EventSudoRevoked:            "Your admin rights were taken back.",
+		api.EventSudoExpiring:           "Your admin rights end at {time}.",
+		api.EventSudoExpired:            "Your admin rights have ended.",
+		api.EventSoftwareInstalled:      "Installed: {detail}",
+		api.EventSoftwareRemoved:        "Removed: {detail}",
+		api.EventSoftwareUpgraded:       "The software on this device was updated.",
+		api.EventSoftwareFailed:         "A software change did not work: {detail}",
+		api.EventUpdateFailed:           "The update of this device did not work.",
+		api.EventAccountLocked:          "Your account was locked.",
+		api.EventAccountUnlocked:        "Your account was unlocked.",
+		api.EventAccountPassword:        "Your password was changed.",
+		api.EventGroupAdded:             "You are now in the group {detail}.",
+		api.EventGroupRemoved:           "You are no longer in the group {detail}.",
+		api.EventPolicyChanged:          "This device has new rules.",
+		api.EventPolicyCleared:          "The rules of this device were removed.",
+		api.EventDeviceSuspended:        "Hauswart has suspended this device. Requests are not possible for now, and admin rights have ended.",
+		api.EventDeviceResumed:          "Hauswart manages this device again.",
+		api.EventAccessScreen:           "Hauswart blocks the screen of this device until {time}.",
+		api.EventAccessScreen + lasting: "Hauswart blocks the screen of this device for now.",
+		api.EventAccessLogin:            "Hauswart refuses logins on this device until {time}.",
+		api.EventAccessLogin + lasting:  "Hauswart refuses logins on this device for now.",
+		api.EventAccessEnding:           "Your session ends at {time}. Please save your work now.",
+		api.EventAccessOpen:             "You can use this device again.",
+		api.RequestSigning:              "Your request for {detail} was approved and waits for a signature.",
+		api.RequestDenied:               "Your request for {detail} was denied.",
+		api.RequestFailed:               "Your request for {detail} was approved, but did not work.",
+		api.RequestDone:                 "Your request for {detail} is done.",
 	},
 	"de": {
-		api.EventSudoGranted:       "Du hast Admin-Rechte bis {time}.",
-		api.EventSudoRevoked:       "Deine Admin-Rechte wurden zurückgenommen.",
-		api.EventSudoExpiring:      "Deine Admin-Rechte enden um {time}.",
-		api.EventSudoExpired:       "Deine Admin-Rechte sind abgelaufen.",
-		api.EventSoftwareInstalled: "Installiert: {detail}",
-		api.EventSoftwareRemoved:   "Entfernt: {detail}",
-		api.EventSoftwareUpgraded:  "Die Software auf diesem Gerät wurde aktualisiert.",
-		api.EventSoftwareFailed:    "Eine Änderung an der Software hat nicht geklappt: {detail}",
-		api.EventUpdateFailed:      "Das Update dieses Geräts hat nicht geklappt.",
-		api.EventAccountLocked:     "Dein Konto wurde gesperrt.",
-		api.EventAccountUnlocked:   "Dein Konto wurde entsperrt.",
-		api.EventAccountPassword:   "Dein Passwort wurde geändert.",
-		api.EventGroupAdded:        "Du bist jetzt in der Gruppe {detail}.",
-		api.EventGroupRemoved:      "Du bist nicht mehr in der Gruppe {detail}.",
-		api.EventPolicyChanged:     "Für dieses Gerät gelten neue Regeln.",
-		api.EventPolicyCleared:     "Die Regeln für dieses Gerät wurden entfernt.",
-		api.RequestSigning:         "Deine Anfrage für {detail} wurde genehmigt und wartet auf eine Signatur.",
-		api.RequestDenied:          "Deine Anfrage für {detail} wurde abgelehnt.",
-		api.RequestFailed:          "Deine Anfrage für {detail} wurde genehmigt, hat aber nicht geklappt.",
-		api.RequestDone:            "Deine Anfrage für {detail} ist erledigt.",
+		api.EventSudoGranted:            "Du hast Admin-Rechte bis {time}.",
+		api.EventSudoRevoked:            "Deine Admin-Rechte wurden zurückgenommen.",
+		api.EventSudoExpiring:           "Deine Admin-Rechte enden um {time}.",
+		api.EventSudoExpired:            "Deine Admin-Rechte sind abgelaufen.",
+		api.EventSoftwareInstalled:      "Installiert: {detail}",
+		api.EventSoftwareRemoved:        "Entfernt: {detail}",
+		api.EventSoftwareUpgraded:       "Die Software auf diesem Gerät wurde aktualisiert.",
+		api.EventSoftwareFailed:         "Eine Änderung an der Software hat nicht geklappt: {detail}",
+		api.EventUpdateFailed:           "Das Update dieses Geräts hat nicht geklappt.",
+		api.EventAccountLocked:          "Dein Konto wurde gesperrt.",
+		api.EventAccountUnlocked:        "Dein Konto wurde entsperrt.",
+		api.EventAccountPassword:        "Dein Passwort wurde geändert.",
+		api.EventGroupAdded:             "Du bist jetzt in der Gruppe {detail}.",
+		api.EventGroupRemoved:           "Du bist nicht mehr in der Gruppe {detail}.",
+		api.EventPolicyChanged:          "Für dieses Gerät gelten neue Regeln.",
+		api.EventPolicyCleared:          "Die Regeln für dieses Gerät wurden entfernt.",
+		api.EventDeviceSuspended:        "Hauswart hat dieses Gerät gesperrt. Anfragen gehen vorerst nicht, und Admin-Rechte sind beendet.",
+		api.EventDeviceResumed:          "Hauswart verwaltet dieses Gerät wieder.",
+		api.EventAccessScreen:           "Hauswart sperrt den Bildschirm dieses Geräts bis {time}.",
+		api.EventAccessScreen + lasting: "Hauswart sperrt den Bildschirm dieses Geräts bis auf Weiteres.",
+		api.EventAccessLogin:            "Hauswart lässt bis {time} keine Anmeldung an diesem Gerät zu.",
+		api.EventAccessLogin + lasting:  "Hauswart lässt bis auf Weiteres keine Anmeldung an diesem Gerät zu.",
+		api.EventAccessEnding:           "Deine Sitzung endet um {time}. Bitte speichere jetzt deine Arbeit.",
+		api.EventAccessOpen:             "Du kannst dieses Gerät wieder benutzen.",
+		api.RequestSigning:              "Deine Anfrage für {detail} wurde genehmigt und wartet auf eine Signatur.",
+		api.RequestDenied:               "Deine Anfrage für {detail} wurde abgelehnt.",
+		api.RequestFailed:               "Deine Anfrage für {detail} wurde genehmigt, hat aber nicht geklappt.",
+		api.RequestDone:                 "Deine Anfrage für {detail} ist erledigt.",
 	},
 }
 
@@ -91,6 +109,12 @@ func eventText(language, kind, detail string, until time.Time) string {
 	clock := ""
 	if !until.IsZero() {
 		clock = until.Local().Format("15:04")
+		// A block can last days, so the day counts as well.
+		if y, m, d := time.Now().Date(); until.Local().Year() != y || until.Local().Month() != m || until.Local().Day() != d {
+			clock = until.Local().Format("02.01. 15:04")
+		}
+	} else if text, ok := texts[kind+lasting]; ok {
+		return text
 	}
 	// A replacer and not Sprintf, because most texts use neither.
 	return strings.NewReplacer("{detail}", clip(detail, popupDetail), "{time}", clock).Replace(texts[kind])
@@ -136,6 +160,8 @@ type noticeState struct {
 	// Seen is the last state of each request, so a restart tells nothing twice.
 	// Nil means the device never asked, and then the first answer tells nothing.
 	Seen map[string]string `json:"seen"`
+	// Suspended is what the server last said about this device.
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 func OpenNotices(dir string, exec *Executor, language func() string, log *slog.Logger) *Notices {
@@ -347,6 +373,32 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 		}
 		n.show(ctx, r.User, eventText(language, r.State, requestName(language, r), time.Time{}), urgency)
 	}
+}
+
+// SetSuspended remembers whether the server holds the device back, and tells
+// everyone when that changes. It returns true when it changed.
+func (n *Notices) SetSuspended(ctx context.Context, suspended bool) bool {
+	n.mu.Lock()
+	if n.state.Suspended == suspended {
+		n.mu.Unlock()
+		return false
+	}
+	n.state.Suspended = suspended
+	n.saveLocked()
+	n.mu.Unlock()
+	kind, urgency := api.EventDeviceResumed, urgencyNormal
+	if suspended {
+		kind, urgency = api.EventDeviceSuspended, urgencyCritical
+	}
+	n.record(ctx, api.DeviceEvent{Kind: kind}, urgency)
+	return true
+}
+
+// Suspended says whether the server last held the device back.
+func (n *Notices) Suspended() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.state.Suspended
 }
 
 // Stale says that the requests are older than the loop would let them get.

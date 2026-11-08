@@ -12,6 +12,7 @@ export interface User {
 
 export interface Report {
   protected?: boolean;
+  access?: { mode: string; users?: string[]; until?: string };
   distro?: string;
   kernel?: string;
   backends?: string[];
@@ -53,6 +54,7 @@ export interface Device {
   id: string;
   hostname: string;
   revoked: boolean;
+  suspended: boolean;
   last_seen: number;
   report: Report | null;
   warnings?: Warning[];
