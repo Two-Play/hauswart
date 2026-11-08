@@ -17,6 +17,8 @@ const (
 	ErrDeviceSuspended     = "device_suspended"
 	ErrInvalidAccessMode   = "invalid_access_mode"
 	ErrAccessEnded         = "access_ended"
+	ErrInvalidWifi         = "invalid_wifi"
+	ErrInvalidPrinter      = "invalid_printer"
 	ErrPasskeyBlockTooLong = "passkey_block_too_long"
 	ErrInvalidAccessImage  = "invalid_access_image"
 	ErrInvalidQuota        = "invalid_quota"
@@ -87,6 +89,8 @@ var Messages = map[string]string{
 	ErrDeviceSuspended:     "device is suspended in Hauswart",
 	ErrInvalidAccessMode:   "access mode %s is not screen, login, fullscreen or open, or carries what it cannot use",
 	ErrAccessEnded:         "the end of the block has passed",
+	ErrInvalidWifi:         "the network %s needs a name of 1 to 32 bytes, a password of 8 to 63 plain characters, and wpa2 or wpa3",
+	ErrInvalidPrinter:      "the printer %s needs a name of letters, digits, - and _, and an ipp:// or ipps:// address",
 	ErrPasskeyBlockTooLong: "a block approved with a passkey must end within %s; sign longer ones with hauswart-admin",
 	ErrInvalidAccessImage:  "the picture must be a PNG or JPEG of at most 512 KB",
 	ErrInvalidQuota:        "the daily minutes of %s must be 0 to 1440",

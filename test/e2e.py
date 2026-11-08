@@ -949,6 +949,89 @@ def test_socket(admin, agent_bin):
         sh("podman", "rm", "-f", container, check_rc=False)
 
 
+
+def test_network(admin, agent_bin, work, password, admin_bin):
+    """Wi-Fi and printers from a policy, on a real NetworkManager and a real CUPS
+    with a printer that speaks IPP Everywhere."""
+    name = "network"
+    print(f"\n== {name} (Wi-Fi and printers from a policy)", flush=True)
+    container = f"{PREFIX}-network{SUFFIX}"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "900")
+
+    def inside(cmd, timeout=600):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=timeout)
+
+    connections = "/etc/NetworkManager/system-connections"
+    port = 18631 + int(os.environ.get("VM_SSH_OFFSET", "0"))
+    # Policies reach protected devices only, so this one gets keys.
+    home = f"{work}/{name}"
+    os.makedirs(home)
+    tool = Admin(home, admin_bin)
+    try:
+        installed = inside(DISTROS["fedora"][1] + " NetworkManager-wifi cups cups-client cups-printerapp avahi dbus-daemon", timeout=900)
+        check(name, "NetworkManager and CUPS installed", installed.returncode == 0, installed.stderr[-400:])
+        sh("podman", "exec", "-d", container, "sh", "-c", "mkdir -p /run/cups && cupsd -f")
+        # The test printer announces itself through DNS-SD, so it needs Avahi.
+        inside("mkdir -p /run/dbus && dbus-daemon --system --fork && avahi-daemon -D --no-chroot")
+        sh("podman", "exec", "-d", container, "sh", "-c", f"ippeveprinter -p {port} -k 'Test Printer' >/tmp/printer.log 2>&1")
+        time.sleep(3)
+        fingerprint = re.search(r"--ca-fingerprint (\w+)", admin.call("POST", "/api/enroll-tokens")[1]["command"]).group(1)
+        tool.run("login", "--server", URL, "--ca-fingerprint", fingerprint, "--user", "admin", input=password + "\n")
+        tool.run("keys", "add", f"{home}/primary.pub")
+        tool.run("keys", "add", f"{home}/offline.pub")
+        enrolled = inside(tool.run("enroll-command").stdout.strip().replace("sudo ", "", 1))
+        check(name, "enrollment", enrolled.returncode == 0, enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        seen.add(device)
+        tool.run("name", device, "network-laptop")
+        sh("podman", "exec", "-d", container, "sh", "-c", "hauswart-agent run >/var/log/agent.log 2>&1")
+        wait_report(admin, device, lambda r: r.get("protected"), 60)
+
+        code, group = admin.call("POST", "/api/groups", {"name": f"network{SUFFIX}"})
+        admin.call("PUT", f"/api/groups/{group['id']}/devices", {"devices": [device]})
+        uri = f"ipp://localhost:{port}/ipp/print"
+        policy = {"wifi": [{"ssid": "Büro", "password": "very secret pw", "security": "wpa3"}],
+                  "printers": [{"name": "flur", "uri": uri, "default": True}]}
+        code, out = admin.call("PUT", f"/api/groups/{group['id']}/policy", policy)
+        check(name, "policy with Wi-Fi and a printer saved", code == 204, str(out))
+        shown = tool.run("approve", input="y\n")
+        check(name, "the signing tool shows both, not the password",
+              'join Wi-Fi "Büro" with WPA3 and a password of 14 characters' in shown.stdout
+              and "printer flur at" in shown.stdout and "very secret" not in shown.stdout, shown.stdout + shown.stderr)
+
+        def network_file():
+            return inside(f"ls {connections}/hauswart-*.nmconnection 2>/dev/null").stdout.strip()
+        check(name, "the network is there", wait_for(lambda: network_file() != "", 120),
+              str(admin.call("GET", f"/api/groups/{group['id']}/policy")[1]) + inside("grep -v full-screen /var/log/agent.log | tail -20").stdout)
+        path = network_file()
+        mode = inside(f"stat -c '%a %U' {path}").stdout.strip()
+        check(name, "only root can read it", mode == "600 root", mode)
+        keyfile = inside(f"cat {path}").stdout
+        check(name, "with WPA3 and the password", "key-mgmt=sae" in keyfile and "psk=very secret pw" in keyfile and "ssid=Büro" in keyfile, keyfile)
+
+        def queue():
+            return inside("lpstat -v 2>/dev/null").stdout
+        check(name, "the printer is there", wait_for(lambda: "hauswart-flur" in queue(), 120),
+              json.dumps(last_report(admin, device).get("policy", {}).get("deviations")) + inside("tail -5 /tmp/printer.log; lpstat -r; ls /run/cups").stdout)
+        check(name, "at its address", uri in queue(), queue())
+        check(name, "as the default", "hauswart-flur" in inside("lpstat -d").stdout, inside("lpstat -d").stdout)
+        printed = inside("echo hello | lp -d hauswart-flur")
+        check(name, "and it takes a job", printed.returncode == 0, printed.stdout + printed.stderr)
+
+        code, out = admin.call("PUT", f"/api/groups/{group['id']}/policy", {})
+        check(name, "the policy is emptied", code == 204, f"{code} {out}")
+        cleared = tool.run("approve", input="y\n")
+        check(name, "the end of the policy is signed", "Signed." in cleared.stdout,
+              cleared.stdout + cleared.stderr + str(admin.call("GET", f"/api/groups/{group['id']}/policy")[1]))
+        check(name, "the network goes with the policy", wait_for(lambda: network_file() == "", 120),
+              network_file() + json.dumps(last_report(admin, device).get("policy")))
+        check(name, "and the printer", wait_for(lambda: "hauswart-flur" not in queue(), 120), queue())
+    finally:
+        tool.close()
+        sh("podman", "rm", "-f", container, check_rc=False)
+
 POLICY_FILE = "/etc/hauswart.d/policy-test"
 
 
@@ -1400,6 +1483,8 @@ def main():
                 test_notify(admin, work, restart_server)
             elif name == "socket":
                 test_socket(admin, agent_bin)
+            elif name == "network":
+                test_network(admin, agent_bin, work, password, admin_bin)
             elif name == "signing":
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             elif name.startswith("journal-"):
