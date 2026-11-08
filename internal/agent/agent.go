@@ -355,6 +355,11 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 	}
 	a.policy = OpenPolicy(dir, a.exec, log)
 	a.notices = OpenNotices(dir, a.exec, a.policy.Language, log)
+	// GNOME reads the folder of Flatpak apps at login only, so people who are
+	// logged in need to hear why a new app is missing from their menu.
+	a.exec.FlatpakArrived = func() {
+		a.notices.record(context.Background(), api.DeviceEvent{Kind: api.EventFlatpakArrived}, urgencyNormal)
+	}
 	a.access = OpenAccess(dir, a.exec, a.notices, log)
 	a.requestsChanged = make(chan struct{}, 1)
 	a.client = &http.Client{

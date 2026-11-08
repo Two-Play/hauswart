@@ -80,6 +80,7 @@ const (
 	EventSoftwareRemoved   = "software.removed"
 	EventSoftwareUpgraded  = "software.upgraded"
 	EventSoftwareFailed    = "software.failed"
+	EventFlatpakArrived    = "software.flatpak_arrived"
 	EventUpdateFailed      = "software.update_failed"
 	EventAccountLocked     = "account.locked"
 	EventAccountUnlocked   = "account.unlocked"
