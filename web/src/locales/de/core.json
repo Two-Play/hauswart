@@ -22,7 +22,8 @@
     "logout": "Abmelden",
     "theme": "Farbschema wechseln",
     "menu": "Navigation ein- oder ausblenden",
-    "password": "Passwort ändern"
+    "password": "Passwort ändern",
+    "actions": "Aktionen"
   },
   "devices": {
     "add": "Gerät hinzufügen",
@@ -57,7 +58,22 @@
     "queued": "An {{name}} gesendet. Das Ergebnis steht unter Aufgaben.",
     "startPasswordTitle": "Startpasswort für {{user}}",
     "startPasswordHint": "Es wird nur dieses eine Mal angezeigt. {{user}} muss beim ersten Anmelden ein neues Passwort wählen.",
-    "close": "Schließen"
+    "close": "Schließen",
+    "pageHint": "Wähle ein Gerät, dann eine Aktion. Strg+K öffnet dasselbe von überall.",
+    "device": "Gerät",
+    "pickDevice": "Gerät wählen",
+    "search": "Aktionen suchen",
+    "noFields": "Diese Aktion braucht nichts weiter.",
+    "area": {
+      "software": "Software",
+      "access": "Zugang",
+      "screen": "Bildschirmzeit",
+      "rights": "Admin-Rechte",
+      "accounts": "Konten",
+      "power": "Strom",
+      "messages": "Nachrichten",
+      "files": "Dateien und Zertifikate"
+    }
   },
   "taskTypes": {
     "pkg_install": "Paket installieren",
@@ -211,5 +227,11 @@
     "use_admin_tool": "Dieses Gerät ist geschützt. Nutze hauswart-admin auf deinem Rechner.",
     "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur.",
     "device_suspended": "Das Gerät ist in Hauswart gesperrt."
+  },
+  "palette": {
+    "title": "Aktion ausführen",
+    "action": "Welche Aktion?",
+    "device": "Auf welchem Gerät?",
+    "hint": "Aktion ausführen (Strg+K)"
   }
 }

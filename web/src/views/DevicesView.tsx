@@ -7,23 +7,17 @@ import {
   Group,
   Modal,
   Progress,
-  Select,
   SimpleGrid,
   Stack,
   Text,
-  Textarea,
-  TextInput,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type User } from '../api';
-import { buildPayload, TASK_FIELDS, taskKey } from '../tasks';
+import { useNavigation } from '../navigation';
 import { formatBytes, Loaded, showError } from '../ui';
 import { DeviceInsight, InsightBadges } from './DeviceInsight';
-import { knownNames, NameInput } from './NameInput';
-import { PackageSearch } from './PackageSearch';
 
 const ONLINE_SECONDS = 90;
 
@@ -57,145 +51,6 @@ function DeviceState({ device }: { device: Device }) {
   );
 }
 
-function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean) => void }) {
-  const { t } = useTranslation();
-  const [type, setType] = useState('pkg.install');
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [startPassword, setStartPassword] = useState<string>();
-  const names = knownNames([device]);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      if (type === 'user.passwd') {
-        const out = await api<{ password: string }>('POST', `/api/devices/${device.id}/start-password`, {
-          user: values.user,
-        });
-        setStartPassword(out.password);
-        return;
-      }
-      await api('POST', `/api/devices/${device.id}/tasks`, { type, payload: buildPayload(values, type) });
-      notifications.show({ color: 'teal', message: t('actions.queued', { name: device.hostname }) });
-      onClose(true);
-    } catch (err) {
-      showError(err);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (startPassword) {
-    return (
-      <Modal
-        opened
-        onClose={() => onClose(true)}
-        title={t('actions.startPasswordTitle', { user: values.user })}
-        closeOnClickOutside={false}
-      >
-        <Stack>
-          <Text size="sm">{t('actions.startPasswordHint', { user: values.user })}</Text>
-          <Code block>{startPassword}</Code>
-          <Group justify="flex-end">
-            <CopyButton value={startPassword}>
-              {({ copied, copy }) => (
-                <Button variant="default" onClick={copy}>
-                  {t(copied ? 'common.copied' : 'common.copy')}
-                </Button>
-              )}
-            </CopyButton>
-            <Button onClick={() => onClose(true)}>{t('actions.close')}</Button>
-          </Group>
-        </Stack>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal opened onClose={() => onClose(false)} title={t('actions.title', { name: device.hostname })}>
-      <form onSubmit={submit}>
-        <Stack>
-          <Select
-            label={t('actions.type')}
-            allowDeselect={false}
-            value={type}
-            onChange={(next) => {
-              setType(next ?? type);
-              setValues({});
-            }}
-            data={Object.keys(TASK_FIELDS).map((key) => ({ value: key, label: t(taskKey(key)) }))}
-          />
-          {TASK_FIELDS[type].map((field) => {
-            const value = values[field.name] ?? '';
-            const set = (next: string) => setValues((v) => ({ ...v, [field.name]: next }));
-            const label = t(`fields.${field.label ?? field.name}`);
-            if (field.name === 'packages') {
-              return (
-                <PackageSearch
-                  key={`${type}-${field.name}`}
-                  kind={type === 'flatpak.install' ? 'flatpak' : 'package'}
-                  scope={{ device: device.id }}
-                  label={label}
-                  required={field.required}
-                  value={value.split(/\s+/).filter(Boolean)}
-                  onChange={(next) => set(next.join(' '))}
-                />
-              );
-            }
-            if (field.name === 'user' || field.name === 'group') {
-              return (
-                <NameInput
-                  key={field.name}
-                  of={field.name === 'user' ? 'users' : 'groups'}
-                  names={names}
-                  label={label}
-                  required={field.required}
-                  value={value}
-                  onChange={set}
-                />
-              );
-            }
-            const shared = {
-              label,
-              required: field.required,
-              value,
-              onChange: (e: { currentTarget: { value: string } }) => set(e.currentTarget.value),
-            };
-            if (field.kind === 'select') {
-              return (
-                <Select
-                  key={field.name}
-                  label={shared.label}
-                  required={field.required}
-                  allowDeselect={false}
-                  description={field.hint && t(`fields.${field.hint}`)}
-                  value={values[field.name] ?? null}
-                  onChange={(value) => setValues((v) => ({ ...v, [field.name]: value ?? '' }))}
-                  data={(field.options ?? []).map((option) => ({ value: option, label: t(`fields.${field.name}_${option}`) }))}
-                />
-              );
-            }
-            return field.kind === 'textarea' ? (
-              <Textarea key={field.name} autosize minRows={5} maxRows={14} ff="monospace" {...shared} />
-            ) : (
-              <TextInput key={field.name} type={field.kind === 'number' ? 'number' : 'text'} {...shared} />
-            );
-          })}
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => onClose(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" loading={busy}>
-              {t('actions.run')}
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
-  );
-}
-
 function EnrollModal({ command, onClose }: { command: string; onClose: () => void }) {
   const { t } = useTranslation();
   return (
@@ -219,7 +74,7 @@ export function DevicesView({ user }: { user: User }) {
   const { t } = useTranslation();
   const isAdmin = user.role === 'admin';
   const { data, error, reload } = useResource<Device[]>('/api/devices', 10_000);
-  const [taskDevice, setTaskDevice] = useState<Device>();
+  const navigation = useNavigation();
   const [insightDevice, setInsightDevice] = useState<string>();
   const [revokeDevice, setRevokeDevice] = useState<Device>();
   const [enrollCommand, setEnrollCommand] = useState<string>();
@@ -308,7 +163,7 @@ export function DevicesView({ user }: { user: User }) {
                     )}
                     {isAdmin && !d.revoked && (
                       <Group gap="xs" mt="xs">
-                        <Button size="xs" onClick={() => setTaskDevice(d)}>
+                        <Button size="xs" onClick={() => navigation.open('actions', d.id)}>
                           {t('devices.action')}
                         </Button>
                         <Button size="xs" variant="default" onClick={() => setInsightDevice(d.id)}>
@@ -336,7 +191,6 @@ export function DevicesView({ user }: { user: User }) {
           onClose={() => setInsightDevice(undefined)}
         />
       )}
-      {taskDevice && <TaskModal device={taskDevice} onClose={() => setTaskDevice(undefined)} />}
       {enrollCommand && <EnrollModal command={enrollCommand} onClose={() => setEnrollCommand(undefined)} />}
       {revokeDevice && (
         <Modal opened onClose={() => setRevokeDevice(undefined)} title={t('devices.revokeTitle', { name: revokeDevice.hostname })}>
