@@ -142,13 +142,14 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request, id string) {
 		s.internal(w, err)
 		return
 	}
-	// A suspended device learns it at once, and its tasks wait.
-	if s.refuseSuspended(w, r, id, http.StatusLocked) {
-		return
-	}
 	wake := s.waiter(id)
 	timeout := time.After(wait)
 	for {
+		// A suspended device learns it at once, also while it waits, and its
+		// tasks wait as well.
+		if s.refuseSuspended(w, r, id, http.StatusLocked) {
+			return
+		}
 		task, err := s.store.ClaimTask(r.Context(), id)
 		if err != nil {
 			s.internal(w, err)

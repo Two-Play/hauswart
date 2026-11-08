@@ -308,6 +308,9 @@ A popup always carries the title `Hauswart`, so it cannot pose as the system. It
 can still lie: whoever is allowed to send one can write "call this number". Everyone
 should know that Hauswart never asks for a password.
 
+A hacked server can suspend a device. That ends sudo grants and stops requests,
+and nothing more.
+
 Popups about changes come from fixed texts on the device. A package or group name is
 the only part from outside, and it is escaped. A hacked server can claim that a
 request was denied or approved without doing it, which confuses but grants nothing:

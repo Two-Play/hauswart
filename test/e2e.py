@@ -890,6 +890,32 @@ def test_socket(admin, agent_bin):
         his = history("ben", lambda text: "software.installed" in text)
         check(name, "ben sees the device's change", '"kind":"software.installed"' in his, his)
         check(name, "ATTACK ben does not see anna's requests", '"requests":[]' in his, his)
+
+        # Suspended, the device takes no requests and ends sudo, and comes back.
+        until = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        task = run_task(admin, device, "sudo.grant", {"user": "anna", "expires_at": until}, wait=60)
+        check(name, "sudo for anna", task["status"] == "done", task["output"])
+        code, _ = admin.call("POST", f"/api/devices/{device}/suspend")
+        check(name, "suspend", code == 204, str(code))
+        status = ""
+        for _ in range(40):
+            status = as_user("anna", "/status").stdout
+            if '"suspended":true' in status:
+                break
+            time.sleep(2)
+        check(name, "anna learns that the device is suspended", '"suspended":true' in status, status)
+        check(name, "and the sudo grant is gone", inside("test -e /etc/sudoers.d/hauswart-anna").returncode != 0)
+        refused = as_user("anna", "/request", '{"kind":"software","detail":"git"}')
+        check(name, "a request is refused", "device_suspended" in refused.stdout and refused.stdout.strip().endswith("422"), refused.stdout)
+        admin.call("POST", f"/api/devices/{device}/resume")
+        for _ in range(40):
+            status = as_user("anna", "/status").stdout
+            if '"suspended":true' not in status:
+                break
+            time.sleep(2)
+        check(name, "after resuming it is managed again", '"suspended":true' not in status, status)
+        hers = as_user("anna", "/history").stdout
+        check(name, "and both are in the history", "device.suspended" in hers and "device.resumed" in hers, hers)
     finally:
         sh("podman", "rm", "-f", container, check_rc=False)
 
