@@ -241,6 +241,7 @@
     "hint": "Bildschirmzeit pro Person, in der Richtlinie jeder Gruppe. Zeitfenster sagen wann, die Minuten pro Tag wie lange. Speichern ändert die Richtlinie der Gruppe, die geschützte Geräte nur mit Signatur übernehmen.",
     "noGroups": "Noch keine Gruppen. Bildschirmzeit gehört zur Richtlinie einer Gruppe.",
     "noDevices": "keine Geräte",
-    "save": "Bildschirmzeit speichern"
+    "save": "Bildschirmzeit speichern",
+    "toGroups": "Gruppe anlegen"
   }
 }

@@ -1,4 +1,5 @@
-import { Button, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Button, Card, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +16,7 @@ export function RequestsView({ user }: { user: User }) {
   const [kind, setKind] = useState<string>('software');
   const [detail, setDetail] = useState('');
   const [reason, setReason] = useState('');
+  const narrow = useMediaQuery('(max-width: 48em)');
 
   const options = (devices.data ?? []).filter((d) => !d.revoked).map((d) => ({ value: d.id, label: d.hostname }));
 
@@ -62,10 +64,50 @@ export function RequestsView({ user }: { user: User }) {
     return `${t(`requests.kinds.${r.kind}`)}: ${detailText}`;
   }
 
-  return (
-    <Stack>
-      <Title order={2}>{t('nav.requests')}</Title>
+  // On a phone, which is where a passkey approves, a table hides the buttons.
+  const cards = (list: AccessRequest[]) =>
+    list.length === 0 ? (
+      <Text c="dimmed">{t('requests.empty')}</Text>
+    ) : (
+      <Stack gap="xs">
+        {list.map((r) => (
+          <Card key={r.id} withBorder padding="sm">
+            <Stack gap={4}>
+              <Group justify="space-between" wrap="nowrap" align="flex-start">
+                <Text fw={600} size="sm">
+                  {describe(r)}
+                </Text>
+                <StatusBadge status={r.outcome ?? r.status} />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {r.username} · {r.hostname} · {formatTime(r.created_at)}
+              </Text>
+              {r.reason && <Text size="sm">{r.reason}</Text>}
+              {r.outcome_detail && (
+                <Text size="xs" c="red" style={{ wordBreak: 'break-word' }}>
+                  {r.outcome_detail}
+                </Text>
+              )}
+              {decider(r) && (
+                <Text size="xs" c="dimmed">
+                  {decider(r)}
+                </Text>
+              )}
+              {canDecide(r) && (
+                <Group grow mt={4}>
+                  <Button onClick={() => decide(r.id, 'approve')}>{t('requests.approve')}</Button>
+                  <Button variant="light" color="red" onClick={() => decide(r.id, 'deny')}>
+                    {t('requests.deny')}
+                  </Button>
+                </Group>
+              )}
+            </Stack>
+          </Card>
+        ))}
+      </Stack>
+    );
 
+  const form = (
       <Paper withBorder p="md">
         <form onSubmit={submit}>
           <Stack>
@@ -120,10 +162,11 @@ export function RequestsView({ user }: { user: User }) {
           </Stack>
         </form>
       </Paper>
-
+  );
+  const list = (
       <Paper withBorder p="md">
         <Loaded data={requests.data} error={requests.error}>
-          {(list) => (
+          {(list) => narrow ? cards(list) : (
             <DataTable
               empty={t('requests.empty')}
               headers={[
@@ -169,6 +212,23 @@ export function RequestsView({ user }: { user: User }) {
           )}
         </Loaded>
       </Paper>
+  );
+
+  return (
+    <Stack>
+      <Title order={2}>{t('nav.requests')}</Title>
+
+      {isApprover(user) ? (
+        <>
+          {list}
+          {form}
+        </>
+      ) : (
+        <>
+          {form}
+          {list}
+        </>
+      )}
     </Stack>
   );
 }
