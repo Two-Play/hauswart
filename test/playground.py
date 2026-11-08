@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,7 @@ VERSION = os.environ.get("VERSION", "0.1.0")
 SSH_PORT = 2250
 NAME = "playground"
 PERSON, PERSON_PASSWORD = "anna", "anna"
+PERSON_WEB_PASSWORD = "anna-password"  # the dashboard wants at least 10 characters
 
 
 class Signer:
@@ -95,11 +97,32 @@ def password():
     return open(f"{HOME}/data/initial-admin-password").read().strip()
 
 
-def first_run(machine, signer, tray, kde, state):
+def login():
     admin = e2e.Client(f"{HOME}/data/pki/ca.pem")
     code, _ = admin.call("POST", "/api/login", {"username": "admin", "password": password()})
     if code != 200:
         sys.exit(f"login failed: {code}")
+    return admin
+
+
+def ensure_person(device):
+    """Gives anna a Hauswart account for her Linux account, so the desktop app on
+    the VM can file requests. Runs on every start to repair older playgrounds."""
+    admin = login()
+    account = next((u for u in admin.call("GET", "/api/users")[1] if u["username"] == PERSON), None)
+    if account is None:
+        code, body = admin.call("POST", "/api/users", {"username": PERSON, "linux_user": PERSON,
+                                                       "password": PERSON_WEB_PASSWORD, "role": "member"})
+        if code != 201:
+            sys.exit(f"could not add {PERSON}: {code} {body}")
+        account = next(u for u in admin.call("GET", "/api/users")[1] if u["username"] == PERSON)
+    code, body = admin.call("PUT", f"/api/users/{account['id']}/devices", {"devices": [device]})
+    if code not in (200, 204):
+        sys.exit(f"could not assign the device to {PERSON}: {code} {body}")
+
+
+def first_run(machine, signer, tray, kde, state):
+    admin = login()
     command = admin.call("POST", "/api/enroll-tokens")[1]["command"]
     fingerprint = re.search(r"--ca-fingerprint (\w+)", command).group(1)
     done = signer.run("login", "--server", e2e.URL, "--ca-fingerprint", fingerprint, "--user", "admin", input=password())
@@ -130,6 +153,7 @@ Hauswart is running. Your data stays in {HOME}.
                 Passkeys need https://localhost:{PORT} instead, where the browser warns
                 once: Hauswart has its own CA, in {HOME}/data/pki/ca.pem.
   Desktop       the VM window, logged in as {PERSON} with the password {PERSON_PASSWORD}
+                {PERSON} has a Hauswart account as well, password {PERSON_WEB_PASSWORD}
   The device    is protected: policies and app rules need your signature.
 
   Sign tasks in a second terminal:
@@ -155,6 +179,9 @@ def main():
         print(f"keeping the desktop of the first run, delete {HOME} to change it", flush=True)
     kde = state.get("kde", args.kde)
 
+    with socket.socket() as probe:
+        if probe.connect_ex(("127.0.0.1", PORT)) == 0:
+            sys.exit(f"something already listens on port {PORT}, probably a playground that is still running")
     tray = build()
     if not os.path.exists(f"{HOME}/id"):
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", f"{HOME}/id"], check=True)
@@ -173,6 +200,7 @@ def main():
             json.dump(state, open(state_file, "w"))
         elif not machine.wait_ssh():
             sys.exit(f"the VM did not come up, see {machine.log}")
+        ensure_person(state["device"])
         # The login of the tool may have run out since the last time.
         if signer.run("devices").returncode != 0:
             signer.run("login", "--server", e2e.URL, "--ca-fingerprint", state["fingerprint"], "--user", "admin",
