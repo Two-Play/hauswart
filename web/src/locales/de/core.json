@@ -23,7 +23,8 @@
     "theme": "Farbschema wechseln",
     "menu": "Navigation ein- oder ausblenden",
     "password": "Passwort ändern",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "screentime": "Bildschirmzeit"
   },
   "devices": {
     "add": "Gerät hinzufügen",
@@ -226,12 +227,19 @@
     "invalid_keys": "Die Signaturschlüssel sind ungültig.",
     "use_admin_tool": "Dieses Gerät ist geschützt. Nutze hauswart-admin auf deinem Rechner.",
     "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur.",
-    "device_suspended": "Das Gerät ist in Hauswart gesperrt."
+    "device_suspended": "Das Gerät ist in Hauswart gesperrt.",
+    "invalid_quota": "Die Minuten pro Tag von {{value}} müssen zwischen 0 und 1440 liegen."
   },
   "palette": {
     "title": "Aktion ausführen",
     "action": "Welche Aktion?",
     "device": "Auf welchem Gerät?",
     "hint": "Aktion ausführen (Strg+K)"
+  },
+  "screen": {
+    "hint": "Bildschirmzeit pro Person, in der Richtlinie jeder Gruppe. Zeitfenster sagen wann, die Minuten pro Tag wie lange. Speichern ändert die Richtlinie der Gruppe, die geschützte Geräte nur mit Signatur übernehmen.",
+    "noGroups": "Noch keine Gruppen. Bildschirmzeit gehört zur Richtlinie einer Gruppe.",
+    "noDevices": "keine Geräte",
+    "save": "Bildschirmzeit speichern"
   }
 }
