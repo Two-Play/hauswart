@@ -330,7 +330,13 @@ func (c *config) logIn(user, password string) error {
 	if err != nil {
 		return err
 	}
-	loginResp, err := client.Post(c.Server+"/api/login", "application/json", bytes.NewReader(raw))
+	loginReq, err := http.NewRequest(http.MethodPost, c.Server+"/api/login", bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginReq.Header.Set("X-Hauswart", "1")
+	loginResp, err := client.Do(loginReq)
 	if err != nil {
 		return err
 	}
