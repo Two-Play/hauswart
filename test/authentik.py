@@ -227,7 +227,9 @@ def start_server(work, env_file=""):
                               stderr=log, stdout=log)
     before = time.time()
     while time.time() - before < 10:
-        if "listening" in open(f"{work}/server.log").read().rsplit("hauswart", 1)[-1] or os.path.exists(f"{work}/data/hauswart.db"):
+        # The password file comes last: a database alone may still be half set up.
+        listening = "listening" in open(f"{work}/server.log").read().rsplit("hauswart", 1)[-1]
+        if listening or os.path.exists(f"{work}/data/initial-admin-password"):
             time.sleep(1)
             return server
         time.sleep(0.2)
