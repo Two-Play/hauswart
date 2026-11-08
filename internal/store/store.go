@@ -255,6 +255,12 @@ var migrations = []string{
 	`ALTER TABLE requests ADD COLUMN task_id TEXT NOT NULL DEFAULT '';`,
 	// A suspended device stays enrolled and reports, but gets no tasks.
 	`ALTER TABLE devices ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0;`,
+	// What the TPM of a device proved, and the boot an admin accepted.
+	`CREATE TABLE device_tpm (
+		device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+		document TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {

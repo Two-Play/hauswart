@@ -254,6 +254,7 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		`DROP TABLE catalogs`,
 		`ALTER TABLE requests DROP COLUMN task_id`,
 		`ALTER TABLE devices DROP COLUMN suspended`,
+		`DROP TABLE device_tpm`,
 		`PRAGMA user_version = 0`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -539,7 +540,8 @@ func TestMigrationRenamesParent(t *testing.T) {
 		`DROP TABLE catalogs`,
 		`ALTER TABLE requests DROP COLUMN task_id`,
 		`ALTER TABLE devices DROP COLUMN suspended`,
-		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-5),
+		`DROP TABLE device_tpm`,
+		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-6),
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
 			t.Fatal(err)

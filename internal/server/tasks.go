@@ -244,12 +244,20 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request, _ store
 		s.internal(w, err)
 		return
 	}
-	deviating := 0
+	tpms, err := s.store.TPMs(r.Context())
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	deviating, booting := 0, 0
 	for _, d := range devices {
 		if !d.Revoked && d.Report != nil && d.Report.Policy != nil && len(d.Report.Policy.Deviations) > 0 {
 			deviating++
 		}
+		if len(bootWarnings(d, tpmOf(tpms, d.ID), time.Now())) > 0 {
+			booting++
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"failed_tasks": failed, "deviating_devices": deviating,
+	writeJSON(w, http.StatusOK, map[string]any{"failed_tasks": failed, "deviating_devices": deviating, "boot_alarms": booting,
 		"exposure": s.currentExposure()})
 }

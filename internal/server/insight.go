@@ -36,7 +36,7 @@ func (s *Server) recordInsight(r *http.Request, id string, rep *api.Report) {
 	}
 }
 
-func deviceWarnings(d store.Device, asset api.Asset) []api.Warning {
+func deviceWarnings(d store.Device, asset api.Asset, tpm *store.TPMRecord) []api.Warning {
 	if d.Revoked || d.Report == nil {
 		return nil
 	}
@@ -44,7 +44,15 @@ func deviceWarnings(d store.Device, asset api.Asset) []api.Warning {
 	if warning := asset.Warning(time.Now()); warning != nil {
 		warnings = append(warnings, *warning)
 	}
-	return warnings
+	return append(warnings, bootWarnings(d, tpm, time.Now())...)
+}
+
+// tpmOf is the record of a device in a map of them, nil if it has none.
+func tpmOf(records map[string]store.TPMRecord, id string) *store.TPMRecord {
+	if rec, ok := records[id]; ok {
+		return &rec
+	}
+	return nil
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request, _ store.User) {

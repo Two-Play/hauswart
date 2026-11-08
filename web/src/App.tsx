@@ -102,6 +102,7 @@ interface Exposure {
 interface Attention {
   failed_tasks: number;
   deviating_devices: number;
+  boot_alarms?: number;
   exposure?: Exposure | null;
 }
 
@@ -109,7 +110,7 @@ interface Attention {
 function useAttention(admin: boolean): { counts: Partial<Record<string, number>>; exposure?: Exposure } {
   const { data } = useResource<Attention>(admin ? '/api/attention' : '', 30_000);
   if (!admin || !data) return { counts: {} };
-  return { counts: { tasks: data.failed_tasks, groups: data.deviating_devices }, exposure: data.exposure ?? undefined };
+  return { counts: { devices: data.boot_alarms, tasks: data.failed_tasks, groups: data.deviating_devices }, exposure: data.exposure ?? undefined };
 }
 
 /** ExposureWarning says that the server looks reachable from the internet. */

@@ -58,7 +58,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          packages: qemu-system-x86 qemu-utils xorriso
+          packages: qemu-system-x86 qemu-utils xorriso swtpm ovmf
       # Fails here, visibly, if a runner has no KVM.
       - name: Open KVM to the runner user
         run: |

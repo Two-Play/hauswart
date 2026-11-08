@@ -84,6 +84,8 @@ type Server struct {
 	terminals terminalHub
 	// exposure is what makes the server look reachable from the internet.
 	exposure exposureWatch
+	// tpm holds the steps of attestation that wait for a device.
+	tpm tpmState
 }
 
 type loginFailure struct {

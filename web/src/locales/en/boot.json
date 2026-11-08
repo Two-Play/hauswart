@@ -1,0 +1,46 @@
+{
+  "boot": {
+    "tab": "Boot",
+    "none": "This device has not proven its boot. It needs a TPM 2.0, and the agent registers it on its own within a day of starting.",
+    "waiting": "The TPM is registered, the first proof is on its way",
+    "lastAt": "Last proof {{time}}",
+    "tpm": "TPM {{ek}}",
+    "secureBoot": "Secure Boot",
+    "on": "on",
+    "off": "off",
+    "keys": "Secure Boot keys",
+    "revocations": "Revocations (dbx)",
+    "firmware": "Firmware",
+    "bootloaders": "Boot loaders",
+    "commandLine": "Kernel parameters",
+    "accepted": "Accepted",
+    "current": "Last boot",
+    "changed": "The device started differently than accepted",
+    "alarm": "Alarm",
+    "hint": "Note",
+    "acceptHint": "If you know why, for example a firmware update or a change you made, accept the boot. Otherwise look at the device before you do.",
+    "accept": "Accept this boot",
+    "acceptTPM": "Accept the other TPM",
+    "otherTPM": "The device came with another TPM. Its proofs do not count until you accept it: that happens when the mainboard was replaced, the TPM cleared, or when the device's files were copied to another computer.",
+    "noSecureBoot": "Secure Boot is off, so the device cannot prove what started after the firmware. Only changes to the firmware and kernel parameters show.",
+    "warning_one": "Boot differs ({{count}})",
+    "warning_other": "Boot differs ({{count}})",
+    "missing_one": "No boot proof for {{count}} day",
+    "missing_other": "No boot proof for {{count}} days",
+    "kinds": {
+      "secure_boot_off": "Secure Boot was switched off",
+      "secure_boot_keys": "The Secure Boot keys changed",
+      "command_line": "The kernel parameters changed",
+      "tpm": "Another TPM",
+      "quote": "A proof did not check out",
+      "firmware": "The firmware changed",
+      "revocations": "The list of revoked boot loaders changed",
+      "bootloader": "Another boot loader started"
+    }
+  },
+  "errors": {
+    "invalid_tpm": "The TPM data is not valid ({{value}}).",
+    "tpm_challenge": "The TPM did not answer the challenge.",
+    "tpm_unknown": "This device has no trusted TPM key yet."
+  }
+}

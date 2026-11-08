@@ -485,6 +485,99 @@ def valid_for(minutes=30):
     return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
 
 
+# Firmware with Secure Boot, and variables with Microsoft's keys, on Fedora and on
+# Debian or Ubuntu.
+# The 4 MB builds, because Fedora's 2 MB one leaves the TPM alone and measures nothing.
+OVMF = [("/usr/share/edk2/ovmf/OVMF_CODE_4M.secboot.qcow2", "/usr/share/edk2/ovmf/OVMF_VARS_4M.secboot.qcow2"),
+        ("/usr/share/OVMF/OVMF_CODE_4M.secboot.fd", "/usr/share/OVMF/OVMF_VARS_4M.ms.fd")]
+
+
+def tpm_machine(work, name):
+    """Starts a software TPM and returns the QEMU arguments for a machine with
+    it and with UEFI Secure Boot, keys of Microsoft enrolled as on real PCs."""
+    # Unix sockets allow only short paths, which the work directory may not be.
+    state = tempfile.mkdtemp(prefix="hw-tpm-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+    subprocess.Popen(["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state}",
+                      "--ctrl", f"type=unixio,path={state}/sock", "--daemon"]).wait()
+    code, variables = next((c, v) for c, v in OVMF if os.path.exists(c) and os.path.exists(v))
+    shutil.copy(variables, f"{work}/vars-{name}.fd")
+    image = "qcow2" if code.endswith(".qcow2") else "raw"
+    return ["-machine", "q35,smm=on", "-global", "driver=cfi.pflash01,property=secure,value=on",
+            "-drive", f"if=pflash,format={image},unit=0,file={code},readonly=on",
+            "-drive", f"if=pflash,format={image},unit=1,file={work}/vars-{name}.fd",
+            "-chardev", f"socket,id=chrtpm,path={state}/sock", "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
+            "-device", "tpm-tis,tpmdev=tpm0"]
+
+
+def test_tpm(admin, agent_bin, work, public_key):
+    """Measured boot with Secure Boot and a software TPM: the device proves how it
+    started, a reboot changes nothing, other kernel parameters raise an alarm."""
+    group = "tpm"
+    print("\n== tpm (Fedora Cloud 44 VM, Secure Boot, swtpm)", flush=True)
+    tool = signing_tool(admin, work)
+    vm = VM(work, group, cloud_image(), "fedora", 2261, [*cloud_seed(work, group, public_key), *tpm_machine(work, group)])
+
+    def boot():
+        return admin.call("GET", f"/api/devices/{device}/boot")[1]
+
+    def boot_when(condition, wait=180):
+        """The boot status once it meets condition, None if it never does."""
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            status = boot()
+            if condition(status):
+                return status
+            time.sleep(3)
+        return None
+
+    def reboot():
+        before = vm.ssh("cat /proc/sys/kernel/random/boot_id").stdout.strip()
+        vm.ssh("systemctl reboot", timeout=30)
+        time.sleep(20)
+        check(group, "VM comes back", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+        check(group, "it really restarted", vm.ssh("cat /proc/sys/kernel/random/boot_id").stdout.strip() != before)
+
+    try:
+        check(group, "VM boots", vm.wait_ssh(), open(vm.log, errors="replace").read()[-1500:])
+        vm.ssh("cloud-init status --wait")
+        secure = vm.ssh("od -An -tu1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c").stdout.split()
+        check(group, "Secure Boot is on in the guest", secure[-1:] == ["1"], str(secure))
+        check(group, "the guest has a TPM", vm.ssh("test -c /dev/tpmrm0").returncode == 0)
+        device = protected_agent(vm, admin, tool, agent_bin, "tpm-vm")
+
+        first = boot_when(lambda b: b.get("baseline"))
+        check(group, "the TPM registers and proves the boot", first, str(boot()) + vm.ssh("journalctl -u hauswart-agent --no-pager | tail -20").stdout)
+        baseline = first["baseline"] if first else {}
+        check(group, "with Secure Boot on", baseline.get("secure_boot") is True, str(baseline))
+        check(group, "and the kernel parameters, without the kernel's path",
+              "root=" in baseline.get("command_line", "") and "vmlinuz" not in baseline.get("command_line", ""), str(baseline))
+        check(group, "nothing differs", bool(first) and first["changes"] == [], str(first))
+
+        last = (first or {}).get("last_at")
+        reboot()
+        again = boot_when(lambda b: b.get("last_at") and b.get("last_at") != last)
+        check(group, "the next boot is proven too", again, str(boot()))
+        check(group, "a plain reboot raises nothing", bool(again) and again["changes"] == [], str(again))
+
+        vm.ssh("grubby --update-kernel=ALL --args=hauswart-test")
+        reboot()
+        changed = boot_when(lambda b: b.get("changes"))
+        kinds = [c["kind"] for c in (changed or {}).get("changes", [])]
+        check(group, "other kernel parameters raise an alarm", kinds == ["command_line"] and changed["changes"][0]["alarm"], str(changed or boot()))
+        _, devices = admin.call("GET", "/api/devices")
+        warnings = next((d.get("warnings") or [] for d in devices if d["id"] == device), [])
+        check(group, "the card warns", any(w["code"] == "boot_changed" for w in warnings), str(warnings))
+        _, attention = admin.call("GET", "/api/attention")
+        check(group, "the navigation counts it", attention.get("boot_alarms") == 1, str(attention))
+
+        code, _ = admin.call("POST", f"/api/devices/{device}/boot/accept")
+        accepted = boot()
+        check(group, "an admin accepts the new boot", code == 204 and accepted["changes"] == []
+              and "hauswart-test" in accepted["baseline"]["command_line"], str(accepted))
+    finally:
+        vm.stop()
+
+
 def test_power(admin, agent_bin, work, public_key):
     """Signed reboot and shutdown of a protected device, on a real kernel."""
     group = "power"
@@ -1485,7 +1578,7 @@ def test_desktop(admin, agent_bin, work, public_key):
         vm.stop()
 
 
-TESTS = ["flatpak", "atomic", "ubuntu", "inventory", "power", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
+TESTS = ["flatpak", "atomic", "ubuntu", "inventory", "power", "tpm", "desktop", "screentime", "kde", "atomic-policy", "directory", "directory-debian", "gui-kde", "gui-gnome", "apps-kde", "apps-gnome", "apps-debian"]
 
 
 def main():
@@ -1521,7 +1614,7 @@ def main():
         assert code == 200, code
         for name in names:
             tests = {"flatpak": test_flatpak, "atomic": test_atomic, "ubuntu": test_ubuntu, "inventory": test_inventory,
-                     "power": test_power, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
+                     "power": test_power, "tpm": test_tpm, "desktop": test_desktop, "screentime": test_screentime, "kde": test_kde,
                      "atomic-policy": test_atomic_policy, "directory": test_directory,
                      "directory-debian": test_directory_debian, "gui-kde": test_gui, "gui-gnome": test_gui_gnome,
                      "apps-kde": test_apps, "apps-gnome": test_apps_gnome, "apps-debian": test_apps_debian}
