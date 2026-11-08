@@ -17,7 +17,9 @@ import (
 // could hide or fake what the admin is about to sign.
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		// Format characters such as bidi overrides could make text read
+		// differently from what is signed, as api.ValidText knows.
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return '\ufffd'
 		}
 		return r

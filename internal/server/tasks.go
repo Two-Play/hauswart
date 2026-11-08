@@ -111,18 +111,12 @@ func (s *Server) enqueueFor(r *http.Request, deviceID, taskType string, payload 
 	if err != nil {
 		return "", err
 	}
-	create := s.store.CreateTask
-	if protected && api.NeedsSignature(taskType) {
-		create = s.store.CreateSigningTask
-	}
-	id, err := create(r.Context(), deviceID, taskType, payload, actor)
+	signing := protected && api.NeedsSignature(taskType)
+	// Task and link go in together, so that a device polling in between never
+	// gets a task without its request.
+	id, err := s.store.CreateLinkedTask(r.Context(), deviceID, taskType, payload, actor, signing, requestID)
 	if err != nil {
 		return "", err
-	}
-	if requestID != "" {
-		if err := s.store.SetRequestTask(r.Context(), requestID, id); err != nil {
-			return "", err
-		}
 	}
 	s.audit(r, actor, "task."+taskType, deviceID+" "+string(payload))
 	s.wake(deviceID)

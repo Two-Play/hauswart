@@ -208,6 +208,11 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 		fail(w, http.StatusConflict, api.ErrNotForPasskey, task.Type)
 		return
 	}
+	// The device checks this as well; asking here saves a touch that would fail.
+	if err := api.PasskeyLimits(task.Type, task.Payload, time.Now()); err != nil {
+		failErr(w, http.StatusConflict, err)
+		return
+	}
 	rpID, _, ok := s.relyingParty()
 	if !ok {
 		fail(w, http.StatusConflict, api.ErrNoPasskeyHost)
