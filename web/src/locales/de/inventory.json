@@ -76,6 +76,11 @@
       "purchased": "Kaufdatum",
       "warranty_until": "Garantie bis",
       "note": "Notiz"
-    }
+    },
+    "tpm": "TPM 2.0",
+    "secureBoot": "Secure Boot",
+    "legacyBoot": "Altes BIOS",
+    "hsi": "Firmware-Sicherheit (fwupd)",
+    "notAttestable": "Dieses Gerät kann nicht nachweisen, wie es gestartet ist. Dafür braucht es ein TPM 2.0 und Secure Boot, die sich meist in den Firmware-Einstellungen einschalten lassen."
   }
 }

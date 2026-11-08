@@ -76,6 +76,11 @@
       "purchased": "Purchased",
       "warranty_until": "Warranty until",
       "note": "Note"
-    }
+    },
+    "tpm": "TPM 2.0",
+    "secureBoot": "Secure Boot",
+    "legacyBoot": "Legacy BIOS",
+    "hsi": "Firmware security (fwupd)",
+    "notAttestable": "This device cannot prove how it started: that needs a TPM 2.0 and Secure Boot, which can usually be switched on in the firmware settings."
   }
 }
