@@ -201,7 +201,7 @@ func TestAllForAllShowsWhatEndsOnEachDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config{Devices: map[string]*device{"parents": {Name: "parents"}, "kid": {Name: "kid-pc"}}}
-	got := identicalPolicies(cfg, []queued{{DeviceID: "kid", Type: api.TaskPolicySet, Payload: harmless}}, policyFingerprint(api.TaskPolicySet, payload))
+	got := identicalPolicies(cfg, nil, []queued{{DeviceID: "kid", Type: api.TaskPolicySet, Payload: harmless}}, policyFingerprint(api.TaskPolicySet, payload))
 	if len(got) != 1 || !strings.Contains(got[0], "- user anna may be logged in") {
 		t.Fatalf("got %v", got)
 	}
@@ -221,7 +221,7 @@ func TestIdenticalPoliciesNeedALocalName(t *testing.T) {
 		{DeviceID: "c", Type: api.TaskPolicySet, Payload: raw},
 		{DeviceID: "a", Type: api.TaskPolicyClear, Payload: []byte(`{}`)},
 	}
-	got := identicalPolicies(cfg, queue, policyFingerprint(api.TaskPolicySet, payload))
+	got := identicalPolicies(cfg, nil, queue, policyFingerprint(api.TaskPolicySet, payload))
 	if len(got) != 1 || !strings.Contains(got[0], "On laptop:") {
 		t.Fatalf("got %v", got)
 	}

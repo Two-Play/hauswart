@@ -324,23 +324,29 @@ hauswart-admin passkeys unpin --device ID
 The device has to be online to receive the change. Check its journal before you
 rely on it, because a hacked server can withhold the task.
 
-### Limit what a passkey may approve
+### Choose what a passkey may approve
 
-`pkg.upgrade` and `power.cancel` run without any approval, so this list does not
-restrict them. Each device has its own list in `/var/lib/hauswart/agent.json`, which the server
-cannot change:
+**Approvals**, section **What a passkey may approve**, has a switch per action:
+**Passkey allowed** or **Signature only**. The choice holds for all protected devices.
+It reaches them as a signed task, so save it and then sign with `hauswart-admin approve`
+or the admin app, which show what a passkey may approve afterwards and what is new.
+Identical changes for several devices are signed with one answer. The section counts
+how many protected devices have the choice and how many wait for the signature. A
+passkey can never approve this change itself.
 
-```json
-"passkey_types": ["pkg.upgrade", "notify.send"]
-```
+A passkey can at most approve `pkg.install`, `pkg.remove`, `pkg.upgrade`,
+`flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`, `notify.send`,
+`screen.extend`, `access.set` and `terminal.open`. Everything else, such as sudo,
+accounts, files, CAs and keys, always takes a signature. Until an admin chooses, every
+device keeps the list it was enrolled with, which is all of these. Removing
+`pkg.remove`, `flatpak.install` and `terminal.open` is a sensible first step. A block
+approved with a passkey must end within 24 hours, and a live terminal must start
+within 15 minutes.
 
-Removing `pkg.remove` and `flatpak.install` is a sensible first step. An empty list
-turns passkeys off on that device. Restart the agent after a change. Types beyond
-the default stay refused, so the list can only get shorter. The default is
-`pkg.install`, `pkg.remove`, `pkg.upgrade`, `flatpak.install`, `power.reboot`,
-`power.shutdown`, `power.cancel`, `notify.send`, `screen.extend` and `access.set`.
-A block approved with a passkey must end within 24 hours. A device keeps the list it
-was enrolled with, so add newer types to its file to approve them with a passkey.
+The list sits in `/var/lib/hauswart/agent.json` as `passkey_types` on each device, and
+the device owner can still shorten it there and restart the agent; the next signed
+choice replaces it. An empty list turns passkeys off on that device. Approvers only
+see tasks that a passkey may approve.
 
 To see what passkeys approved on a device:
 

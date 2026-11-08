@@ -174,6 +174,13 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request, _ store
 		s.internal(w, err)
 		return
 	}
+	types, err := s.store.PasskeyTypes(r.Context())
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	// Approvers see only what a passkey may approve; the rest is for signing.
+	queue = slices.DeleteFunc(queue, func(w store.WaitingRow) bool { return !slices.Contains(types, w.Type) })
 	writeJSON(w, http.StatusOK, queue)
 }
 
@@ -202,7 +209,12 @@ func (s *Server) handlePasskeyChallenge(w http.ResponseWriter, r *http.Request, 
 		s.internal(w, err)
 		return
 	}
-	if !api.PasskeyEligible(task.Type) {
+	allowed, err := s.passkeyAllowed(r.Context(), task.Type)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	if !allowed {
 		fail(w, http.StatusConflict, api.ErrNotForPasskey, task.Type)
 		return
 	}

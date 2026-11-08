@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -745,5 +746,35 @@ func TestGuardRefusesTerminalApprovalsForLater(t *testing.T) {
 		if (err == nil) != c.ok {
 			t.Errorf("passkey for %s: %v", c.notAfter, err)
 		}
+	}
+}
+
+func TestPasskeyTypesComeSignedAndNarrowTheGuard(t *testing.T) {
+	key := sign.FormatKey(newKey(t).PublicKey())
+	a := testAgent(t, Config{DeviceID: guardDevice, SigningKeys: []string{key}})
+	raw, _ := json.Marshal(api.PasskeyTypesPayload{Types: []string{"power.reboot", api.TaskPkgInstall}})
+	if result := a.setPasskeyTypes(api.Task{Type: api.TaskPasskeyTypes, Payload: raw}); !result.OK {
+		t.Fatal(result.Output)
+	}
+	cfg := readConfig(t, a.dir)
+	if !slices.Equal(cfg.PasskeyTypes, []string{api.TaskPkgInstall, "power.reboot"}) {
+		t.Fatalf("config: %v", cfg.PasskeyTypes)
+	}
+	if _, types := a.guard.Passkeys(); !slices.Equal(types, []string{api.TaskPkgInstall, "power.reboot"}) {
+		t.Fatalf("guard: %v", types)
+	}
+	// Nothing: an empty list, which must not turn into the default.
+	raw, _ = json.Marshal(api.PasskeyTypesPayload{Types: []string{}})
+	a.setPasskeyTypes(api.Task{Type: api.TaskPasskeyTypes, Payload: raw})
+	if cfg := readConfig(t, a.dir); cfg.PasskeyTypes == nil || len(cfg.PasskeyTypes) != 0 {
+		t.Fatalf("empty list: %v", cfg.PasskeyTypes)
+	}
+	raw, _ = json.Marshal(api.PasskeyTypesPayload{Types: []string{"sudo.grant"}})
+	if result := a.setPasskeyTypes(api.Task{Type: api.TaskPasskeyTypes, Payload: raw}); result.OK {
+		t.Fatal("sudo became approvable by passkey")
+	}
+	// The type needs a signature even on its way in.
+	if _, err := a.guard.Admit(api.Task{Type: api.TaskPasskeyTypes, Payload: raw}, guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted without a signature")
 	}
 }

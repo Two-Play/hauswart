@@ -151,6 +151,14 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 			return
 		}
 	}
+	// The passkey types follow the admins' choice. The report says what the
+	// device has, so every report can tell whether it still needs a signature.
+	if rep.Protected {
+		if err := s.syncPasskeyTypes(r, "agent:"+id, id); err != nil {
+			s.internal(w, err)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

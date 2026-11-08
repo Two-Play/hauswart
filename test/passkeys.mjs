@@ -501,6 +501,33 @@ check('nothing refused reached the package manager', !tampered.includes('evil'))
 const journal = readFileSync(agent.log, 'utf8');
 check('device logs what a passkey approved', journal.includes('approved by passkey') && journal.includes('nmap'));
 
+// --- what a passkey may approve, set in the dashboard and signed ---
+
+await loginAs('admin', adminPassword);
+const narrowed = await call('PUT', '/api/passkey-types', { types: ['access.set', 'power.reboot'] });
+check('admin narrows what a passkey may approve', narrowed.status === 204, String(narrowed.status));
+const typesOut = admin(['approve', '--all'], 'y\n');
+check('hauswart-admin shows the passkey types it signs',
+  typesOut.includes('SET WHAT A PASSKEY MAY APPROVE') && typesOut.includes('- install packages'), typesOut.slice(0, 400));
+await until('the new list on the device', async () => {
+  const config = JSON.parse(readFileSync(join(agentDir, 'agent.json'), 'utf8'));
+  return JSON.stringify(config.passkey_types) === JSON.stringify(['access.set', 'power.reboot']);
+}, 40);
+check('the device took the signed list', true);
+const takenAway = envelope('pkg.install', { packages: ['after-narrowing'] }, 150);
+const afterNarrowing = await outcome(inject('pkg.install', takenAway, await assertion(takenAway)));
+check('refused on the device: a type the admins took away', afterNarrowing.status === 'failed' &&
+  afterNarrowing.output.includes('may not approve pkg.install'), afterNarrowing.output);
+const reopen = envelope('access.set', { mode: 'open' }, 151);
+const stillAllowed = await outcome(inject('access.set', reopen, await assertion(reopen)));
+check('a type that stayed still works', stillAllowed.status === 'done', stillAllowed.output);
+await call('PUT', '/api/passkey-types', { types: ['access.set', 'pkg.install', 'power.reboot'] });
+admin(['approve', '--all'], 'y\n');
+await until('pkg.install back on the device', async () => {
+  const config = JSON.parse(readFileSync(join(agentDir, 'agent.json'), 'utf8'));
+  return config.passkey_types?.includes('pkg.install');
+}, 40);
+
 // --- roles in the dashboard ---
 
 await loginAs('admin', adminPassword);
