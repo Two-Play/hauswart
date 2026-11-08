@@ -328,11 +328,11 @@ parameters with the boot an admin accepted.
   server that was.
 - **A device can refuse to prove anything.** That shows as a missing proof after
   three days, not as an alarm.
-- **The TLS key lives in the TPM** once the TPM is registered. The server issues its
-  certificate only for a key that the trusted attestation key certified as made in
-  the TPM and bound to it. Root on the device can use the key while it is there, but
-  not copy it, so stolen files of the agent connect from nowhere else. A device
-  whose owner set `"tpm_key": false` keeps a key file.
+- **The TLS key can live in the TPM**, where the device owner turns that on with
+  `"tpm_key": true`. The server issues its certificate only for a key that the
+  trusted attestation key certified as made in the TPM and bound to it. Root on the
+  device can use the key while it is there, but not copy it, so stolen files of the
+  agent connect from nowhere else. Without it, the key is a file that root can copy.
 
 ### With a member account
 

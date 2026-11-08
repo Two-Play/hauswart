@@ -206,5 +206,5 @@ func (a *Agent) moveKeyToTPM(ctx context.Context, tpm *attest.TPM) error {
 	return nil
 }
 
-// wantsTPMKey says whether the device owner left the key move on.
-func (c Config) wantsTPMKey() bool { return c.TPMKey == nil || *c.TPMKey }
+// wantsTPMKey says whether the device owner turned the key move on.
+func (c Config) wantsTPMKey() bool { return c.TPMKey != nil && *c.TPMKey }

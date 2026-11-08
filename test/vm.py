@@ -554,6 +554,9 @@ def test_tpm(admin, agent_bin, work, public_key):
         check(group, "Secure Boot is on in the guest", secure[-1:] == ["1"], str(secure))
         check(group, "the guest has a TPM", vm.ssh("test -c /dev/tpmrm0").returncode == 0)
         device = protected_agent(vm, admin, tool, agent_bin, "tpm-vm")
+        # The TLS key moves into the TPM only on request.
+        vm.ssh("python3 -c \"import json; p='/var/lib/hauswart/agent.json'; c=json.load(open(p)); "
+               "c['tpm_key']=True; json.dump(c, open(p, 'w'), indent=2)\" && systemctl restart hauswart-agent")
 
         first = boot_when(lambda b: b.get("baseline"))
         check(group, "the TPM registers and proves the boot", first, str(boot()) + vm.ssh("journalctl -u hauswart-agent --no-pager | tail -20").stdout)
