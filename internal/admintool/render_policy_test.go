@@ -237,3 +237,10 @@ func TestWarnsAboutTheServersOwnCA(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestQuotaIsShown(t *testing.T) {
+	text := strings.Join(policyLines(api.Policy{ScreenTime: []api.ScreenTimeRule{{User: "anna", DailyMinutes: 90}}}), "\n")
+	if !strings.Contains(text, "user anna may be logged in: any time, at most 90 minutes a day") {
+		t.Fatalf("got %s", text)
+	}
+}

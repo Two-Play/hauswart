@@ -16,6 +16,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconCertificate,
+  IconClockHour4,
   IconClipboardList,
   IconClipboardData,
   IconDevicesPc,
@@ -42,6 +43,7 @@ import { InventoryView } from './views/InventoryView';
 import { LoginView } from './views/LoginView';
 import { PasswordModal } from './views/PasswordModal';
 import { RequestsView } from './views/RequestsView';
+import { ScreenTimeView } from './views/ScreenTimeView';
 import { TasksView } from './views/TasksView';
 import { UsersView } from './views/UsersView';
 
@@ -58,6 +60,7 @@ const VIEWS: {
 }[] = [
   { key: 'devices', icon: IconDevicesPc, view: DevicesView },
   { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
+  { key: 'screentime', icon: IconClockHour4, view: ScreenTimeView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
   { key: 'approvals', icon: IconFingerprint, view: ApprovalsView, approverOnly: true },
   { key: 'inventory', icon: IconClipboardData, view: InventoryView, adminOnly: true },

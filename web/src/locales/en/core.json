@@ -22,7 +22,8 @@
     "logout": "Sign out",
     "theme": "Toggle color scheme",
     "menu": "Toggle navigation",
-    "password": "Change password"
+    "password": "Change password",
+    "screentime": "Screen time"
   },
   "devices": {
     "add": "Add device",
@@ -210,6 +211,13 @@
     "invalid_keys": "The signing keys are not valid.",
     "use_admin_tool": "This device is protected. Use hauswart-admin on your computer.",
     "not_waiting_for_signature": "This task is not waiting for a signature.",
-    "device_suspended": "The device is suspended in Hauswart."
+    "device_suspended": "The device is suspended in Hauswart.",
+    "invalid_quota": "The daily minutes of {{value}} must be 0 to 1440."
+  },
+  "screen": {
+    "hint": "Screen time per person, in the policy of each group. Windows say when, the daily minutes how long. Saving changes the group's policy, which protected devices only take with a signature.",
+    "noGroups": "No groups yet. Screen time lives in the policy of a group.",
+    "noDevices": "no devices",
+    "save": "Save screen time"
   }
 }

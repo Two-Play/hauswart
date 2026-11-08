@@ -550,6 +550,14 @@ Each rule names a Linux user and their times per day. A day without a time means
 session on that day. Warnings come 15, 5 and 1 minutes before the end. At the end
 the session locks, and a minute later it ends. **Unsaved work is lost then.**
 
+A rule can also have **minutes per day**. The device counts the time someone is at
+an unlocked desktop, and the session ends when the minutes are used up or the time
+window closes, whichever comes first. A rule with minutes and no windows allows any
+time of the day. The count starts over at midnight in the policy's time zone.
+
+The page **Screen time** shows the rules of all groups by person, and saves them in
+the policy of each group.
+
 To give someone more time today, choose **Extend screen time** on the device. This
 is possible with a passkey, at most four hours ahead and until midnight.
 
