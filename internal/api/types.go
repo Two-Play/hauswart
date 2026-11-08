@@ -109,6 +109,8 @@ type Report struct {
 	// it got. Both are only hints for the admin tool, the device decides.
 	Protected bool   `json:"protected"`
 	Counter   uint64 `json:"counter"`
+	// Access is the block the device keeps, if any.
+	Access *AccessPayload `json:"access,omitempty"`
 	// The same goes for what it says about passkeys: which credentials it has
 	// pinned, which task types they may approve and how far their counter got.
 	Passkeys       []string `json:"passkeys,omitempty"`

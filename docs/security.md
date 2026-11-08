@@ -308,6 +308,16 @@ A popup always carries the title `Hauswart`, so it cannot pose as the system. It
 can still lie: whoever is allowed to send one can write "call this number". Everyone
 should know that Hauswart never asks for a password.
 
+A hacked server can suspend a device. That ends sudo grants and stops requests,
+and nothing more.
+
+Blocking access is a signed task on a protected device, opening included, so a
+hacked server can neither lock people out nor let them back in. On an unprotected
+device it can do both. A block for the whole device also locks out local admins,
+and only root and the end of the block get around it. If `access.json` is broken,
+the agent refuses logins until access is set again, rather than opening what was
+blocked.
+
 Popups about changes come from fixed texts on the device. A package or group name is
 the only part from outside, and it is escaped. A hacked server can claim that a
 request was denied or approved without doing it, which confuses but grants nothing:
