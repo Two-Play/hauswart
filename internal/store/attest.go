@@ -23,6 +23,9 @@ type TPMRecord struct {
 	Current   *api.BootState   `json:"current,omitempty"`
 	Changes   []api.BootChange `json:"changes,omitempty"`
 	LastAt    time.Time        `json:"last_at,omitzero"`
+	// TLSKey is the fingerprint of the device's TLS key in the TPM, empty
+	// while the key is a file.
+	TLSKey string `json:"tls_key,omitempty"`
 }
 
 // TPM returns the record of a device, ErrNotFound if it has none.

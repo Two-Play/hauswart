@@ -6,7 +6,13 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +26,7 @@ import (
 
 	"github.com/Two-Play/hauswart/internal/agent"
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/pki"
 )
 
 // simChannel lets go-attestation talk to the simulator.
@@ -224,5 +231,124 @@ func TestSecureBootIsRead(t *testing.T) {
 		if rec.Baseline == nil || !rec.Baseline.SecureBoot || rec.Baseline.SecureBootKeys == "" {
 			t.Fatalf("secure boot: %+v", rec.Baseline)
 		}
+	}
+}
+
+// tpmClient is a device client whose TLS key is in the TPM.
+func (e *env) tpmClient(t *testing.T, tpm *attest.TPM, blob []byte, certPEM string) *http.Client {
+	t.Helper()
+	key, err := tpm.LoadKey(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { key.Close() })
+	private, err := key.Private(key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := pki.ParseCert([]byte(certPEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e.client(tls.Certificate{Certificate: [][]byte{leaf.Raw}, PrivateKey: private, Leaf: leaf})
+}
+
+func TestKeyMovesIntoTheTPM(t *testing.T) {
+	e := setup(t)
+	device, fileClient := e.enroll()
+	log := eventLog(t, "ubuntu-no-secure-boot.eventlog")
+	tpm := bootedTPM(t, 1, log)
+	at := &agent.Attestor{Client: fileClient, Server: e.ts.URL, Dir: t.TempDir(), EventLog: log}
+	ctx := context.Background()
+	if err := at.Prove(ctx, tpm); err != nil {
+		t.Fatal(err)
+	}
+	blob, certPEM, public, err := at.CertifiedKey(ctx, tpm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, _ := pki.ParseCert([]byte(certPEM))
+	if leaf.Subject.CommonName != device {
+		t.Fatalf("certificate for %s", leaf.Subject.CommonName)
+	}
+	if derived, _ := pki.DeviceID(public); derived == device {
+		t.Fatal("the TPM key is the file key")
+	}
+
+	// A TLS handshake signed in the TPM, which makes the new certificate the
+	// device's and ends the old one.
+	tpmClient := e.tpmClient(t, tpm, blob, certPEM)
+	if code, data := e.do(tpmClient, "POST", "/agent/report", api.Report{Hostname: "laptop"}); code != http.StatusNoContent {
+		t.Fatalf("report with the TPM key: %d %s", code, data)
+	}
+	if code, _ := e.do(fileClient, "POST", "/agent/report", api.Report{Hostname: "laptop"}); code != http.StatusForbidden {
+		t.Fatalf("the file key still works: %d", code)
+	}
+
+	// Renewal keeps the TPM key and the ID.
+	key, _ := tpm.LoadKey(blob)
+	defer key.Close()
+	private, _ := key.Private(key.Public())
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))
+	if code, data := e.do(tpmClient, "POST", "/agent/renew", api.RenewRequest{CSR: csr}); code != http.StatusOK {
+		t.Fatalf("renew with the TPM key: %d %s", code, data)
+	}
+	status := e.bootStatus(e.login("admin"), device)
+	if !status.KeyInTPM {
+		t.Fatal("the dashboard does not know the key is in the TPM")
+	}
+}
+
+func TestOnlyCertifiedTPMKeysGetACertificate(t *testing.T) {
+	e := setup(t)
+	_, client := e.enroll()
+	log := eventLog(t, "ubuntu-no-secure-boot.eventlog")
+	tpm := bootedTPM(t, 1, log)
+	dir := t.TempDir()
+	at := &agent.Attestor{Client: client, Server: e.ts.URL, Dir: dir, EventLog: log}
+	if err := at.Prove(context.Background(), tpm); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "agent-ak.json"))
+	var stored struct{ Blob []byte }
+	json.Unmarshal(raw, &stored)
+	ak, err := tpm.LoadAK(stored.Blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ak.Close(tpm)
+	key, err := tpm.NewKey(ak, &attest.KeyConfig{Algorithm: attest.ECDSA, Size: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Close()
+	params := key.CertificationParameters()
+
+	// A key in a file, with the certification of a key in the TPM.
+	file, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, file)
+	swapped := api.TPMRekey{CSR: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})),
+		Public: params.Public, CreateData: params.CreateData, CreateAttestation: params.CreateAttestation, CreateSignature: params.CreateSignature}
+	if code, data := e.do(client, "POST", "/agent/tpm/rekey", swapped); code != http.StatusBadRequest {
+		t.Fatalf("a file key passed: %d %s", code, data)
+	}
+	// A certification whose signature does not hold.
+	private, _ := key.Private(key.Public())
+	der, _ = x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, private)
+	forged := swapped
+	forged.CSR = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))
+	forged.CreateSignature = append([]byte(nil), params.CreateSignature...)
+	forged.CreateSignature[len(forged.CreateSignature)-1] ^= 1
+	if code, data := e.do(client, "POST", "/agent/tpm/rekey", forged); code != http.StatusBadRequest {
+		t.Fatalf("a forged certification passed: %d %s", code, data)
+	}
+	// A device without a registered TPM gets nothing.
+	_, other := e.enroll()
+	if code, _ := e.do(other, "POST", "/agent/tpm/rekey", forged); code != http.StatusConflict {
+		t.Fatalf("an unregistered device: %d", code)
 	}
 }

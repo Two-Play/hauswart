@@ -36,7 +36,9 @@
       "firmware": "The firmware changed",
       "revocations": "The list of revoked boot loaders changed",
       "bootloader": "Another boot loader started"
-    }
+    },
+    "keyInTPM": "TLS key in the TPM",
+    "keyInFile": "TLS key in a file"
   },
   "errors": {
     "invalid_tpm": "The TPM data is not valid ({{value}}).",

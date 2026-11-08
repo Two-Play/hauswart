@@ -477,6 +477,27 @@ parameters, but not which boot loader and kernel started.
 or the files of the agent copied to another computer. Its proofs count once you accept
 it, and the next one becomes the boot to compare with.
 
+### The TLS key in the TPM
+
+Once the TPM is registered, the agent moves its TLS key into it: the TPM makes a new
+key that never leaves it, the attestation key certifies that, and the server issues a
+certificate for the device's same ID. The key file `agent-key.pem` goes once the
+server took the new certificate; `agent-key.tpm` holds what only this TPM can load.
+From then on, a copy of `/var/lib/hauswart` does not get another computer in, and
+**Details**, tab **Boot**, says that the key is in the TPM.
+
+The price: **if the TPM is cleared, the device is locked out** and has to be enrolled
+again, as after a lost key. A firmware reset or a "clear TPM" in the firmware settings
+does that, and some AMD firmware TPMs ask for it on a firmware update. Enroll the device
+again with a new token; on a protected device with `hauswart-admin enroll-command`.
+
+To keep the key a file, set this in `/var/lib/hauswart/agent.json` before the agent
+first proves the boot, and restart it:
+
+```json
+"tpm_key": false
+```
+
 ## Keep an inventory
 
 **Inventory** in the dashboard lists every device, for admins only. A device sends its

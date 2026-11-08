@@ -248,21 +248,38 @@ func DeviceID(publicKey any) (string, error) {
 // Only the public key is taken from the CSR; the subject is set here, so an
 // agent cannot choose its own identity.
 func (c *CA) SignDevice(csrPEM []byte) (certPEM []byte, deviceID, serial string, err error) {
-	block, _ := pem.Decode(csrPEM)
-	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		return nil, "", "", errors.New("CSR is not PEM")
-	}
-	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	csr, err := ParseCSR(csrPEM)
 	if err != nil {
 		return nil, "", "", err
-	}
-	if err := csr.CheckSignature(); err != nil {
-		return nil, "", "", fmt.Errorf("CSR signature: %w", err)
 	}
 	deviceID, err = DeviceID(csr.PublicKey)
 	if err != nil {
 		return nil, "", "", err
 	}
+	certPEM, serial, err = c.SignDeviceAs(csr, deviceID)
+	return certPEM, deviceID, serial, err
+}
+
+// ParseCSR reads a PEM CSR and checks that its key signed it.
+func ParseCSR(csrPEM []byte) (*x509.CertificateRequest, error) {
+	block, _ := pem.Decode(csrPEM)
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, errors.New("CSR is not PEM")
+	}
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("CSR signature: %w", err)
+	}
+	return csr, nil
+}
+
+// SignDeviceAs issues a client certificate for a device whose key is no longer
+// the one its ID came from, such as a key the device moved into its TPM. The
+// caller checks that the key belongs to the device.
+func (c *CA) SignDeviceAs(csr *x509.CertificateRequest, deviceID string) (certPEM []byte, serial string, err error) {
 	validity := leafValidity
 	if c.DeviceValidity > 0 {
 		validity = c.DeviceValidity
@@ -278,9 +295,9 @@ func (c *CA) SignDevice(csrPEM []byte) (certPEM []byte, deviceID, serial string,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Cert, csr.PublicKey, c.key)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
 	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), deviceID, tmpl.SerialNumber.Text(16), nil
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), tmpl.SerialNumber.Text(16), nil
 }
 
 // Fingerprint is the hex SHA-256 of the CA certificate. Agents pin it during
