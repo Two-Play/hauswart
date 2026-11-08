@@ -65,8 +65,9 @@ hacked server can:
 
 What a touch can reach is limited by the device, not by the server, and only to
 the types in its local list. By default those are `pkg.install`, `pkg.remove`,
-`pkg.upgrade`, `flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`
-and `notify.send`.
+`pkg.upgrade`, `flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`,
+`notify.send`, `screen.extend`, `access.set`, `group.add`, `group.remove`,
+`user.lock` and `user.unlock`.
 
 **Do not read that list as harmless.** With one touch, a hacked server can:
 
@@ -79,14 +80,17 @@ and `notify.send`.
   you sign on, an app with access to the ssh-agent reaches your signing key, which
   is root on all protected devices. **Never pin a passkey on that computer.**
 - Reboot or shut down the device, and show a false notification on it.
+- Block the screen or refuse logins, or open a block an admin set.
+- Lock or unlock ordinary accounts, and add them to or remove them from ordinary
+  groups. Groups that amount to root are refused on the device either way.
 
 If that is too much for a device, narrow its list. See
 [Operating Hauswart](operations.md#approve-with-a-passkey).
 
 Whatever a passkey approves, these limits are checked on the device:
 
-- `sudo.*`, `ca.install`, `user.*`, `keys.set`, `file.put` and `limit.set` are
-  refused, even if the local list names them. New task types stay CLI only until
+- `sudo.*`, `ca.install`, `user.create`, `user.passwd`, `keys.set`, `file.put`,
+  `limit.set` and policies are refused, even if the local list names them. New task types stay CLI only until
   someone adds them to the ceiling in `internal/api/passkeys.go`.
 - An approval is valid for 24 hours at most, whatever its envelope says. It has to
   name a random value the device changes every 12 hours, so approvals cannot be

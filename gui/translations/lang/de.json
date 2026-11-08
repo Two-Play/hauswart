@@ -103,6 +103,8 @@
   "history.event.access.login": "Anmeldung verweigert bis {{.Until}}",
   "history.event.access.ending": "Sitzung endet um {{.Until}}",
   "history.event.access.open": "Zugang wieder offen",
+  "admin.signevery": "Alles signieren …",
+  "admin.signevery.title": "Diese {{.Count}} Aufgaben signieren?",
   "history.event.software.flatpak_arrived": "Flatpak installiert, neue Apps erscheinen nach dem nächsten Anmelden",
   "blocker.default": "Dieses Gerät ist gerade gesperrt."
 }

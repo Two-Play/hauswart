@@ -35,17 +35,19 @@ type App struct {
 	// busy says that an action runs, during which nothing else may start.
 	busy bool
 
-	list     *widget.List
-	reload   *widget.Button
-	head     *widget.Label
-	body     *widget.Label
-	warning  *widget.Label
-	signOne  *widget.Button
-	signAll  *widget.Button
-	reject   *widget.Button
-	nameRow  *fyne.Container
-	nameText *widget.Entry
-	status   *widget.Label
+	list    *widget.List
+	reload  *widget.Button
+	head    *widget.Label
+	body    *widget.Label
+	warning *widget.Label
+	signOne *widget.Button
+	signAll *widget.Button
+	// signEvery signs everything that can be signed, after showing all of it.
+	signEvery *widget.Button
+	reject    *widget.Button
+	nameRow   *fyne.Container
+	nameText  *widget.Entry
+	status    *widget.Label
 }
 
 // New builds the window. Reload fills it.
@@ -82,7 +84,8 @@ func New(a fyne.App, backend Backend) *App {
 	t.status.Wrapping = fyne.TextWrapWord
 
 	t.reload = widget.NewButton(lang.L("admin.reload"), t.Reload)
-	reload := t.reload
+	t.signEvery = widget.NewButton(lang.L("admin.signevery"), t.confirmEverything)
+	reload := container.NewVBox(t.signEvery, t.reload)
 	left := container.NewBorder(widget.NewLabel(lang.L("admin.queue")), reload, nil, nil, t.list)
 	actions := container.NewVBox(t.warning, t.nameRow, container.NewHBox(t.signOne, t.signAll, t.reject), t.status)
 	right := container.NewBorder(t.head, actions, nil, nil, container.NewVScroll(t.body))
@@ -225,6 +228,68 @@ func (t *App) signGroup() {
 	}
 	t.work(func() error {
 		for _, each := range group {
+			if err := t.backend.Sign(each); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, lang.L("admin.signed"))
+}
+
+// signable is everything in the queue that can be signed.
+func (t *App) signable() []admintool.Item {
+	var items []admintool.Item
+	for _, item := range t.items {
+		if item.Problem == "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+// everythingText is what the confirmation shows: each task in full, so that
+// nothing is signed that was not on the screen.
+func everythingText(items []admintool.Item) string {
+	var text strings.Builder
+	for i, item := range items {
+		if i > 0 {
+			text.WriteString("\n\n")
+		}
+		text.WriteString(lang.L("admin.device", map[string]any{"Name": item.DeviceName}) + "\n" + item.Text)
+		if item.Changes != "" {
+			text.WriteString("\n" + item.Changes)
+		}
+		if item.Warning != "" {
+			text.WriteString("\n" + item.Warning)
+		}
+	}
+	return text.String()
+}
+
+func (t *App) confirmEverything() {
+	items := t.signable()
+	if len(items) == 0 {
+		return
+	}
+	body := widget.NewLabel(everythingText(items))
+	body.Wrapping = fyne.TextWrapWord
+	body.TextStyle.Monospace = true
+	scroll := container.NewVScroll(body)
+	scroll.SetMinSize(fyne.NewSize(700, 400))
+	dialog.ShowCustomConfirm(lang.L("admin.signevery.title", map[string]any{"Count": len(items)}),
+		lang.L("admin.sign"), lang.L("admin.cancel"), scroll,
+		func(yes bool) {
+			if yes {
+				t.signEverything(items)
+			}
+		}, t.window)
+}
+
+// signEverything signs what the confirmation showed. Each goes through the
+// checks of Sign, and a task the server adds meanwhile is not among them.
+func (t *App) signEverything(items []admintool.Item) {
+	t.work(func() error {
+		for _, each := range items {
 			if err := t.backend.Sign(each); err != nil {
 				return err
 			}

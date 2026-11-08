@@ -729,6 +729,13 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         tool.run("approve", input="y\n")
         task = wait_task(admin, out["id"], 45)
         check(name, "signed group.remove works", task["status"] == "done" and "media" not in inside("id -nG anna").stdout, task["output"])
+        # Several at once: everything is shown, then one question.
+        inside("groupadd games; groupadd music")
+        ids = [admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.add", "payload": {"user": "anna", "group": g}})[1]["id"] for g in ("games", "music")]
+        shown = tool.run("approve", "--all", input="y\n")
+        check(name, "approve --all shows each task", shown.stdout.count("ADD Linux user anna to group") == 2 and "Sign all 2 tasks" in shown.stdout, shown.stdout + shown.stderr)
+        done = [wait_task(admin, i, 45) for i in ids]
+        check(name, "and signs them all with one answer", all(t["status"] == "done" for t in done) and "games" in inside("id -nG anna").stdout, str(done))
         for group in ("wheel", "sudo", "docker"):
             code, _ = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "group.add", "payload": {"user": "anna", "group": group}})
             check(name, f"dashboard refuses {group}", code == 400, str(code))
