@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
 import { buildPayload, taskKey } from '../tasks';
 import { Loaded, showError } from '../ui';
+import { ApprovalRulesPanel } from './ApprovalRulesPanel';
 import { PolicyPanel } from './PolicyPanel';
 
 interface DeviceGroup {
@@ -88,6 +89,7 @@ function GroupCard({ group, devices, reload }: { group: DeviceGroup; devices: De
           </Group>
         </form>
         <PolicyPanel groupId={group.id} devices={devices} />
+        <ApprovalRulesPanel path={`/api/groups/${group.id}/approval-rules`} inherit />
       </Stack>
     </Paper>
   );
@@ -123,6 +125,9 @@ export function GroupsView() {
         <Text size="xs" c="dimmed" mt="xs">
           {t('groups.hint')}
         </Text>
+      </Paper>
+      <Paper withBorder p="md">
+        <ApprovalRulesPanel path="/api/approval-rules" inherit={false} />
       </Paper>
       <Loaded data={groups.data} error={groups.error}>
         {(list) =>

@@ -1,0 +1,38 @@
+{
+  "approvalRules": {
+    "title": "Approval rules",
+    "defaultTitle": "Approval rules for all devices",
+    "defaultHint": "These rules count for every device. A group can make them stricter, and where groups disagree the strictest rule wins.",
+    "groupHint": "Rules for the devices of this group. A kind left on “as for all devices” uses the rules for all devices. Where groups disagree, the strictest rule wins.",
+    "inherit": "As for all devices",
+    "inheritsAll": "Same as for all devices.",
+    "noneSet": "An approver decides every request.",
+    "modes": {
+      "auto": "Approve automatically",
+      "approver": "Approver decides",
+      "admin": "Only an admin decides",
+      "blocked": "Not allowed"
+    },
+    "autoPackages": "Packages approved automatically",
+    "autoFlatpaks": "Flatpaks approved automatically",
+    "autoHint": "Requests for these are installed without asking, as long as an approver decides their kind and the policy does not forbid them.",
+    "autoApps": "Approved automatically",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saved": "Approval rules saved."
+  },
+  "requests": {
+    "decidedBy": "Decided by",
+    "automatic": "automatically",
+    "adminDecides": "an admin",
+    "filed": "Request sent.",
+    "autoApproved": "Approved automatically. It is on its way to the device."
+  },
+  "errors": {
+    "invalid_approval_mode": "Invalid approval mode {{value}}.",
+    "approvals_too_large": "An approval list has more than {{value}} entries.",
+    "request_blocked": "Requests of this kind are not allowed on this device.",
+    "admin_decides": "Only an admin may decide this request."
+  }
+}

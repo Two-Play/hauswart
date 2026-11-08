@@ -80,15 +80,27 @@ export interface PasskeyEntry {
   created_at: number;
 }
 
+export type RequestKind = 'software' | 'flatpak' | 'sudo' | 'screen';
+export type ApprovalMode = 'auto' | 'approver' | 'admin' | 'blocked';
+
 export interface AccessRequest {
   id: string;
   username: string;
   hostname: string;
-  kind: 'software' | 'flatpak' | 'sudo' | 'screen';
+  kind: RequestKind;
   detail: string;
   reason: string;
   status: 'open' | 'approved' | 'denied';
+  decided_by: string;
   created_at: number;
+  // mode says who decides an open request, by the rules of now.
+  mode?: ApprovalMode;
+}
+
+export interface ApprovalRules {
+  kinds?: Partial<Record<RequestKind, ApprovalMode>>;
+  auto_packages?: string[];
+  auto_flatpaks?: string[];
 }
 
 export interface AuditEntry {

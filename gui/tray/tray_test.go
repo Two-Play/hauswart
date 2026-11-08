@@ -20,17 +20,21 @@ import (
 )
 
 type fakeAgent struct {
-	status api.UserStatus
-	err    error
-	sent   []api.UserRequest
-	refuse error
+	status   api.UserStatus
+	err      error
+	sent     []api.UserRequest
+	refuse   error
+	approved bool
 }
 
 func (f *fakeAgent) Status() (api.UserStatus, error) { return f.status, f.err }
 
-func (f *fakeAgent) Request(r api.UserRequest) error {
+func (f *fakeAgent) Request(r api.UserRequest) (string, error) {
 	f.sent = append(f.sent, r)
-	return f.refuse
+	if f.approved {
+		return api.RequestApproved, f.refuse
+	}
+	return api.RequestOpen, f.refuse
 }
 
 type fakeKeyring struct {
@@ -158,6 +162,26 @@ func TestRefusalsOfTheServerSayWhy(t *testing.T) {
 	test.Type(app.detail, "vim")
 	app.send()
 	if app.result.Text != lang.L("request.refused.no_such_user") {
+		t.Fatalf("got %q", app.result.Text)
+	}
+}
+
+func TestAutomaticApprovalIsSaid(t *testing.T) {
+	agent := &fakeAgent{approved: true}
+	app, _ := newApp(t, agent)
+	test.Type(app.detail, "vim")
+	app.send()
+	if app.result.Text != lang.L("request.approved") || app.detail.Text != "" {
+		t.Fatalf("%q %q", app.result.Text, app.detail.Text)
+	}
+}
+
+func TestBlockedKindIsSaid(t *testing.T) {
+	agent := &fakeAgent{refuse: agentclient.Refused{Code: api.ErrRequestBlocked}}
+	app, _ := newApp(t, agent)
+	test.Type(app.detail, "vim")
+	app.send()
+	if app.result.Text != lang.L("request.refused.request_blocked") {
 		t.Fatalf("got %q", app.result.Text)
 	}
 }
