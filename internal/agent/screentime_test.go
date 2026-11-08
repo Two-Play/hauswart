@@ -606,3 +606,51 @@ func TestScreenLockWithoutASessionIsUnknown(t *testing.T) {
 		t.Fatalf("got %+v", status)
 	}
 }
+
+func TestRuleEndWithQuota(t *testing.T) {
+	quota := api.ScreenTimeRule{User: "anna", DailyMinutes: 120}
+	now := monday(16, 0)
+	if end, ok := ruleEnd(quota, now, time.Time{}, 30*time.Minute); !ok || !end.Equal(now.Add(90*time.Minute)) {
+		t.Fatalf("all day with 90 minutes left: %v %v", end, ok)
+	}
+	if _, ok := ruleEnd(quota, now, time.Time{}, 2*time.Hour); ok {
+		t.Fatal("the quota is used up")
+	}
+	if end, ok := ruleEnd(quota, now, now.Add(20*time.Minute), 2*time.Hour); !ok || !end.Equal(now.Add(20*time.Minute)) {
+		t.Fatalf("an extension goes beyond the quota: %v %v", end, ok)
+	}
+	windowed := api.ScreenTimeRule{User: "anna", DailyMinutes: 120,
+		Windows: []api.Window{{Days: []string{"mon"}, Start: "15:00", End: "17:00"}}}
+	if end, ok := ruleEnd(windowed, now, time.Time{}, 0); !ok || !end.Equal(monday(17, 0)) {
+		t.Fatalf("the window ends first: %v %v", end, ok)
+	}
+	if _, ok := ruleEnd(windowed, monday(18, 0), time.Time{}, 0); ok {
+		t.Fatal("outside the window the quota does not help")
+	}
+	if _, ok := ruleEnd(api.ScreenTimeRule{User: "anna"}, now, time.Time{}, 0); ok {
+		t.Fatal("no windows and no quota is no session")
+	}
+}
+
+func TestQuotaCountsTimeAtTheDesktop(t *testing.T) {
+	pe, system, name := newScreenEngine(t)
+	setPolicy(t, pe, api.Policy{TimeZone: "UTC", ScreenTime: []api.ScreenTimeRule{{User: name, DailyMinutes: 1}}})
+	at := monday(10, 0)
+	for range 4 { // a minute of ticks: the first only starts counting
+		tick(pe, at)
+		at = at.Add(screenTick)
+	}
+	if used := pe.usedToday(system.uid, at); used != 45*time.Second {
+		t.Fatalf("counted %v", used)
+	}
+	tick(pe, at)
+	tick(pe, at.Add(screenTick))
+	if status := pe.ScreenStatus(system.uid, at.Add(screenTick)); status == nil || status.Allowed {
+		t.Fatalf("the minute is used up: %+v", status)
+	}
+	// A suspended device counts nothing for the time it was away, and a new day starts at zero.
+	tick(pe, at.Add(time.Hour))
+	if used := pe.usedToday(system.uid, at.Add(24*time.Hour)); used != 0 {
+		t.Fatalf("a new day starts with %v", used)
+	}
+}

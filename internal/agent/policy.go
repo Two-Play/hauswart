@@ -64,6 +64,14 @@ type policyState struct {
 	AppFilters []string `json:"app_filters,omitempty"`
 	// ScreenUIDs remembers who a screen time rule is about, by the name in the rule.
 	ScreenUIDs map[string]string `json:"screen_uids,omitempty"`
+	// ScreenUsage is how long each user ID was at the desktop today.
+	ScreenUsage map[string]screenUsage `json:"screen_usage,omitempty"`
+}
+
+// screenUsage counts the seconds of one day, which is the day of the policy's zone.
+type screenUsage struct {
+	Day     string `json:"day"`
+	Seconds int64  `json:"seconds"`
 }
 
 // PolicyEngine keeps a device in the state of its signed policy. Everything it
@@ -87,6 +95,8 @@ type PolicyEngine struct {
 	// screen is what the screen time check remembers about each user. Only the
 	// check uses it, so it needs no lock.
 	screen map[string]*screenUser
+	// counted is when the time of each user ID was last counted.
+	counted map[string]time.Time
 	// screenIssue says why the last screen time check failed.
 	screenIssue string
 	// screenFresh says that the agent has not looked at the current rules yet.
@@ -104,7 +114,7 @@ type PolicyEngine struct {
 // OpenPolicy loads the stored policy. A file that cannot be read shows up as a
 // deviation and never stops the agent, because signed tasks are what can fix it.
 func OpenPolicy(dir string, exec *Executor, log *slog.Logger) *PolicyEngine {
-	pe := &PolicyEngine{dir: dir, exec: exec, log: log, wake: make(chan struct{}, 1), screen: map[string]*screenUser{}, screenFresh: true}
+	pe := &PolicyEngine{dir: dir, exec: exec, log: log, wake: make(chan struct{}, 1), screen: map[string]*screenUser{}, counted: map[string]time.Time{}, screenFresh: true}
 	raw, err := os.ReadFile(filepath.Join(dir, policyFile))
 	if err == nil {
 		var p api.Policy

@@ -1060,6 +1060,25 @@ def test_screentime(admin, agent_bin, work, public_key, kde=False):
                 return report_of(admin, device).get("policy", {}).get("checks", {}).get("screen_lock") == "off"
             check(group, "Plasma without a lock is reported", wait_for(lock_off, 150), str(report_of(admin, device).get("policy")))
 
+        # A daily quota without windows: any time, for 30 minutes a day.
+        policy["screen_time"] = [{"user": "anna", "windows": [], "daily_minutes": 30}]
+        code, out = admin.call("PUT", f"{path}/policy", policy)
+        shown = tool.run("approve", input="y\n")
+        check(group, "the quota is shown before signing", "at most 30 minutes a day" in shown.stdout, shown.stdout + shown.stderr)
+
+        def quota_status():
+            raw = vm.ssh("runuser -u anna -- curl -s --unix-socket /run/hauswart/user.sock http://agent/status").stdout
+            screen = json.loads(raw or "{}").get("screen_time") or {}
+            if not screen.get("until"):
+                return None
+            return (datetime.fromisoformat(screen["until"]) - datetime.now(timezone.utc)).total_seconds() / 60
+        check(group, "the quota sets the end", wait_for(lambda: (quota_status() or 0) > 25, 90), str(quota_status()))
+
+        def counted():
+            state = json.loads(vm.ssh("cat /var/lib/hauswart/policy-state.json 2>/dev/null || echo {}").stdout or "{}")
+            return any(u.get("seconds", 0) > 0 for u in (state.get("screen_usage") or {}).values())
+        check(group, "the time at the desktop is counted", wait_for(counted, 120), vm.ssh("ls /var/lib/hauswart").stdout)
+
         vm.ssh("systemctl stop firewalld; systemctl restart hauswart-agent")
         check(group, "a stopped firewall comes back",
               wait_for(lambda: vm.ssh("systemctl is-active firewalld").stdout.strip() == "active", 60))
