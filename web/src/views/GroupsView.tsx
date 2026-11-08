@@ -9,7 +9,7 @@ import { ApprovalRulesPanel } from './ApprovalRulesPanel';
 import { PackageSearch } from './PackageSearch';
 import { PolicyPanel } from './PolicyPanel';
 
-interface DeviceGroup {
+export interface DeviceGroup {
   id: number;
   name: string;
   devices: string[];

@@ -76,7 +76,11 @@
       "on": "on",
       "off": "off",
       "unknown": "unknown"
-    }
+    },
+    "dailyMinutes": "Minutes per day",
+    "dailyMinutesHint": "Empty for no limit",
+    "quotaAllDay": "No windows: any time of the day, up to the minutes per day.",
+    "noWindows": "No windows and no minutes: no session at all."
   },
   "errors": {
     "policy_too_large": "The policy has too many entries or is larger than {{value}} KiB.",

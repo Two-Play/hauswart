@@ -18,6 +18,7 @@ const (
 	ErrInvalidAccessMode  = "invalid_access_mode"
 	ErrAccessEnded        = "access_ended"
 	ErrInvalidAccessImage = "invalid_access_image"
+	ErrInvalidQuota       = "invalid_quota"
 	ErrTooManyAttempts    = "too_many_attempts"
 	ErrWrongCredentials   = "wrong_credentials"
 	ErrWrongPassword      = "wrong_password"
@@ -86,6 +87,7 @@ var Messages = map[string]string{
 	ErrInvalidAccessMode:  "access mode %s is not screen, login, fullscreen or open, or carries what it cannot use",
 	ErrAccessEnded:        "the end of the block has passed",
 	ErrInvalidAccessImage: "the picture must be a PNG or JPEG of at most 512 KB",
+	ErrInvalidQuota:       "the daily minutes of %s must be 0 to 1440",
 	ErrTooManyAttempts:    "too many attempts, try again in a minute",
 	ErrWrongCredentials:   "wrong username or password",
 	ErrWrongPassword:      "current password is wrong",
