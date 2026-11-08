@@ -247,6 +247,8 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		`DROP TABLE device_inventory`,
 		`DROP TABLE device_packages`,
 		`DROP TABLE device_assets`,
+		`DROP TABLE group_approvals`,
+		`DROP TABLE default_approvals`,
 		`PRAGMA user_version = 0`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -525,7 +527,9 @@ func TestMigrationRenamesParent(t *testing.T) {
 		`UPDATE users SET role_old = CASE role WHEN 'approver' THEN 'parent' ELSE role END`,
 		`ALTER TABLE users DROP COLUMN role`,
 		`ALTER TABLE users RENAME COLUMN role_old TO role`,
-		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-1),
+		`DROP TABLE group_approvals`,
+		`DROP TABLE default_approvals`,
+		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-2),
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
 			t.Fatal(err)

@@ -64,27 +64,32 @@ func (c *Client) Status() (api.UserStatus, error) {
 }
 
 // Request files a request.
-func (c *Client) Request(r api.UserRequest) error {
+// Request files a request and returns its status: approved when a rule approved
+// it at once, open when someone still decides.
+func (c *Client) Request(r api.UserRequest) (string, error) {
 	body, err := json.Marshal(r)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := c.http.Post("http://agent/request", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return ErrUnreachable
+		return "", ErrUnreachable
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusCreated:
-		return nil
+		var answer api.RequestAnswer
+		// An older agent sends nothing, which means that someone decides.
+		json.NewDecoder(io.LimitReader(resp.Body, 300)).Decode(&answer)
+		return answer.Normalized(), nil
 	case http.StatusTooManyRequests:
-		return ErrTooMany
+		return "", ErrTooMany
 	case http.StatusBadGateway:
-		return ErrUnreachable
+		return "", ErrUnreachable
 	}
 	text, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
 	if resp.StatusCode == http.StatusUnprocessableEntity {
-		return Refused{Code: strings.TrimSpace(string(text))}
+		return "", Refused{Code: strings.TrimSpace(string(text))}
 	}
-	return errors.New(strings.TrimSpace(string(text)))
+	return "", errors.New(strings.TrimSpace(string(text)))
 }

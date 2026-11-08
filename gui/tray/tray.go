@@ -24,7 +24,7 @@ import (
 // Agent is what the app needs from the agent on this device.
 type Agent interface {
 	Status() (api.UserStatus, error)
-	Request(api.UserRequest) error
+	Request(api.UserRequest) (string, error)
 }
 
 // Keyring keeps the Nextcloud password of the person running this.
@@ -164,14 +164,18 @@ func (t *App) send() {
 		}
 	}
 	t.background(func() {
-		err := t.agent.Request(request)
-		fyne.Do(func() { t.sent(err) })
+		status, err := t.agent.Request(request)
+		fyne.Do(func() { t.sent(status, err) })
 	})
 }
 
-func (t *App) sent(err error) {
+func (t *App) sent(status string, err error) {
 	var refused agentclient.Refused
 	switch {
+	case err == nil && status == api.RequestApproved:
+		t.result.SetText(lang.L("request.approved"))
+		t.detail.SetText("")
+		t.reason.SetText("")
 	case err == nil:
 		t.result.SetText(lang.L("request.sent"))
 		t.detail.SetText("")

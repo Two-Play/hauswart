@@ -63,5 +63,7 @@
   "request.refused.device_not_assigned": "Dieses Gerät ist dir nicht zugeordnet. Frag, wer Hauswart hier betreut.",
   "request.refused.shared_account": "Mehrere Personen nutzen dieses Linux-Konto. Bitte frage im Dashboard an.",
   "request.refused.invalid_duration": "Das ist zu viel Zeit für eine Anfrage.",
-  "request.refused.invalid_package": "Das sieht nicht nach einem Paketnamen aus."
+  "request.refused.invalid_package": "Das sieht nicht nach einem Paketnamen aus.",
+  "request.approved": "Sofort freigegeben. Es ist unterwegs zu diesem Gerät.",
+  "request.refused.request_blocked": "Anfragen dieser Art sind auf diesem Gerät nicht erlaubt."
 }
