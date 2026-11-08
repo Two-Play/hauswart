@@ -288,3 +288,26 @@ func TestAtMostSomeRequestsPerPersonAtOnce(t *testing.T) {
 	close(release)
 	wg.Wait()
 }
+
+func TestHistoryIsAboutWhoeverAsks(t *testing.T) {
+	e := newUserEnv(t)
+	var asked string
+	e.service.history = func(user string) api.History {
+		asked = user
+		return api.History{Requests: []api.RequestState{{ID: "1", User: user, State: api.RequestDenied}}, Events: []api.DeviceEvent{}}
+	}
+	filed := 0
+	e.service.filed = func() { filed++ }
+	resp, err := e.client.Get("http://agent/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var h api.History
+	if err := json.NewDecoder(resp.Body).Decode(&h); err != nil || asked != e.name || len(h.Requests) != 1 {
+		t.Fatalf("%v %s %+v", err, asked, h)
+	}
+	if code, body := e.post(t, `{"kind":"software","detail":"vim"}`); code != http.StatusCreated || filed != 1 {
+		t.Fatalf("%d %s, filed %d", code, body, filed)
+	}
+}
