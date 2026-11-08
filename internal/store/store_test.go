@@ -252,6 +252,8 @@ func TestMigrationUpgradesOldDatabase(t *testing.T) {
 		`DROP TABLE device_catalogs`,
 		`DROP TABLE catalog_names`,
 		`DROP TABLE catalogs`,
+		`ALTER TABLE requests DROP COLUMN task_id`,
+		`ALTER TABLE devices DROP COLUMN suspended`,
 		`PRAGMA user_version = 0`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -535,7 +537,9 @@ func TestMigrationRenamesParent(t *testing.T) {
 		`DROP TABLE device_catalogs`,
 		`DROP TABLE catalog_names`,
 		`DROP TABLE catalogs`,
-		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-3),
+		`ALTER TABLE requests DROP COLUMN task_id`,
+		`ALTER TABLE devices DROP COLUMN suspended`,
+		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-5),
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -555,5 +559,22 @@ func TestMigrationRenamesParent(t *testing.T) {
 	}
 	if _, err := s.CreateUser(ctx, "old", "o", "hash", "parent"); err == nil {
 		t.Error("the old role is still accepted")
+	}
+}
+
+func TestRequestStates(t *testing.T) {
+	for _, c := range []struct{ decision, task, want string }{
+		{"open", "", api.RequestOpen},
+		{"denied", "", api.RequestDenied},
+		{"approved", "signing", api.RequestSigning},
+		{"approved", "pending", api.RequestRunning},
+		{"approved", "running", api.RequestRunning},
+		{"approved", "done", api.RequestDone},
+		{"approved", "failed", api.RequestFailed},
+		{"approved", "", api.RequestRunning},
+	} {
+		if got := requestState(c.decision, c.task); got != c.want {
+			t.Errorf("%s/%s: got %s, want %s", c.decision, c.task, got, c.want)
+		}
 	}
 }

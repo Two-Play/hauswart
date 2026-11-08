@@ -251,6 +251,10 @@ var migrations = []string{
 		hash TEXT NOT NULL REFERENCES catalogs(hash),
 		updated_at INTEGER NOT NULL
 	);`,
+	// The task an approval created, so the device can tell how a request ended.
+	`ALTER TABLE requests ADD COLUMN task_id TEXT NOT NULL DEFAULT '';`,
+	// A suspended device stays enrolled and reports, but gets no tasks.
+	`ALTER TABLE devices ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func migrate(db *sql.DB) error {
@@ -458,11 +462,13 @@ func (s *Store) ConsumeEnrollToken(ctx context.Context, token string) (bool, err
 // --- devices ---
 
 type Device struct {
-	ID       string      `json:"id"`
-	Hostname string      `json:"hostname"`
-	Revoked  bool        `json:"revoked"`
-	LastSeen int64       `json:"last_seen"`
-	Report   *api.Report `json:"report"`
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Revoked  bool   `json:"revoked"`
+	// Suspended devices come back with a resume, revoked ones never.
+	Suspended bool        `json:"suspended"`
+	LastSeen  int64       `json:"last_seen"`
+	Report    *api.Report `json:"report"`
 	// Warnings is set for admins only, like the report it comes from.
 	Warnings []api.Warning `json:"warnings,omitempty"`
 	serial   string
@@ -524,7 +530,7 @@ func (s *Store) TouchDevice(ctx context.Context, id string) error {
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, hostname, revoked, last_seen, report FROM devices ORDER BY hostname`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, hostname, revoked, suspended, last_seen, report FROM devices ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +539,7 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 	for rows.Next() {
 		var d Device
 		var raw string
-		if err := rows.Scan(&d.ID, &d.Hostname, &d.Revoked, &d.LastSeen, &raw); err != nil {
+		if err := rows.Scan(&d.ID, &d.Hostname, &d.Revoked, &d.Suspended, &d.LastSeen, &raw); err != nil {
 			return nil, err
 		}
 		d.Report = &api.Report{}
@@ -543,6 +549,29 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 		devices = append(devices, d)
 	}
 	return devices, rows.Err()
+}
+
+// SuspendDevice holds a device back from tasks and requests, or lets it go on.
+// A revoked device stays revoked.
+func (s *Store) SuspendDevice(ctx context.Context, id string, suspended bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE devices SET suspended = ? WHERE id = ? AND revoked = 0`, suspended, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeviceSuspended reports whether a device is suspended. An unknown one is not.
+func (s *Store) DeviceSuspended(ctx context.Context, id string) (bool, error) {
+	var suspended bool
+	err := s.db.QueryRowContext(ctx, `SELECT suspended FROM devices WHERE id = ?`, id).Scan(&suspended)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return suspended, err
 }
 
 func (s *Store) RevokeDevice(ctx context.Context, id string) error {
@@ -674,7 +703,8 @@ func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, erro
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET status = 'running', claimed_at = ?
 		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY passkey_counter, created_at, rowid LIMIT 1)
-		RETURNING id, type, payload, signed`, time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed)
+		RETURNING id, type, payload, signed, COALESCE((SELECT id FROM requests WHERE task_id = tasks.id), '')`,
+		time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed, &t.Request)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -778,6 +808,10 @@ type Request struct {
 	// Mode says who decides an open request, by the rules of now. The server
 	// fills it in, the database does not keep it.
 	Mode string `json:"mode,omitempty"`
+	// Outcome follows an approved request into its task: signing, running,
+	// done or failed. OutcomeDetail is what the device said, for those who decide.
+	Outcome       string `json:"outcome"`
+	OutcomeDetail string `json:"outcome_detail,omitempty"`
 }
 
 func (s *Store) CreateRequest(ctx context.Context, userID int64, deviceID, kind, detail, reason string) (string, error) {
@@ -790,13 +824,21 @@ func (s *Store) CreateRequest(ctx context.Context, userID int64, deviceID, kind,
 
 const requestSelect = `
 	SELECT r.id, r.user_id, u.username, u.linux_user, r.device_id, d.hostname,
-	       r.kind, r.detail, r.reason, r.status, r.decided_by, r.created_at
-	FROM requests r JOIN users u ON u.id = r.user_id JOIN devices d ON d.id = r.device_id`
+	       r.kind, r.detail, r.reason, r.status, r.decided_by, r.created_at,
+	       COALESCE(t.status, ''), COALESCE(t.output, '')
+	FROM requests r JOIN users u ON u.id = r.user_id JOIN devices d ON d.id = r.device_id
+	LEFT JOIN tasks t ON t.id = r.task_id AND r.task_id != ''`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
+	var task string
 	err := row.Scan(&r.ID, &r.UserID, &r.Username, &r.LinuxUser, &r.DeviceID, &r.Hostname,
-		&r.Kind, &r.Detail, &r.Reason, &r.Status, &r.DecidedBy, &r.CreatedAt)
+		&r.Kind, &r.Detail, &r.Reason, &r.Status, &r.DecidedBy, &r.CreatedAt, &task, &r.OutcomeDetail)
+	r.Outcome = requestState(r.Status, task)
+	if r.Outcome != api.RequestFailed {
+		r.OutcomeDetail = ""
+	}
+	r.OutcomeDetail = clipDetail(r.OutcomeDetail)
 	return r, err
 }
 
@@ -837,6 +879,66 @@ func (s *Store) DecideRequest(ctx context.Context, id, status, decidedBy string)
 	}
 	n, err := res.RowsAffected()
 	return n == 1, err
+}
+
+// clipDetail keeps what a device said short enough for a table.
+func clipDetail(s string) string {
+	const limit = 300
+	if r := []rune(s); len(r) > limit {
+		return string(r[:limit]) + "…"
+	}
+	return s
+}
+
+// SetRequestTask remembers the task an approved request became.
+func (s *Store) SetRequestTask(ctx context.Context, requestID, taskID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE requests SET task_id = ? WHERE id = ?`, taskID, requestID)
+	return err
+}
+
+// DeviceRequests returns the requests filed for a device since a time, newest
+// first, with how far each one got.
+func (s *Store) DeviceRequests(ctx context.Context, deviceID string, since time.Time) ([]api.RequestState, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT r.id, u.linux_user, r.kind, r.detail, r.status, COALESCE(t.status, ''), r.created_at
+		FROM requests r JOIN users u ON u.id = r.user_id LEFT JOIN tasks t ON t.id = r.task_id AND r.task_id != ''
+		WHERE r.device_id = ? AND r.created_at >= ?
+		ORDER BY r.created_at DESC, r.rowid DESC LIMIT 200`, deviceID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	states := []api.RequestState{}
+	for rows.Next() {
+		var r api.RequestState
+		var decision, task string
+		if err := rows.Scan(&r.ID, &r.User, &r.Kind, &r.Detail, &decision, &task, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.State = requestState(decision, task)
+		states = append(states, r)
+	}
+	return states, rows.Err()
+}
+
+// requestState follows a request into its task. An approval without a known
+// task counts as running: requests from before the link look like that.
+func requestState(decision, task string) string {
+	switch decision {
+	case "open":
+		return api.RequestOpen
+	case "denied":
+		return api.RequestDenied
+	}
+	switch task {
+	case "signing":
+		return api.RequestSigning
+	case "done":
+		return api.RequestDone
+	case "failed":
+		return api.RequestFailed
+	}
+	return api.RequestRunning
 }
 
 // --- audit ---

@@ -48,6 +48,7 @@ function Usage({ label, used = 0, total = 0 }: { label: string; used?: number; t
 function DeviceState({ device }: { device: Device }) {
   const { t } = useTranslation();
   if (device.revoked) return <Badge color="red" variant="light">{t('devices.revoked')}</Badge>;
+  if (device.suspended) return <Badge color="orange" variant="light">{t('devices.suspended')}</Badge>;
   const online = Date.now() / 1000 - device.last_seen < ONLINE_SECONDS;
   return (
     <Badge color={online ? 'teal' : 'gray'} variant="light">
@@ -161,6 +162,20 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
               value,
               onChange: (e: { currentTarget: { value: string } }) => set(e.currentTarget.value),
             };
+            if (field.kind === 'select') {
+              return (
+                <Select
+                  key={field.name}
+                  label={shared.label}
+                  required={field.required}
+                  allowDeselect={false}
+                  description={field.hint && t(`fields.${field.hint}`)}
+                  value={values[field.name] ?? null}
+                  onChange={(value) => setValues((v) => ({ ...v, [field.name]: value ?? '' }))}
+                  data={(field.options ?? []).map((option) => ({ value: option, label: t(`fields.${field.name}_${option}`) }))}
+                />
+              );
+            }
             return field.kind === 'textarea' ? (
               <Textarea key={field.name} autosize minRows={5} maxRows={14} ff="monospace" {...shared} />
             ) : (
@@ -218,6 +233,15 @@ export function DevicesView({ user }: { user: User }) {
     }
   }
 
+  async function suspend(device: Device, on: boolean) {
+    try {
+      await api('POST', `/api/devices/${device.id}/${on ? 'suspend' : 'resume'}`);
+      reload();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
   async function revoke(device: Device) {
     try {
       await api('POST', `/api/devices/${device.id}/revoke`);
@@ -253,6 +277,11 @@ export function DevicesView({ user }: { user: User }) {
                         {d.hostname}
                       </Text>
                       <Group gap={4} wrap="nowrap">
+                        {d.report?.access && (
+                          <Badge color="red" variant="light">
+                            {t(`devices.access_${d.report.access.mode}`)}
+                          </Badge>
+                        )}
                         {d.report?.protected && (
                           <Badge color="grape" variant="light">
                             {t('devices.protected')}
@@ -284,6 +313,9 @@ export function DevicesView({ user }: { user: User }) {
                         </Button>
                         <Button size="xs" variant="default" onClick={() => setInsightDevice(d.id)}>
                           {t('insight.open')}
+                        </Button>
+                        <Button size="xs" variant="subtle" color="orange" onClick={() => suspend(d, !d.suspended)}>
+                          {t(d.suspended ? 'devices.resume' : 'devices.suspend')}
                         </Button>
                         <Button size="xs" variant="subtle" color="red" onClick={() => setRevokeDevice(d)}>
                           {t('devices.revoke')}

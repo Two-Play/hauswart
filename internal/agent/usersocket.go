@@ -81,6 +81,14 @@ type userService struct {
 	send func(context.Context, api.DeviceRequest) (string, error)
 	// search finds packages or Flatpaks through the server.
 	search func(ctx context.Context, kind, q string) ([]catalog.Entry, error)
+	// history is what someone sees of their past on this device, and filed
+	// says that a request was filed, so its state is worth asking for soon.
+	history func(user string) api.History
+	filed   func()
+	// suspended says that the server holds this device back.
+	suspended func() bool
+	// access says how a person is blocked from the device.
+	access func(user string) *api.AccessStatus
 	now    func() time.Time
 
 	mu       sync.Mutex
@@ -175,6 +183,7 @@ func (u *userService) handler() http.Handler {
 	mux.HandleFunc("GET /status", u.handleStatus)
 	mux.HandleFunc("POST /request", u.handleRequest)
 	mux.HandleFunc("GET /search", u.handleSearch)
+	mux.HandleFunc("GET /history", u.handleHistory)
 	return u.perUser(http.MaxBytesHandler(mux, maxUserBody))
 }
 
@@ -235,6 +244,10 @@ func (u *userService) handleStatus(w http.ResponseWriter, r *http.Request) {
 			Dashboard:  u.dashboard,
 		}
 		status.PolicyIssues, status.Nextcloud = u.policy.userView()
+		status.Suspended = u.suspended != nil && u.suspended()
+		if u.access != nil {
+			status.Access = u.access(name)
+		}
 		u.mu.Lock()
 		u.recent[uid] = recentStatus{status, now}
 		u.mu.Unlock()
@@ -275,10 +288,29 @@ func (u *userService) handleRequest(w http.ResponseWriter, r *http.Request) {
 		u.giveBack(uid)
 		http.Error(w, "the server cannot be reached", http.StatusBadGateway)
 	default:
+		if u.filed != nil {
+			u.filed()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(api.RequestAnswer{Status: status})
 	}
+}
+
+// handleHistory shows someone their requests and what changed for them. It
+// costs no process and no trip to the server, so it needs no limit of its own.
+func (u *userService) handleHistory(w http.ResponseWriter, r *http.Request) {
+	_, name, ok := u.peerName(r)
+	if !ok {
+		http.Error(w, "unknown user", http.StatusForbidden)
+		return
+	}
+	history := api.History{Requests: []api.RequestState{}, Events: []api.DeviceEvent{}}
+	if u.history != nil {
+		history = u.history(name)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
 }
 
 // handleSearch helps someone find the name of what they ask for. Typing sends a
@@ -350,6 +382,16 @@ func (e *Executor) mountedShares(name, uid string) []string {
 		}
 	}
 	return shares
+}
+
+// Language is the language of the policy, for what the agent tells people.
+func (pe *PolicyEngine) Language() string {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	if pe.policy == nil {
+		return ""
+	}
+	return pe.policy.Language
 }
 
 // userView is what a person learns about the policy of the device.
@@ -461,6 +503,15 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		recent:    map[uint32]recentStatus{},
 		send:      a.sendRequest,
 		search:    a.search,
+		history: func(user string) api.History {
+			if a.notices.Stale() {
+				a.askForRequests()
+			}
+			return a.notices.History(user)
+		},
+		filed:     a.askForRequests,
+		suspended: a.notices.Suspended,
+		access:    a.access.StatusFor,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

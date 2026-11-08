@@ -1397,6 +1397,45 @@ def test_desktop(admin, agent_bin, work, public_key):
         task = e2e.run_task(admin, device, "power.cancel", {}, wait=60)
         screendump(monitor, f"{shots}/desktop-cancelled.png")
         check(group, "cancelling tells the desktop", "popup shown to anna" in task["output"] and "was cancelled" in monitor_log(), task["output"])
+
+        # Blocking access: a blocked screen comes back locked, refused logins end the session.
+        def anna_session():
+            return vm.ssh("loginctl list-sessions --no-legend | awk '$3 == \"anna\" {print $1}' | while read s; do "
+                          "loginctl show-session $s -p Type --value | grep -q wayland && echo $s; done").stdout.split()
+
+        def locked(session):
+            return vm.ssh(f"loginctl show-session {session} -p LockedHint --value").stdout.strip() == "yes"
+
+        def wait_for(condition, seconds):
+            deadline = time.time() + seconds
+            while time.time() < deadline:
+                if condition():
+                    return True
+                time.sleep(2)
+            return condition()
+
+        sessions = anna_session()
+        check(group, "anna still has her session", len(sessions) == 1, str(sessions))
+        task, shown = signed_task(admin, tool, device, "access.set", {"mode": "screen", "users": ["anna"]})
+        check(group, "approve says the screen is blocked", "BLOCK THE SCREEN of Linux user(s) anna" in shown, shown)
+        check(group, "the screen block is in force", task["status"] == "done", task["output"])
+        check(group, "anna's screen is locked", wait_for(lambda: locked(sessions[0]), 30))
+        screendump(monitor, f"{shots}/desktop-blocked.png")
+        check(group, "and she is told", "blocks the screen" in monitor_log(), monitor_log()[-800:])
+        vm.ssh(f"loginctl unlock-session {sessions[0]}")
+        check(group, "unlocked, it is locked again", wait_for(lambda: locked(sessions[0]), 20))
+        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        vm.ssh(f"loginctl unlock-session {sessions[0]}")
+        time.sleep(12)
+        check(group, "opened, it stays unlocked", task["status"] == "done" and not locked(sessions[0]), task["output"])
+
+        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "login", "users": ["anna"], "until": valid_for()})
+        check(group, "logins refused for anna", task["status"] == "done", task["output"])
+        check(group, "she is warned", wait_for(lambda: "Your session ends at" in monitor_log(), 20), monitor_log()[-800:])
+        check(group, "after a minute her session ends", wait_for(lambda: sessions[0] not in anna_session(), 120), str(anna_session()))
+        check(group, "and a new one does not last", wait_for(lambda: anna_session() == [], 60), str(anna_session()))
+        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        check(group, "access open again", task["status"] == "done", task["output"])
     finally:
         vm.stop()
 

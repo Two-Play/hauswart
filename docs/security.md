@@ -243,6 +243,11 @@ people about themselves, and it passes on requests, at most 10 an hour per perso
 A hacked device can make up requests in the name of anyone who may use it, and
 someone still has to approve them.
 
+The history on the socket shows each person their own requests and the changes
+that concern them or the whole device. A device learns the state of its requests,
+with the Linux user, the kind and the detail, but never the reason, because whoever
+controls the device can read it.
+
 ### The admin app
 
 `hauswart-admin-gui` runs no server and opens no port. It shows what the command line
@@ -302,6 +307,25 @@ it out at once.
 A popup always carries the title `Hauswart`, so it cannot pose as the system. It
 can still lie: whoever is allowed to send one can write "call this number". Everyone
 should know that Hauswart never asks for a password.
+
+A hacked server can suspend a device. That ends sudo grants and stops requests,
+and nothing more.
+
+Blocking access is a signed task on a protected device, opening included, so a
+hacked server can neither lock people out nor let them back in. On an unprotected
+device it can do both. A block for the whole device also locks out local admins,
+and only root and the end of the block get around it. If `access.json` is broken,
+the agent refuses logins until access is set again, rather than opening what was
+blocked.
+
+A signed Flatpak install also installs the package `flatpak` where it is missing,
+from the device's own repositories. Approving a Flatpak means the device needs what
+runs it.
+
+Popups about changes come from fixed texts on the device. A package or group name is
+the only part from outside, and it is escaped. A hacked server can claim that a
+request was denied or approved without doing it, which confuses but grants nothing:
+what a device does still needs a task, and on a protected device a signature.
 
 ### Linux groups
 

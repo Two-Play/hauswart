@@ -1,6 +1,6 @@
 import { ACTION_FIELDS, addActionPayload } from './tasks_actions';
 
-export type FieldKind = 'text' | 'number' | 'textarea';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select';
 
 export interface TaskField {
   name: string;
@@ -8,6 +8,10 @@ export interface TaskField {
   label?: string;
   kind?: FieldKind;
   required?: boolean;
+  /** The choices of a select, as values; their labels are below `fields`. */
+  options?: string[];
+  /** A hint under the field, below `fields`. */
+  hint?: string;
 }
 
 const user: TaskField = { name: 'user', required: true };
