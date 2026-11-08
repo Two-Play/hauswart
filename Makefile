@@ -1,7 +1,7 @@
 VERSION ?= 0.1.0
 LDFLAGS := -X github.com/Two-Play/hauswart/internal/agent.Version=$(VERSION)
 
-.PHONY: build web gui test test-gui e2e test-vm regression regression-fast playground packages test-packages clean
+.PHONY: build web gui test test-gui e2e test-vm regression regression-fast playground playground-trust packages test-packages clean
 
 build: web
 	mkdir -p dist
@@ -41,6 +41,9 @@ regression-fast:
 # A server and a desktop VM to try Hauswart by hand. ARGS=--kde for Plasma.
 playground:
 	python3 test/playground.py $(ARGS)
+
+playground-trust:
+	python3 test/playground_trust.py $(ARGS)
 
 test-packages: packages
 	VERSION=$(VERSION) python3 test/packages.py

@@ -427,6 +427,10 @@ check('control: the valid assertion runs', first.status === 'done', first.output
 check('control: the device ran it', readFileSync(installed, 'utf8').includes('nmap'));
 const replay = await outcome(inject('pkg.install', good, valid));
 check('refused on the device: replay', replay.status === 'failed' && replay.output.includes('is not above'), replay.output);
+// Opening access is on the list now: a phone can lift a block without the CLI.
+const open = envelope('access.set', { mode: 'open' }, 101);
+const opened = await outcome(inject('access.set', open, await assertion(open)));
+check('a passkey opens access', opened.status === 'done' && opened.output.includes('open'), opened.output);
 const lines = readFileSync(installed, 'utf8').split('\n').filter((line) => line.includes('nmap')).length;
 check('the replay did not run', lines === 1, `${lines} runs`);
 const tampered = readFileSync(installed, 'utf8');
