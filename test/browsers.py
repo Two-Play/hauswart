@@ -48,6 +48,28 @@ printf '{"CACertificates":["%s"]}' "$b64" >/etc/chromium/policies/managed/hauswa
             "chromium": CHROME.format(binary="chromium"),
         },
     },
+    "arch": {
+        "containerfile": """FROM docker.io/library/archlinux:latest
+RUN pacman -Syu --noconfirm firefox chromium python openssl ttf-dejavu && pacman -Scc --noconfirm
+RUN useradd -m anna
+""",
+        "trust": "cp /srv/tls/ca.pem /etc/ca-certificates/trust-source/anchors/hauswart-family.crt && trust extract-compat",
+        "browsers": {
+            "firefox": FIREFOX.format(binary="firefox"),
+            "chromium": CHROME.format(binary="chromium"),
+        },
+    },
+    "opensuse": {
+        "containerfile": """FROM registry.opensuse.org/opensuse/tumbleweed:latest
+RUN zypper -n install MozillaFirefox chromium python3 openssl ca-certificates shadow && zypper clean -a
+RUN useradd -m anna
+""",
+        "trust": "cp /srv/tls/ca.pem /etc/pki/trust/anchors/hauswart-family.crt && update-ca-certificates",
+        "browsers": {
+            "firefox": FIREFOX.format(binary="firefox"),
+            "chromium": CHROME.format(binary="chromium"),
+        },
+    },
 }
 
 # The CA and the certificate the same way Hauswart makes them: EC P-256.
