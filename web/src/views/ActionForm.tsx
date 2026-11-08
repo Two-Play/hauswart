@@ -1,5 +1,7 @@
 import {
   Button,
+  FileInput,
+  Image,
   Code,
   CopyButton,
   Group,
@@ -112,6 +114,24 @@ export function ActionForm({ device, type, onDone }: { device: Device; type: str
                 onChange={(next) => set(next.join(' '))}
                 clearable
               />
+            );
+          }
+          if (field.kind === 'image') {
+            return (
+              <Stack key={field.name} gap={4}>
+                <FileInput
+                  label={label}
+                  accept="image/png,image/jpeg"
+                  clearable
+                  onChange={(file) => {
+                    if (!file) return set('');
+                    const reader = new FileReader();
+                    reader.onload = () => set(String(reader.result).replace(/^data:[^,]*,/, ''));
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                {value && <Image src={`data:image/*;base64,${value}`} mah={160} fit="contain" alt="" />}
+              </Stack>
             );
           }
           if (field.kind === 'select') {

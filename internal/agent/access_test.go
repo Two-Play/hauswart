@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -168,6 +171,111 @@ func TestAccessChecks(t *testing.T) {
 		"too far":        {Mode: api.AccessScreen, Until: time.Now().Add(api.MaxAccessBlock + time.Hour)},
 		"bad user":       {Mode: api.AccessLogin, Users: []string{"../x"}},
 		"twice":          {Mode: api.AccessLogin, Users: []string{"anna", "anna"}},
+	} {
+		if err := api.Validate(api.TaskAccessSet, payload(t, p)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// kiosk extends seat with the console, the block service and the seat in front.
+type kiosk struct {
+	*seat
+	running bool
+	front   string
+	active  string
+}
+
+func newKiosk(t *testing.T) (*Access, *kiosk) {
+	t.Helper()
+	a, s := newAccess(t)
+	k := &kiosk{seat: s, front: "tty2", active: "3"}
+	tty := a.exec.path(activeTTY)
+	if err := os.MkdirAll(filepath.Dir(tty), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func() { os.WriteFile(tty, []byte(k.front+"\n"), 0o644) }
+	write()
+	seatRun := a.exec.Run
+	a.exec.Run = func(ctx context.Context, name string, args ...string) (string, error) {
+		switch {
+		case name == "systemctl" && args[0] == "is-active":
+			if !k.running {
+				return "", errors.New("inactive")
+			}
+			return "", nil
+		case name == "systemctl" && args[0] == "start":
+			k.running = true
+		case name == "systemctl" && args[0] == "stop":
+			k.running = false
+		case name == "chvt":
+			k.front = "tty" + args[0]
+			write()
+		case name == "loginctl" && args[0] == "show-seat":
+			return k.active + "\n", nil
+		case name == "loginctl" && args[0] == "show-session" && slices.Contains(args, "Name"):
+			return map[string]string{"3": "anna", "4": "ben"}[args[1]] + "\n", nil
+		}
+		if name == "loginctl" {
+			return seatRun(ctx, name, args...)
+		}
+		k.mu.Lock()
+		k.calls = append(k.calls, name+" "+strings.Join(args, " "))
+		k.mu.Unlock()
+		return "", nil
+	}
+	return a, k
+}
+
+func TestFullscreenBlockCoversTheScreen(t *testing.T) {
+	a, k := newKiosk(t)
+	picture := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nrest"))
+	setAccess(t, a, api.AccessPayload{Mode: api.AccessFullscreen, Message: "Abendessen!", Image: picture})
+	if !k.running || k.front != blockTTY {
+		t.Fatalf("running %v, front %s", k.running, k.front)
+	}
+	if raw, _ := os.ReadFile(a.exec.path(blockDir + "/message")); string(raw) != "Abendessen!\n" {
+		t.Fatalf("message %q", raw)
+	}
+	if raw, _ := os.ReadFile(a.exec.path(unitPath)); !strings.Contains(string(raw), "ExecStart=/usr/bin/cage -- /usr/bin/hauswart-blocker") {
+		t.Fatalf("unit %s", raw)
+	}
+	if !k.locked["3"] {
+		t.Fatal("the session behind it stays open")
+	}
+	// Someone switched away: the next check brings the block back.
+	k.front = "tty2"
+	os.WriteFile(a.exec.path(activeTTY), []byte("tty2\n"), 0o644)
+	a.Check(context.Background())
+	if k.front != blockTTY {
+		t.Fatalf("front %s", k.front)
+	}
+	setAccess(t, a, api.AccessPayload{Mode: api.AccessOpen})
+	if k.running || k.front != "tty2" {
+		t.Fatalf("after opening: running %v, front %s", k.running, k.front)
+	}
+}
+
+func TestFullscreenForOnePersonFollowsTheirSession(t *testing.T) {
+	a, k := newKiosk(t)
+	k.active = "4" // ben is in front
+	setAccess(t, a, api.AccessPayload{Mode: api.AccessFullscreen, Users: []string{"anna"}})
+	if k.running {
+		t.Fatal("blocked while ben is in front")
+	}
+	k.active = "3"
+	a.Check(context.Background())
+	if !k.running || k.front != blockTTY {
+		t.Fatalf("anna in front: running %v, front %s", k.running, k.front)
+	}
+}
+
+func TestFullscreenChecks(t *testing.T) {
+	for name, p := range map[string]api.AccessPayload{
+		"message elsewhere": {Mode: api.AccessScreen, Message: "x"},
+		"not a picture":     {Mode: api.AccessFullscreen, Image: base64.StdEncoding.EncodeToString([]byte("GIF89a"))},
+		"not base64":        {Mode: api.AccessFullscreen, Image: "!!"},
+		"two lines":         {Mode: api.AccessFullscreen, Message: "a\nb"},
 	} {
 		if err := api.Validate(api.TaskAccessSet, payload(t, p)); err == nil {
 			t.Errorf("%s: accepted", name)

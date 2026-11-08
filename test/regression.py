@@ -136,7 +136,7 @@ def run_all(chosen):
 
 
 def prepare(chosen):
-    if any(s.name in ("packages", "passkeys") or s.name.startswith("vm-gui") for s in chosen):
+    if any(s.name in ("packages", "passkeys", "vm-desktop") or s.name.startswith("vm-gui") for s in chosen):
         print("building everything", flush=True)
         with open(f"{LOGS}/build.log", "w") as log:
             if subprocess.run(["make", "packages", f"VERSION={VERSION}"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT).returncode:
