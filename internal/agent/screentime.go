@@ -149,15 +149,17 @@ func (pe *PolicyEngine) countScreenTime(ctx context.Context, uid string, ids []s
 	}
 }
 
-// atDesktop says whether one of the sessions is active and not locked.
+// atDesktop says whether one of the sessions is in front. Whether it is locked
+// does not count: LockedHint is what the session says about itself, and its
+// owner can set it to stop the count.
 func (pe *PolicyEngine) atDesktop(ctx context.Context, ids []string) bool {
 	for _, id := range ids {
-		shown, err := pe.exec.Run(ctx, "loginctl", "show-session", id, "-p", "State", "-p", "LockedHint")
+		shown, err := pe.exec.Run(ctx, "loginctl", "show-session", id, "-p", "State")
 		if err != nil {
 			continue
 		}
 		props := parseProperties(shown)
-		if props["State"] == "active" && props["LockedHint"] != "yes" {
+		if props["State"] == "active" {
 			return true
 		}
 	}

@@ -3,4 +3,10 @@
 if [ "$1" = "remove" ] && [ -d /run/systemd/system ]; then
 	systemctl disable --now "hauswart-@COMPONENT@.service" || true
 fi
+# A full-screen block of the agent must not outlive it, nor its PAM service.
+if [ "$1" = "remove" ] && [ "@COMPONENT@" = agent ]; then
+	systemctl stop hauswart-block.service 2>/dev/null || true
+	rm -f /etc/systemd/system/hauswart-block.service /etc/pam.d/hauswart-block
+	systemctl daemon-reload 2>/dev/null || true
+fi
 exit 0
