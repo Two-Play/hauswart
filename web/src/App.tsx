@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   AppShell,
   Badge,
   Burger,
@@ -92,17 +93,35 @@ function ColorSchemeToggle() {
   );
 }
 
+interface Exposure {
+  reason: 'listening' | 'reached';
+  address: string;
+  at: string;
+}
+
 interface Attention {
   failed_tasks: number;
   deviating_devices: number;
   boot_alarms?: number;
+  exposure?: Exposure | null;
 }
 
 /** Attention counts what an admin should look at, next to the views that show it. */
-function useAttention(admin: boolean): Partial<Record<string, number>> {
+function useAttention(admin: boolean): { counts: Partial<Record<string, number>>; exposure?: Exposure } {
   const { data } = useResource<Attention>(admin ? '/api/attention' : '', 30_000);
-  if (!admin || !data) return {};
-  return { devices: data.boot_alarms, tasks: data.failed_tasks, groups: data.deviating_devices };
+  if (!admin || !data) return { counts: {} };
+  return { counts: { devices: data.boot_alarms, tasks: data.failed_tasks, groups: data.deviating_devices }, exposure: data.exposure ?? undefined };
+}
+
+/** ExposureWarning says that the server looks reachable from the internet. */
+function ExposureWarning({ exposure }: { exposure: Exposure }) {
+  const { t } = useTranslation();
+  const time = new Date(exposure.at).toLocaleString();
+  return (
+    <Alert color="red" title={t('exposure.title')} mb="md">
+      {t(`exposure.${exposure.reason}`, { address: exposure.address, time })}
+    </Alert>
+  );
 }
 
 function LanguageSwitch() {
@@ -125,7 +144,7 @@ export function App() {
   const [chosen, setChosen] = useState<string>();
   const [opened, { toggle, close }] = useDisclosure();
   const [changingPassword, setChangingPassword] = useState(false);
-  const attention = useAttention(user?.role === 'admin');
+  const { counts: attention, exposure } = useAttention(user?.role === 'admin');
 
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
@@ -230,6 +249,7 @@ export function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
+        {exposure && <ExposureWarning exposure={exposure} />}
         <View key={`${active}-${chosen ?? ''}`} user={user} />
       </AppShell.Main>
       {changingPassword && <PasswordModal onClose={() => setChangingPassword(false)} />}

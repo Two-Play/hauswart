@@ -538,6 +538,43 @@ about the cancellation appears after that.
 
 Agents come back on their own, as long as the service is enabled.
 
+## Live terminal
+
+**Terminal** on the card of a protected device opens a shell on it in the dashboard,
+as root or as one of its people, for at most 240 minutes. Your own passkey approves
+each session, and it has to be pinned on the device like any other: see
+[Approve with a passkey](#approve-with-a-passkey). Without a passkey, or from a
+terminal, the admin tool does the same with a signature:
+
+```sh
+hauswart-admin terminal --device ID                       # as root
+hauswart-admin terminal --device ID --user anna --minutes 30
+```
+
+The device connects to the server for the session, the server passes everything on
+between it and your browser, and nothing needs a port on the device. A session ends
+when the shell ends, when nobody types for 15 minutes, when its time is up, or a
+minute after you closed the window. An approval that has not started a session within
+15 minutes lapses.
+
+People at the device are told: a notification when it starts and when it ends, and
+the desktop app shows who works on the device and until when, for as long as it
+runs. The audit log has the start and the end with who, as whom and how long; the
+device's own log has them with the passkey that approved it. What you type and see
+is recorded nowhere.
+
+Only the admin who asked for a session can open it, and approvers cannot approve one.
+Unprotected devices have no live terminal, because nothing but the server would
+decide who gets a shell.
+
+### Warning about a server on the internet
+
+Hauswart is meant for the local network, or for a VPN. The dashboard warns admins
+when the server listens on a public address, or when a request came from one, which
+usually means a forwarded port on the router. It does not ask a service on the
+internet, which would learn about your server. If the public address is meant to be
+there, as with some VPNs, start the server with `-allow-public`.
+
 ## Send a message to a desktop
 
 **Send desktop message** shows a popup titled `Hauswart` to everyone logged in to a
