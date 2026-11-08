@@ -69,6 +69,19 @@ func (a *Agent) attestOnce(ctx context.Context) time.Duration {
 	defer tpm.Close()
 	at := &Attestor{Client: a.client, Server: a.cfg.Server, Dir: a.dir}
 	err = at.Prove(ctx, tpm)
+	if err == nil {
+		a.mu.RLock()
+		inTPM := a.keyInTPM
+		a.mu.RUnlock()
+		if !inTPM && a.cfg.wantsTPMKey() {
+			if err := a.moveKeyToTPM(ctx, tpm); err != nil {
+				a.log.Warn("moving the TLS key into the TPM failed", "err", err)
+			}
+		} else if inTPM {
+			// A move that stopped before the key file went.
+			os.Remove(filepath.Join(a.dir, keyFile))
+		}
+	}
 	if errors.Is(err, errTPMUnknown) {
 		a.log.Warn("the server does not trust the attestation key, registering again later")
 		return attestInterval

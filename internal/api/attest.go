@@ -57,6 +57,16 @@ type TPMPCR struct {
 	Hash uint `json:"hash"`
 }
 
+// TPMRekey asks for a certificate for a key in the TPM. The AK certifies that
+// the TPM made the key and never lets it out.
+type TPMRekey struct {
+	CSR               string `json:"csr"`
+	Public            []byte `json:"public"`
+	CreateData        []byte `json:"create_data"`
+	CreateAttestation []byte `json:"create_attestation"`
+	CreateSignature   []byte `json:"create_signature"`
+}
+
 // Limits of what a device may send. A real event log is a few dozen KB, and a
 // TPM has up to five PCR banks of 24.
 const (
@@ -124,6 +134,8 @@ type BootStatus struct {
 	// OtherTPM says that the device came with another TPM, which an admin has
 	// to accept before its quotes count.
 	OtherTPM string `json:"other_tpm,omitempty"`
+	// KeyInTPM says that the device's TLS key lives in its TPM.
+	KeyInTPM bool `json:"key_in_tpm,omitempty"`
 }
 
 // Warnings of the boot, next to those of the report.
