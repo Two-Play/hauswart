@@ -17,6 +17,7 @@ import (
 	"github.com/Two-Play/hauswart/gui/agentclient"
 	"github.com/Two-Play/hauswart/gui/translations"
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/catalog"
 )
 
 type fakeAgent struct {
@@ -25,9 +26,16 @@ type fakeAgent struct {
 	sent     []api.UserRequest
 	refuse   error
 	approved bool
+	searched []string
+	found    []catalog.Entry
 }
 
 func (f *fakeAgent) Status() (api.UserStatus, error) { return f.status, f.err }
+
+func (f *fakeAgent) Search(kind, q string) ([]catalog.Entry, error) {
+	f.searched = append(f.searched, kind+" "+q)
+	return f.found, nil
+}
 
 func (f *fakeAgent) Request(r api.UserRequest) (string, error) {
 	f.sent = append(f.sent, r)
@@ -59,6 +67,10 @@ func newApp(t *testing.T, agent *fakeAgent) (*App, *fakeKeyring) {
 	app := New(a, agent, keyring)
 	app.now = func() time.Time { return noon }
 	app.background = func(f func()) { f() }
+	app.later = func(_ time.Duration, f func()) *time.Timer {
+		f()
+		return nil
+	}
 	return app, keyring
 }
 
@@ -173,6 +185,25 @@ func TestAutomaticApprovalIsSaid(t *testing.T) {
 	app.send()
 	if app.result.Text != lang.L("request.approved") || app.detail.Text != "" {
 		t.Fatalf("%q %q", app.result.Text, app.detail.Text)
+	}
+}
+
+func TestNamesAreSuggestedWhileTyping(t *testing.T) {
+	agent := &fakeAgent{found: []catalog.Entry{{Name: "org.gimp.GIMP"}, {Name: "gimp"}}}
+	app, _ := newApp(t, agent)
+	app.kind.SetSelectedIndex(1) // flatpak
+	app.detail.SetText("vim gim")
+	if len(agent.searched) != 1 || agent.searched[0] != "flatpak gim" {
+		t.Fatalf("searched %v", agent.searched)
+	}
+	if got := app.options; len(got) != 2 || got[0] != "vim org.gimp.GIMP" {
+		t.Fatalf("options %v", got)
+	}
+	app.detail.SetText("g")
+	app.ShowRequest(api.RequestScreen)
+	app.detail.SetText("30")
+	if len(agent.searched) != 1 || len(app.options) != 0 {
+		t.Fatalf("searched %v, options %v", agent.searched, app.options)
 	}
 }
 

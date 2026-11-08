@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/catalog"
 	"github.com/Two-Play/hauswart/internal/notify"
 	"github.com/Two-Play/hauswart/internal/pki"
 	"github.com/Two-Play/hauswart/internal/store"
@@ -68,6 +69,8 @@ type Server struct {
 	ownHosts []string
 	// oidc logs people in through the identity provider, nil if not configured.
 	oidc *oidcLogin
+	// flathub answers Flatpak searches, nil if they stay on the server.
+	flathub *catalog.Flathub
 }
 
 type loginFailure struct {

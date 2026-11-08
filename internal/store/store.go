@@ -235,6 +235,22 @@ var migrations = []string{
 		updated_by TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+	// Package catalogs are stored once per content, as devices of the same
+	// distribution have the same one.
+	`CREATE TABLE catalogs (
+		hash TEXT PRIMARY KEY,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE catalog_names (
+		hash TEXT NOT NULL REFERENCES catalogs(hash) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		PRIMARY KEY (hash, name)
+	) WITHOUT ROWID;
+	CREATE TABLE device_catalogs (
+		device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+		hash TEXT NOT NULL REFERENCES catalogs(hash),
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(db *sql.DB) error {

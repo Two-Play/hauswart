@@ -6,6 +6,7 @@ import { api, useResource, type Device } from '../api';
 import { buildPayload, taskKey } from '../tasks';
 import { Loaded, showError } from '../ui';
 import { ApprovalRulesPanel } from './ApprovalRulesPanel';
+import { PackageSearch } from './PackageSearch';
 import { PolicyPanel } from './PolicyPanel';
 
 interface DeviceGroup {
@@ -13,6 +14,8 @@ interface DeviceGroup {
   name: string;
   devices: string[];
 }
+
+const words = (text: string) => text.split(/\s+/).filter(Boolean);
 
 const GROUP_TASKS = ['pkg.upgrade', 'pkg.install', 'pkg.remove', 'flatpak.install'];
 
@@ -76,11 +79,14 @@ function GroupCard({ group, devices, reload }: { group: DeviceGroup; devices: De
               data={GROUP_TASKS.map((key) => ({ value: key, label: t(taskKey(key)) }))}
             />
             {type !== 'pkg.upgrade' && (
-              <TextInput
+              <PackageSearch
+                kind={type === 'flatpak.install' ? 'flatpak' : 'package'}
+                scope={{ group: group.id }}
                 label={t('fields.packages')}
                 required
-                value={packages}
-                onChange={(e) => setPackages(e.currentTarget.value)}
+                miw={260}
+                value={words(packages)}
+                onChange={(next) => setPackages(next.join(' '))}
               />
             )}
             <Button type="submit" disabled={group.devices.length === 0}>
@@ -89,7 +95,7 @@ function GroupCard({ group, devices, reload }: { group: DeviceGroup; devices: De
           </Group>
         </form>
         <PolicyPanel groupId={group.id} devices={devices} />
-        <ApprovalRulesPanel path={`/api/groups/${group.id}/approval-rules`} inherit />
+        <ApprovalRulesPanel path={`/api/groups/${group.id}/approval-rules`} inherit scope={{ group: group.id }} />
       </Stack>
     </Paper>
   );

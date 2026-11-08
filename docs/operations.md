@@ -667,6 +667,15 @@ last rule ends. Fedora and Debian are tested, with GNOME and Plasma.
 
 A rule that cannot be applied shows as a deviation, and the device goes on working.
 
+## Package search
+
+Fields for packages and Flatpaks in the dashboard and in the desktop app suggest names
+while you type. Packages come from the repositories of the devices, which each agent
+lists once a day. A device that was just enrolled finds only what is installed until
+then. Flatpaks come from Flathub, through the server: only the search term goes
+there. To turn that off, add `-flathub-search=false` to `HAUSWART_ARGS` in
+`/etc/hauswart/server.env`.
+
 ## Notifications about requests
 
 To hear about new requests, edit `/etc/hauswart/notify.env`. Everything is off until

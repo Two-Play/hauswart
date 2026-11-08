@@ -33,6 +33,9 @@
     "invalid_approval_mode": "Invalid approval mode {{value}}.",
     "approvals_too_large": "An approval list has more than {{value}} entries.",
     "request_blocked": "Requests of this kind are not allowed on this device.",
-    "admin_decides": "Only an admin may decide this request."
+    "admin_decides": "Only an admin may decide this request.",
+    "invalid_catalog": "The package catalog is not valid: {{value}}.",
+    "unknown_catalog": "This package catalog is not known yet.",
+    "invalid_search": "This search is not valid: {{value}}."
   }
 }

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
 import { Loaded, showError } from '../ui';
+import { PackageSearch, SearchScopeContext } from './PackageSearch';
 
 interface Window {
   days: string[];
@@ -218,7 +219,8 @@ function AppRuleForm({
           }))}
         />
         {rule.flatpaks && (
-          <TagsInput
+          <PackageSearch
+            kind="flatpak"
             label={t('policies.appFlatpaks')}
             value={rule.flatpaks.apps}
             onChange={(apps) => rule.flatpaks && onChange({ ...rule, flatpaks: { ...rule.flatpaks, apps } })}
@@ -257,23 +259,27 @@ function PolicyForm({
   return (
     <Stack>
       <Title order={5}>{t('policies.software')}</Title>
-      <TagsInput
+      <PackageSearch
+        kind="package"
         label={t('policies.requiredPackages')}
         value={p.required_packages ?? []}
         onChange={(required_packages) => change({ required_packages })}
       />
-      <TagsInput
+      <PackageSearch
+        kind="package"
         label={t('policies.forbiddenPackages')}
         description={t('policies.forbiddenHint')}
         value={p.forbidden_packages ?? []}
         onChange={(forbidden_packages) => change({ forbidden_packages })}
       />
-      <TagsInput
+      <PackageSearch
+        kind="flatpak"
         label={t('policies.requiredFlatpaks')}
         value={p.required_flatpaks ?? []}
         onChange={(required_flatpaks) => change({ required_flatpaks })}
       />
-      <TagsInput
+      <PackageSearch
+        kind="flatpak"
         label={t('policies.forbiddenFlatpaks')}
         value={p.forbidden_flatpaks ?? []}
         onChange={(forbidden_flatpaks) => change({ forbidden_flatpaks })}
@@ -717,7 +723,9 @@ export function PolicyPanel({ groupId, devices }: { groupId: number; devices: De
               </Text>
             )}
             <Modal opened={editing} onClose={() => setEditing(false)} title={t('policies.title')} size="xl">
-              <PolicyForm initial={data.policy ?? {}} known={knownApps(data)} onSave={save} onClose={() => setEditing(false)} />
+              <SearchScopeContext.Provider value={{ group: groupId }}>
+                <PolicyForm initial={data.policy ?? {}} known={knownApps(data)} onSave={save} onClose={() => setEditing(false)} />
+              </SearchScopeContext.Provider>
             </Modal>
           </Stack>
         )}
