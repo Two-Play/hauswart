@@ -123,6 +123,21 @@ On atomic systems such as Silverblue, Kinoite and CoreOS, Hauswart uses
 system updates take effect after the next reboot, and Hauswart does not reboot a
 device by itself.
 
+## Suspend or remove a device
+
+**Suspend** holds a device back for a while, for example while it is lent out. It
+keeps reporting, so the dashboard still shows it, but:
+
+- It runs no tasks. They wait until you resume it.
+- Nobody can file requests for it, and open requests cannot be approved.
+- Running sudo grants end, and everyone at the device gets a notice. People go on
+  working as before.
+
+**Resume** undoes all of that.
+
+**Remove** is final. The device loses access at once and comes back only by
+enrolling it again, as a new device.
+
 ## Protect devices with signatures
 
 Without this, whoever controls the server can reach root on your devices. With
