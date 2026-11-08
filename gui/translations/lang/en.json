@@ -102,5 +102,6 @@
   "history.event.access.screen": "Screen blocked until {{.Until}}",
   "history.event.access.login": "Logins refused until {{.Until}}",
   "history.event.access.ending": "Session ends at {{.Until}}",
-  "history.event.access.open": "Access open again"
+  "history.event.access.open": "Access open again",
+  "history.event.software.flatpak_arrived": "Flatpak installed, new apps show after the next login"
 }
