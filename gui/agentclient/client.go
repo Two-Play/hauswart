@@ -65,6 +65,20 @@ func (c *Client) Status() (api.UserStatus, error) {
 	return status, json.NewDecoder(resp.Body).Decode(&status)
 }
 
+// History returns the requests and changes of the person running this.
+func (c *Client) History() (api.History, error) {
+	var history api.History
+	resp, err := c.http.Get("http://agent/history")
+	if err != nil {
+		return history, ErrUnreachable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return history, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return history, json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&history)
+}
+
 // Search asks the agent for packages or Flatpaks whose names contain q. It is a
 // help while typing, so a failure is an empty list.
 func (c *Client) Search(kind, q string) ([]catalog.Entry, error) {
