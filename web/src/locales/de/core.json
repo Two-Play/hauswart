@@ -23,6 +23,7 @@
     "theme": "Farbschema wechseln",
     "menu": "Navigation ein- oder ausblenden",
     "password": "Passwort ändern",
+    "actions": "Aktionen",
     "screentime": "Bildschirmzeit"
   },
   "devices": {
@@ -58,7 +59,22 @@
     "queued": "An {{name}} gesendet. Das Ergebnis steht unter Aufgaben.",
     "startPasswordTitle": "Startpasswort für {{user}}",
     "startPasswordHint": "Es wird nur dieses eine Mal angezeigt. {{user}} muss beim ersten Anmelden ein neues Passwort wählen.",
-    "close": "Schließen"
+    "close": "Schließen",
+    "pageHint": "Wähle ein Gerät, dann eine Aktion. Strg+K öffnet dasselbe von überall.",
+    "device": "Gerät",
+    "pickDevice": "Gerät wählen",
+    "search": "Aktionen suchen",
+    "noFields": "Diese Aktion braucht nichts weiter.",
+    "area": {
+      "software": "Software",
+      "access": "Zugang",
+      "screen": "Bildschirmzeit",
+      "rights": "Admin-Rechte",
+      "accounts": "Konten",
+      "power": "Strom",
+      "messages": "Nachrichten",
+      "files": "Dateien und Zertifikate"
+    }
   },
   "taskTypes": {
     "pkg_install": "Paket installieren",
@@ -213,6 +229,12 @@
     "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur.",
     "device_suspended": "Das Gerät ist in Hauswart gesperrt.",
     "invalid_quota": "Die Minuten pro Tag von {{value}} müssen zwischen 0 und 1440 liegen."
+  },
+  "palette": {
+    "title": "Aktion ausführen",
+    "action": "Welche Aktion?",
+    "device": "Auf welchem Gerät?",
+    "hint": "Aktion ausführen (Strg+K)"
   },
   "screen": {
     "hint": "Bildschirmzeit pro Person, in der Richtlinie jeder Gruppe. Zeitfenster sagen wann, die Minuten pro Tag wie lange. Speichern ändert die Richtlinie der Gruppe, die geschützte Geräte nur mit Signatur übernehmen.",

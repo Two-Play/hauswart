@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconBolt,
   IconCertificate,
   IconClockHour4,
   IconClipboardList,
@@ -34,6 +35,9 @@ import { useEffect, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, isApprover, setUnauthorizedHandler, type User } from './api';
 import { LANGUAGES, setLanguage } from './i18n';
+import { NavigationContext } from './navigation';
+import { ActionsView } from './views/ActionsView';
+import { CommandPalette } from './views/CommandPalette';
 import { ApprovalsView } from './views/ApprovalsView';
 import { AuditView } from './views/AuditView';
 import { CertificatesView } from './views/CertificatesView';
@@ -59,6 +63,7 @@ const VIEWS: {
   approverOnly?: boolean;
 }[] = [
   { key: 'devices', icon: IconDevicesPc, view: DevicesView },
+  { key: 'actions', icon: IconBolt, view: ActionsView, adminOnly: true },
   { key: 'groups', icon: IconFolders, view: GroupsView, adminOnly: true },
   { key: 'screentime', icon: IconClockHour4, view: ScreenTimeView, adminOnly: true },
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
@@ -102,6 +107,8 @@ export function App() {
   const { t } = useTranslation();
   const [user, setUser] = useState<User | null>();
   const [active, setActive] = useState('devices');
+  // The device a view chose for the actions page.
+  const [chosen, setChosen] = useState<string>();
   const [opened, { toggle, close }] = useDisclosure();
   const [changingPassword, setChangingPassword] = useState(false);
 
@@ -128,7 +135,16 @@ export function App() {
   );
   const View = (views.find((v) => v.key === active) ?? views[0]).view;
 
+  const navigation = {
+    open: (view: string, device?: string) => {
+      setChosen(device);
+      setActive(view);
+    },
+    device: chosen,
+  };
+
   return (
+    <NavigationContext.Provider value={navigation}>
     <AppShell
       header={{ height: 56 }}
       navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
@@ -141,6 +157,7 @@ export function App() {
             <Title order={4}>Hauswart</Title>
           </Group>
           <Group gap="xs" wrap="nowrap">
+            {user.role === 'admin' && <CommandPalette />}
             <LanguageSwitch />
             <ColorSchemeToggle />
           </Group>
@@ -157,6 +174,7 @@ export function App() {
               leftSection={<v.icon size={18} />}
               active={v.key === active}
               onClick={() => {
+                setChosen(undefined);
                 setActive(v.key);
                 close();
               }}
@@ -190,9 +208,10 @@ export function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <View user={user} />
+        <View key={`${active}-${chosen ?? ''}`} user={user} />
       </AppShell.Main>
       {changingPassword && <PasswordModal onClose={() => setChangingPassword(false)} />}
     </AppShell>
+    </NavigationContext.Provider>
   );
 }
