@@ -12,6 +12,7 @@ the VM window shuts everything down.
 Needs KVM, QEMU and `make packages`.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -132,6 +133,32 @@ def ensure_terminal(machine, kde):
             sys.exit(f"{terminal} did not install:\n" + installed.stderr[-800:])
 
 
+def digest(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def update_device(machine, tray, state):
+    """Brings the agent and the desktop app of the VM up to what was just built,
+    so a later run shows the code of now. The desktop app starts at login, so a
+    new one logs anna out once."""
+    agent = f"{HOME}/bin/hauswart-agent"
+    if state.get("agent") != digest(agent):
+        print("updating the agent in the VM", flush=True)
+        machine.copy(agent, "/tmp/hauswart-agent")
+        machine.ssh("install -m755 /tmp/hauswart-agent /usr/bin/hauswart-agent && restorecon /usr/bin/hauswart-agent && "
+                    "systemctl restart hauswart-agent", timeout=60)
+        state["agent"] = digest(agent)
+    if state.get("tray") != digest(tray):
+        print("updating the desktop app in the VM, anna logs in again", flush=True)
+        machine.copy(tray, "/tmp/tray.rpm")
+        installed = machine.ssh("rpm -U --replacepkgs --force /tmp/tray.rpm", timeout=600)
+        if installed.returncode != 0:
+            sys.exit("the desktop app did not install:\n" + installed.stderr[-800:])
+        machine.ssh("systemctl restart display-manager", timeout=60)
+        state["tray"] = digest(tray)
+
+
 def first_run(machine, signer, tray, kde, state):
     admin = login()
     command = admin.call("POST", "/api/enroll-tokens")[1]["command"]
@@ -153,6 +180,7 @@ def first_run(machine, signer, tray, kde, state):
     # The app starts at login, and anna is already logged in.
     machine.ssh("systemctl restart display-manager", timeout=60)
     state["device"] = device
+    state["agent"], state["tray"] = digest(f"{HOME}/bin/hauswart-agent"), digest(tray)
 
 
 def explain(signer, machine):
@@ -213,6 +241,8 @@ def main():
             sys.exit(f"the VM did not come up, see {machine.log}")
         ensure_person(state["device"])
         ensure_terminal(machine, kde)
+        update_device(machine, tray, state)
+        json.dump(state, open(state_file, "w"))
         # The login of the tool may have run out since the last time.
         if signer.run("devices").returncode != 0:
             signer.run("login", "--server", e2e.URL, "--ca-fingerprint", state["fingerprint"], "--user", "admin",
