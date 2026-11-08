@@ -152,7 +152,8 @@ func detectTrust(has func(string) bool, dirExists func(string) bool) *Trust {
 	case has("update-ca-trust") && dirExists("/etc/ca-certificates/trust-source"):
 		return &Trust{Dir: "/etc/ca-certificates/trust-source/anchors", Update: []string{"update-ca-trust", "extract"}}
 	case has("update-ca-certificates") && dirExists("/etc/pki/trust/anchors"):
-		return &Trust{Dir: "/etc/pki/trust/anchors", Update: []string{"update-ca-certificates"}}
+		// openSUSE: Firefox and Chromium ignore the store there as well.
+		return &Trust{Dir: "/etc/pki/trust/anchors", Update: []string{"update-ca-certificates"}, Browsers: true}
 	case has("update-ca-certificates"):
 		return &Trust{Dir: "/usr/local/share/ca-certificates", Update: []string{"update-ca-certificates"}, Browsers: true}
 	case has("trust"):
