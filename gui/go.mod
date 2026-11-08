@@ -7,6 +7,7 @@ require github.com/Two-Play/hauswart v0.0.0
 require (
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
 	golang.org/x/term v0.47.0 // indirect
 )
 

@@ -74,6 +74,14 @@ func init() {
 	reviewer(api.TaskGroupRemove, func(p api.GroupPayload) (string, error) {
 		return fmt.Sprintf("REMOVE Linux user %s from group %s", p.User, p.Group), nil
 	})
+	reviewer(api.TaskTerminalOpen, func(p api.TerminalPayload) (string, error) {
+		who := "the Linux user " + p.User
+		if p.User == api.TerminalRoot {
+			who = "ROOT, with full control of the device"
+		}
+		return fmt.Sprintf("OPEN A LIVE SHELL as %s for at most %d minutes. It must start within %s, "+
+			"and the server passes on every keystroke.", who, p.Minutes, api.MaxTerminalApproval), nil
+	})
 	reviewer(api.TaskAccessSet, func(p api.AccessPayload) (string, error) {
 		if p.Mode == api.AccessOpen {
 			return "OPEN ACCESS to this device again: lift the block of the screen or of logins", nil

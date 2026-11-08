@@ -4,7 +4,9 @@ go 1.26.10
 
 require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
+	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/creack/pty v1.1.24
 	golang.org/x/crypto v0.58.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.47.0

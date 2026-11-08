@@ -43,6 +43,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request, u stor
 		fail(w, http.StatusBadRequest, api.ErrUseStartPassword)
 		return
 	}
+	if in.Type == api.TaskTerminalOpen {
+		// The session must come from the server, which waits for it.
+		fail(w, http.StatusBadRequest, api.ErrInvalidTerminal, "use the terminal route")
+		return
+	}
 	if err := api.Validate(in.Type, in.Payload); err != nil {
 		failErr(w, http.StatusBadRequest, err)
 		return
@@ -182,6 +187,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request, u store.Us
 		return
 	}
 	s.audit(r, u.Username, "task.rejected", id)
+	s.terminals.endTask(id, "rejected by "+u.Username)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -225,7 +231,8 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, _ store.Use
 }
 
 // handleAttention counts what an admin should look at: tasks that failed in the
-// last day, and devices that differ from their policy.
+// last day, devices that differ from their policy, and whether the server looks
+// reachable from the internet.
 func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request, _ store.User) {
 	failed, err := s.store.FailedTasksSince(r.Context(), time.Now().Add(-24*time.Hour))
 	if err != nil {
@@ -243,5 +250,6 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request, _ store
 			deviating++
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"failed_tasks": failed, "deviating_devices": deviating})
+	writeJSON(w, http.StatusOK, map[string]any{"failed_tasks": failed, "deviating_devices": deviating,
+		"exposure": s.currentExposure()})
 }

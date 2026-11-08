@@ -25,6 +25,9 @@ var DefaultPasskeyTypes = []string{
 	// Blocking or opening access, but a block approved by passkey must end
 	// within a day: see PasskeyLimits.
 	TaskAccessSet,
+	// A live shell, one session per touch, which must start within minutes:
+	// see PasskeyLimits.
+	TaskTerminalOpen,
 }
 
 // PasskeyEligible says whether a type can be approved with a passkey at all.

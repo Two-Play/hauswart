@@ -385,6 +385,11 @@ func (t *App) show(status api.UserStatus, err error) {
 	text := t.screenText()
 	t.screen.SetText(text)
 	t.setMenuTime(text)
+	if live := status.Terminal; live != nil {
+		// Live access goes first in the menu, where it shows without opening
+		// the window.
+		t.setMenuTime(terminalText(live))
+	}
 
 	t.shares.SetText(lang.L("shares.none"))
 	if len(status.Shares) > 0 {
@@ -401,6 +406,9 @@ func (t *App) show(status api.UserStatus, err error) {
 		}
 		t.notice.SetText(lang.L("access."+a.Mode, map[string]any{"Until": until}))
 	}
+	if live := status.Terminal; live != nil {
+		t.notice.SetText(terminalText(live))
+	}
 	if status.Suspended {
 		t.notice.SetText(lang.L("suspended"))
 		t.sendButton.Disable()
@@ -410,6 +418,15 @@ func (t *App) show(status api.UserStatus, err error) {
 		t.result.SetText("")
 	}
 	t.showCloud(status.Nextcloud)
+}
+
+// terminalText says that an admin works on the device right now, as whom and
+// approved by whom.
+func terminalText(live *api.TerminalStatus) string {
+	return lang.L("terminal.live", map[string]any{
+		"User": live.User, "Approver": live.Approver,
+		"Since": live.Since.Local().Format("15:04"), "Until": live.Until.Local().Format("15:04"),
+	})
 }
 
 func (t *App) setMenuTime(text string) {

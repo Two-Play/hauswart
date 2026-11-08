@@ -216,6 +216,9 @@ func (g *Guard) Admit(task api.Task, device string, now time.Time) (api.Task, er
 	if !now.Before(env.NotAfter) {
 		return api.Task{}, errors.New("signed task has expired")
 	}
+	if err := approvalWindow(env, now); err != nil {
+		return api.Task{}, err
+	}
 	if env.Counter <= g.state.Counter {
 		return api.Task{}, fmt.Errorf("counter %d is not above %d", env.Counter, g.state.Counter)
 	}
@@ -246,6 +249,9 @@ func (g *Guard) admitPasskey(task api.Task, device string, now time.Time) (api.T
 	}
 	if env.NotAfter.After(now.Add(maxPasskeyLifetime)) {
 		return api.Task{}, errors.New("approval is valid for too long")
+	}
+	if err := approvalWindow(env, now); err != nil {
+		return api.Task{}, err
 	}
 	if !g.passkeyTypes[env.Type] {
 		return api.Task{}, fmt.Errorf("a passkey may not approve %s on this device", env.Type)
@@ -281,6 +287,16 @@ func (g *Guard) admitPasskey(task api.Task, device string, now time.Time) (api.T
 	}
 	g.state = next
 	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload, Approver: passkey.Name, Request: task.Request}, nil
+}
+
+// approvalWindow refuses an approval that reaches further ahead than its type
+// allows, such as a live terminal that must start now.
+func approvalWindow(env sign.Envelope, now time.Time) error {
+	window := api.ApprovalWindow(env.Type)
+	if window > 0 && env.NotAfter.After(now.Add(window)) {
+		return api.Fail(api.ErrTerminalApproval, window.String())
+	}
+	return nil
 }
 
 // Touch moves the last seen time forward, so that a later clock rollback shows.
