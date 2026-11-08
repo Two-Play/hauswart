@@ -717,3 +717,33 @@ func TestMissingListMeansDefaults(t *testing.T) {
 		t.Fatalf("got %v", cfg.passkeyTypes())
 	}
 }
+
+// A live shell is approved for now: an approval that waits for later is refused,
+// whether it comes signed or from a passkey.
+func TestGuardRefusesTerminalApprovalsForLater(t *testing.T) {
+	payload := json.RawMessage(`{"session":"` + strings.Repeat("A", 43) + `","user":"root","minutes":5}`)
+	signer := newKey(t)
+	for _, c := range []struct {
+		notAfter time.Duration
+		ok       bool
+	}{{10 * time.Minute, true}, {time.Hour, false}} {
+		s, err := sign.Sign(signer, sign.Envelope{
+			Type: api.TaskTerminalOpen, Payload: payload, DeviceID: guardDevice, Counter: 1, NotAfter: time.Now().Add(c.notAfter),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = newGuard(t, signer).Admit(api.Task{ID: "id", Signed: &s}, guardDevice, time.Now())
+		if (err == nil) != c.ok {
+			t.Errorf("signed for %s: %v", c.notAfter, err)
+		}
+
+		a := passkeytest.New(t)
+		env := passkeyEnvelope(1)
+		env.Type, env.Payload, env.NotAfter = api.TaskTerminalOpen, payload, time.Now().Add(c.notAfter)
+		_, err = passkeyGuard(t, a).Admit(approved(t, a, env), guardDevice, time.Now())
+		if (err == nil) != c.ok {
+			t.Errorf("passkey for %s: %v", c.notAfter, err)
+		}
+	}
+}

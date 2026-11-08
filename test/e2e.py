@@ -2,7 +2,7 @@
 """End-to-end test: real server on the host, real agents as root in containers.
 
 Everything privileged happens inside throwaway containers; the host is never
-touched. Usage: test/e2e.py [fedora debian arch opensuse systemd signing notify renewal
+touched. Usage: test/e2e.py [fedora debian arch opensuse systemd signing notify renewal terminal
 journal-fedora journal-debian journal-arch journal-opensuse]
 
 E2E_PORT, E2E_PREFIX and E2E_SUFFIX keep parallel runs apart.
@@ -1032,6 +1032,66 @@ def test_network(admin, agent_bin, work, password, admin_bin):
         tool.close()
         sh("podman", "rm", "-f", container, check_rc=False)
 
+def test_terminal(admin, agent_bin, work, password, admin_bin):
+    """A live shell through the server, signed with the admin tool, as root and
+    as an ordinary account."""
+    name = "terminal"
+    print(f"\n== {name} (live shell through the server)", flush=True)
+    container = f"{PREFIX}-terminal{SUFFIX}"
+    sh("podman", "rm", "-f", container, check_rc=False)
+    sh("podman", "run", "-d", "--name", container, "--network", "host",
+       "-v", f"{agent_bin}:/usr/local/bin/hauswart-agent:ro,Z", DISTROS["fedora"][0], "sleep", "900")
+
+    def inside(cmd, timeout=600):
+        return sh("podman", "exec", container, "sh", "-c", cmd, check_rc=False, timeout=timeout)
+
+    home = f"{work}/{name}"
+    os.makedirs(home)
+    tool = Admin(home, admin_bin)
+    try:
+        installed = inside(DISTROS["fedora"][1] + " util-linux procps-ng", timeout=900)
+        check(name, "tools installed", installed.returncode == 0, installed.stderr[-400:])
+        inside("useradd -m anna")
+        fingerprint = re.search(r"--ca-fingerprint (\w+)", admin.call("POST", "/api/enroll-tokens")[1]["command"]).group(1)
+        tool.run("login", "--server", URL, "--ca-fingerprint", fingerprint, "--user", "admin", input=password + "\n")
+        tool.run("keys", "add", f"{home}/primary.pub")
+        tool.run("keys", "add", f"{home}/offline.pub")
+        enrolled = inside(tool.run("enroll-command").stdout.strip().replace("sudo ", "", 1))
+        check(name, "enrollment", enrolled.returncode == 0, enrolled.stderr)
+        device = re.search(r"Device ID: (\w+)", enrolled.stdout).group(1)
+        seen.add(device)
+        tool.run("name", device, "terminal-laptop")
+        sh("podman", "exec", "-d", container, "sh", "-c", "hauswart-agent run >/var/log/agent.log 2>&1")
+        wait_report(admin, device, lambda r: r.get("protected"), 60)
+
+        shell = tool.run("terminal", "--device", device, "--minutes", "5",
+                         input="id -u; echo marker-$((6*7)); exit 4\n")
+        check(name, "the signing tool says what it signs", "OPEN A LIVE SHELL as ROOT" in shell.stderr, shell.stderr)
+        check(name, "a shell as root runs", "marker-42" in shell.stdout and re.search(r"^0\r?$", shell.stdout, re.M) is not None,
+              shell.stdout + shell.stderr + inside("tail -20 /var/log/agent.log").stdout)
+        check(name, "its exit code comes back", shell.returncode != 0 and "code 4" in shell.stderr, shell.stderr)
+
+        shell = tool.run("terminal", "--device", device, "--user", "anna", "--minutes", "5",
+                         input="id -un; pwd; exit\n")
+        check(name, "a shell as an account runs as it, at home", re.search(r"^anna\r?$", shell.stdout, re.M) is not None
+              and "/home/anna" in shell.stdout, shell.stdout + shell.stderr)
+
+        refused = tool.run("terminal", "--device", device, "--user", "nobody")
+        check(name, "a system account is refused", "marker" not in refused.stdout and refused.returncode != 0,
+              refused.stdout + refused.stderr)
+
+        audit = json.dumps(admin.call("GET", "/api/audit")[1])
+        check(name, "start and end are in the audit log", audit.count("terminal.started") >= 2 and audit.count("terminal.ended") >= 2, audit[:2000])
+        check(name, "what was typed is not", "marker" not in audit, audit[:2000])
+        events = inside("cat /var/lib/hauswart/events.json").stdout
+        check(name, "the people at the device are told", "terminal.started" in events and "terminal.ended" in events, events)
+        journal = inside("grep 'live terminal' /var/log/agent.log").stdout
+        check(name, "the device logs who opened it", "approver=hauswart-admin" in journal and "user=anna" in journal, journal)
+    finally:
+        tool.close()
+        sh("podman", "rm", "-f", container, check_rc=False)
+
+
 POLICY_FILE = "/etc/hauswart.d/policy-test"
 
 
@@ -1485,6 +1545,8 @@ def main():
                 test_socket(admin, agent_bin)
             elif name == "network":
                 test_network(admin, agent_bin, work, password, admin_bin)
+            elif name == "terminal":
+                test_terminal(admin, agent_bin, work, password, admin_bin)
             elif name == "signing":
                 test_signing(admin, agent_bin, work, password, admin_bin, ca_pem)
             elif name.startswith("journal-"):

@@ -1,0 +1,33 @@
+{
+  "taskTypes": { "terminal_open": "Open live terminal" },
+  "terminal": {
+    "open": "Terminal",
+    "title": "Live terminal on {{name}}",
+    "user": "Run as",
+    "root": "root (administrator)",
+    "minutes": "Ends after (minutes)",
+    "hint": "The shell runs on the device until you close it, nobody types for 15 minutes or the time is up. People at the device see a notice while it runs. Start and end go into the audit log, what you type does not.",
+    "unprotected": "A live terminal needs a protected device, because only its pinned passkeys and keys can let a shell in.",
+    "noPasskeys": "Passkeys do not work in this browser. Open the terminal with hauswart-admin terminal instead.",
+    "start": "Continue",
+    "confirm": "Your passkey confirms a shell as {{user}} on {{device}} for at most {{minutes}} minutes, which must start within 15 minutes.",
+    "approve": "Approve with passkey",
+    "waiting": "Waiting for the device…",
+    "running": "Connected · ends at {{time}} at the latest",
+    "ended": "Session ended: {{reason}}",
+    "exit": "The shell ended with code {{code}}.",
+    "close": "Close",
+    "palette": "Open a live terminal"
+  },
+  "errors": {
+    "invalid_terminal": "The terminal session is not valid ({{value}}).",
+    "terminal_unprotected": "A live terminal needs a protected device.",
+    "terminal_gone": "The terminal session has ended or never started.",
+    "terminal_approval_too_long": "An approved terminal session must start within {{value}}."
+  },
+  "exposure": {
+    "title": "The server may be reachable from the internet",
+    "listening": "It listens on the public address {{address}}. Hauswart is meant for the local network: put it behind your router or a VPN, or start it with -allow-public if that is intended.",
+    "reached": "A request came from the public address {{address}} at {{time}}. Hauswart is meant for the local network: check your router's port forwarding, or start it with -allow-public if that is intended."
+  }
+}

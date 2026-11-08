@@ -244,6 +244,7 @@ func Main() {
 		"start-password": startPassword,
 		"rotate-keys":    rotateKeys,
 		"passkeys":       passkeys,
+		"terminal":       terminal,
 	}
 	command, ok := commands[os.Args[1]]
 	if !ok {
@@ -272,6 +273,8 @@ func usage() {
   passkeys pin --device ID --passkey N
   passkeys unpin --device ID [--name NAME]
   passkeys renew --device ID
+  terminal --device ID [--user NAME] [--minutes N]
+                          sign and open a live shell, as root unless a user is given
 `)
 	os.Exit(2)
 }
@@ -589,6 +592,9 @@ func nextCounter(local uint64, report *api.Report) (uint64, error) {
 }
 
 func signedUntil(taskType string, payload []byte) time.Time {
+	if window := api.ApprovalWindow(taskType); window > 0 {
+		return time.Now().Add(window * 2 / 3)
+	}
 	if deadline, ok := actionDeadline(taskType, payload); ok {
 		return deadline
 	}

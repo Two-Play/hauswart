@@ -1,7 +1,7 @@
 import { ActionIcon, Kbd, Modal, NavLink, ScrollArea, Stack, Text, TextInput, Tooltip } from '@mantine/core';
 import { IconBolt } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Device } from '../api';
 import { ACTION_AREAS, taskKey } from '../tasks';
@@ -9,7 +9,10 @@ import { showError } from '../ui';
 import { ActionForm } from './ActionForm';
 import { matches } from './ActionsView';
 
-const ALL_TYPES = ACTION_AREAS.flatMap((area) => area.types);
+// The live terminal has its own view, which approves and connects.
+const TERMINAL = 'terminal.open';
+const ALL_TYPES = [...ACTION_AREAS.flatMap((area) => area.types), TERMINAL];
+const TerminalView = lazy(() => import('./TerminalView').then((m) => ({ default: m.TerminalView })));
 
 /** CommandPalette opens with Ctrl+K: an action, then a device, then its form. */
 export function CommandPalette() {
@@ -33,7 +36,9 @@ export function CommandPalette() {
   useHotkeys([['mod+K', open]]);
 
   const actions = ALL_TYPES.filter((each) => matches(t(taskKey(each)), each, query));
-  const machines = (devices ?? []).filter((d) => d.hostname.toLowerCase().includes(query.trim().toLowerCase()));
+  const machines = (devices ?? []).filter(
+    (d) => d.hostname.toLowerCase().includes(query.trim().toLowerCase()) && (type !== TERMINAL || d.report?.protected),
+  );
   const choose = () => {
     if (!type && actions.length > 0) {
       setType(actions[0]);
@@ -51,7 +56,12 @@ export function CommandPalette() {
         <IconBolt size={18} />
       </ActionIcon>
     </Tooltip>
-    <Modal opened={opened} onClose={close} title={title} size="lg">
+    {opened && device && type === TERMINAL && (
+      <Suspense>
+        <TerminalView device={device} onClose={close} />
+      </Suspense>
+    )}
+    <Modal opened={opened && !(device && type === TERMINAL)} onClose={close} title={title} size="lg">
       {device && type ? (
         <ActionForm device={device} type={type} onDone={close} />
       ) : (

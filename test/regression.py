@@ -55,7 +55,7 @@ def suites(fast):
     ]
     for distro in e2e.DISTROS:
         found.append(Suite(f"e2e-{distro}", ["python3", "test/e2e.py", distro, f"journal-{distro}", f"policy-{distro}"], "containers"))
-    for name in ("systemd", "signing", "socket", "network", "renewal", "notify"):
+    for name in ("systemd", "signing", "socket", "network", "terminal", "renewal", "notify"):
         found.append(Suite(f"e2e-{name}", ["python3", "test/e2e.py", name], "containers"))
     if not fast:
         # Directory tests use the fixed ports and names of Authentik.

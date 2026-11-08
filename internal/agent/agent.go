@@ -294,6 +294,8 @@ type Agent struct {
 	access *Access
 	// requestsChanged asks for the state of requests now, after one was filed.
 	requestsChanged chan struct{}
+	// terminals are the live shells that run.
+	terminals terminals
 }
 
 // Load reads the enrolled state from dir.
@@ -632,6 +634,8 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 			return api.TaskResult{OK: false, Output: "access is not available"}
 		}
 		return a.access.Set(ctx, task)
+	case api.TaskTerminalOpen:
+		return a.openTerminal(ctx, task)
 	}
 	return a.exec.Execute(ctx, task)
 }
