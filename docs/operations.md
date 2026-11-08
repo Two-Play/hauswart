@@ -138,6 +138,30 @@ keeps reporting, so the dashboard still shows it, but:
 **Remove** is final. The device loses access at once and comes back only by
 enrolling it again, as a new device.
 
+## Block access to a device
+
+Suspending changes what Hauswart does. To change what people at a device can do,
+run **Block access** on it:
+
+| Mode | What happens |
+| --- | --- |
+| Block the screen | Sessions are locked, and locked again within seconds whenever someone unlocks them. Work stays open. |
+| Refuse logins | Running sessions get a minute's warning, then they end, and unsaved work is lost. New logins are refused. |
+| Open access again | Lifts the block. |
+
+- **Who:** It applies to the Linux users you name, or to every ordinary account if you
+  name none. System accounts and root are never affected.
+- **Local admins:** Without names, local admins are locked out as well. Keep root over
+  SSH, or give the block an end.
+- **How:**
+  - For the whole device, logins are refused through `/run/nologin`, which
+    `pam_nologin` honours on Fedora and Debian.
+  - For single people, any session they start ends at once.
+- **End:** A block can end after some hours, at most 30 days. The device keeps to
+  the end without the server, and a restart keeps the block.
+- **Signatures:** On a protected device, every mode needs a signature, opening
+  included.
+
 ## Protect devices with signatures
 
 Without this, whoever controls the server can reach root on your devices. With
