@@ -46,6 +46,7 @@ function Usage({ label, used = 0, total = 0 }: { label: string; used?: number; t
 function DeviceState({ device }: { device: Device }) {
   const { t } = useTranslation();
   if (device.revoked) return <Badge color="red" variant="light">{t('devices.revoked')}</Badge>;
+  if (device.suspended) return <Badge color="orange" variant="light">{t('devices.suspended')}</Badge>;
   const online = Date.now() / 1000 - device.last_seen < ONLINE_SECONDS;
   return (
     <Badge color={online ? 'teal' : 'gray'} variant="light">
@@ -189,6 +190,15 @@ export function DevicesView({ user }: { user: User }) {
     }
   }
 
+  async function suspend(device: Device, on: boolean) {
+    try {
+      await api('POST', `/api/devices/${device.id}/${on ? 'suspend' : 'resume'}`);
+      reload();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
   async function revoke(device: Device) {
     try {
       await api('POST', `/api/devices/${device.id}/revoke`);
@@ -255,6 +265,9 @@ export function DevicesView({ user }: { user: User }) {
                         </Button>
                         <Button size="xs" variant="default" onClick={() => setInsightDevice(d.id)}>
                           {t('insight.open')}
+                        </Button>
+                        <Button size="xs" variant="subtle" color="orange" onClick={() => suspend(d, !d.suspended)}>
+                          {t(d.suspended ? 'devices.resume' : 'devices.suspend')}
                         </Button>
                         <Button size="xs" variant="subtle" color="red" onClick={() => setRevokeDevice(d)}>
                           {t('devices.revoke')}

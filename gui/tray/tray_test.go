@@ -332,3 +332,17 @@ func TestHistoryShowsNewestFirst(t *testing.T) {
 		t.Fatalf("got %v", app.lines)
 	}
 }
+
+func TestSuspendedDeviceTakesNoRequests(t *testing.T) {
+	agent := &fakeAgent{status: api.UserStatus{User: "mia", Suspended: true}}
+	app, _ := newApp(t, agent)
+	app.Refresh()
+	if !app.sendButton.Disabled() || app.notice.Text != lang.L("suspended") {
+		t.Fatalf("%v %q", app.sendButton.Disabled(), app.notice.Text)
+	}
+	agent.status.Suspended = false
+	app.Refresh()
+	if app.sendButton.Disabled() || app.notice.Text != "" {
+		t.Fatalf("%v %q", app.sendButton.Disabled(), app.notice.Text)
+	}
+}

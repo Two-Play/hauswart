@@ -30,7 +30,7 @@
     "empty": "No devices enrolled yet.",
     "online": "Online",
     "offline": "Offline",
-    "revoked": "Revoked",
+    "revoked": "Removed",
     "unknownDistro": "Unknown system",
     "kernel": "Kernel {{version}}",
     "memory": "Memory",
@@ -39,11 +39,14 @@
     "load": "Load {{load}} on {{cpus}} cores",
     "noBackend": "no package manager",
     "action": "Run action",
-    "revoke": "Revoke",
-    "revokeTitle": "Revoke {{name}}?",
-    "revokeText": "The device loses access at once and has to be enrolled again.",
-    "revokeConfirm": "Revoke device",
-    "protected": "Protected"
+    "revoke": "Remove",
+    "revokeTitle": "Remove {{name}}?",
+    "revokeText": "This is final: the device loses access at once and can only come back by enrolling it again. To hold it back for a while, suspend it instead.",
+    "revokeConfirm": "Remove device",
+    "protected": "Protected",
+    "suspended": "Suspended",
+    "suspend": "Suspend",
+    "resume": "Resume"
   },
   "actions": {
     "title": "Action for {{name}}",
@@ -204,6 +207,7 @@
     "unknown_request_kind": "Unknown request kind {{value}}.",
     "invalid_keys": "The signing keys are not valid.",
     "use_admin_tool": "This device is protected. Use hauswart-admin on your computer.",
-    "not_waiting_for_signature": "This task is not waiting for a signature."
+    "not_waiting_for_signature": "This task is not waiting for a signature.",
+    "device_suspended": "The device is suspended in Hauswart."
   }
 }
