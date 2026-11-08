@@ -65,6 +65,14 @@ RUN zypper -n install MozillaFirefox chromium python3 openssl ca-certificates sh
 RUN useradd -m anna
 """,
         "trust": "cp /srv/tls/ca.pem /etc/pki/trust/anchors/hauswart-family.crt && update-ca-certificates",
+        # The system store is not enough here either, so the agent adds what it does on Debian.
+        "policy": r"""
+mkdir -p /etc/firefox/policies /etc/chromium/policies/managed
+cp /srv/tls/ca.pem /etc/firefox/policies/hauswart.crt
+printf '{"policies":{"Certificates":{"Install":["/etc/firefox/policies/hauswart.crt"]}}}' >/etc/firefox/policies/policies.json
+b64=$(grep -v CERTIFICATE /srv/tls/ca.pem | tr -d '\n')
+printf '{"CACertificates":["%s"]}' "$b64" >/etc/chromium/policies/managed/hauswart.json
+""",
         "browsers": {
             "firefox": FIREFOX.format(binary="firefox"),
             "chromium": CHROME.format(binary="chromium"),

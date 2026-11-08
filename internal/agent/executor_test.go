@@ -282,19 +282,21 @@ func TestDetectTrustUsesTheDistroLayout(t *testing.T) {
 		commands []string
 		dirs     []string
 		want     string
+		// browsers is what test/browsers.py measured: the store alone is not enough.
+		browsers bool
 	}{
-		{"fedora", []string{"update-ca-trust", "trust"}, []string{"/etc/pki/ca-trust/source"}, "/etc/pki/ca-trust/source/anchors"},
-		{"arch", []string{"update-ca-trust", "trust"}, []string{"/etc/ca-certificates/trust-source"}, "/etc/ca-certificates/trust-source/anchors"},
-		{"opensuse", []string{"update-ca-certificates"}, []string{"/etc/pki/trust/anchors"}, "/etc/pki/trust/anchors"},
-		{"debian", []string{"update-ca-certificates"}, nil, "/usr/local/share/ca-certificates"},
+		{"fedora", []string{"update-ca-trust", "trust"}, []string{"/etc/pki/ca-trust/source"}, "/etc/pki/ca-trust/source/anchors", false},
+		{"arch", []string{"update-ca-trust", "trust"}, []string{"/etc/ca-certificates/trust-source"}, "/etc/ca-certificates/trust-source/anchors", false},
+		{"opensuse", []string{"update-ca-certificates"}, []string{"/etc/pki/trust/anchors"}, "/etc/pki/trust/anchors", true},
+		{"debian", []string{"update-ca-certificates"}, nil, "/usr/local/share/ca-certificates", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			has := func(n string) bool { return slices.Contains(c.commands, n) }
 			dirExists := func(p string) bool { return slices.Contains(c.dirs, p) }
 			got := detectTrust(has, dirExists)
-			if got == nil || got.Dir != c.want {
-				t.Fatalf("got %+v, want %s", got, c.want)
+			if got == nil || got.Dir != c.want || got.Browsers != c.browsers {
+				t.Fatalf("got %+v, want %s with browsers %v", got, c.want, c.browsers)
 			}
 		})
 	}
