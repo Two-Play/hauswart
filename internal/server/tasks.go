@@ -101,6 +101,12 @@ func (s *Server) handleStartPassword(w http.ResponseWriter, r *http.Request, u s
 // enqueue hands a task to its device, or queues it for a signature if the
 // device demands one. The server cannot skip that: the device would refuse.
 func (s *Server) enqueue(r *http.Request, deviceID, taskType string, payload []byte, actor string) (string, error) {
+	return s.enqueueFor(r, deviceID, taskType, payload, actor, "")
+}
+
+// enqueueFor is enqueue for the task of a request, which it links before the
+// device can see the task.
+func (s *Server) enqueueFor(r *http.Request, deviceID, taskType string, payload []byte, actor, requestID string) (string, error) {
 	protected, err := s.store.DeviceProtected(r.Context(), deviceID)
 	if err != nil {
 		return "", err
@@ -112,6 +118,11 @@ func (s *Server) enqueue(r *http.Request, deviceID, taskType string, payload []b
 	id, err := create(r.Context(), deviceID, taskType, payload, actor)
 	if err != nil {
 		return "", err
+	}
+	if requestID != "" {
+		if err := s.store.SetRequestTask(r.Context(), requestID, id); err != nil {
+			return "", err
+		}
 	}
 	s.audit(r, actor, "task."+taskType, deviceID+" "+string(payload))
 	s.wake(deviceID)
