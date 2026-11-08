@@ -73,7 +73,18 @@ type SecurityState struct {
 	DiskEncryption string `json:"disk_encryption,omitempty"`
 	ScreenLock     string `json:"screen_lock,omitempty"`
 	Firewall       string `json:"firewall,omitempty"`
+	// TPM is on for a TPM 2.0, which can prove the boot.
+	TPM string `json:"tpm,omitempty"`
+	// SecureBoot is CheckOn, CheckOff, CheckUnknown or BootLegacy.
+	SecureBoot string `json:"secure_boot,omitempty"`
+	// HSI is the Host Security ID of fwupd, such as "HSI:2", empty if unknown.
+	HSI string `json:"hsi,omitempty"`
 }
+
+// BootLegacy is a device that starts without UEFI, so without Secure Boot.
+const BootLegacy = "legacy"
+
+var hsiRe = regexp.MustCompile(`^HSI:[0-5]!?$`)
 
 type Package struct {
 	Kind    string `json:"kind"`
@@ -158,10 +169,16 @@ func (i Inventory) Check() error {
 			}
 		}
 	}
-	for _, state := range []string{i.Security.DiskEncryption, i.Security.ScreenLock, i.Security.Firewall} {
+	for _, state := range []string{i.Security.DiskEncryption, i.Security.ScreenLock, i.Security.Firewall, i.Security.TPM} {
 		if state != "" && state != CheckOn && state != CheckOff && state != CheckUnknown {
 			return Fail(ErrInvalidInventory, "security")
 		}
+	}
+	if sb := i.Security.SecureBoot; sb != "" && sb != CheckOn && sb != CheckOff && sb != CheckUnknown && sb != BootLegacy {
+		return Fail(ErrInvalidInventory, "security")
+	}
+	if i.Security.HSI != "" && !hsiRe.MatchString(i.Security.HSI) {
+		return Fail(ErrInvalidInventory, "security")
 	}
 	for _, pkg := range i.Packages {
 		if pkg.Kind != PackageSystem && pkg.Kind != PackageFlatpak || pkg.Name == "" ||
