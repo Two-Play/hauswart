@@ -123,6 +123,45 @@ On atomic systems such as Silverblue, Kinoite and CoreOS, Hauswart uses
 system updates take effect after the next reboot, and Hauswart does not reboot a
 device by itself.
 
+## Suspend or remove a device
+
+**Suspend** holds a device back for a while, for example while it is lent out. It
+keeps reporting, so the dashboard still shows it, but:
+
+- It runs no tasks. They wait until you resume it.
+- Nobody can file requests for it, and open requests cannot be approved.
+- Running sudo grants end, and everyone at the device gets a notice. People go on
+  working as before.
+
+**Resume** undoes all of that.
+
+**Remove** is final. The device loses access at once and comes back only by
+enrolling it again, as a new device.
+
+## Block access to a device
+
+Suspending changes what Hauswart does. To change what people at a device can do,
+run **Block access** on it:
+
+| Mode | What happens |
+| --- | --- |
+| Block the screen | Sessions are locked, and locked again within seconds whenever someone unlocks them. Work stays open. |
+| Refuse logins | Running sessions get a minute's warning, then they end, and unsaved work is lost. New logins are refused. |
+| Open access again | Lifts the block. |
+
+- **Who:** It applies to the Linux users you name, or to every ordinary account if you
+  name none. System accounts and root are never affected.
+- **Local admins:** Without names, local admins are locked out as well. Keep root over
+  SSH, or give the block an end.
+- **How:**
+  - For the whole device, logins are refused through `/run/nologin`, which
+    `pam_nologin` honours on Fedora and Debian.
+  - For single people, any session they start ends at once.
+- **End:** A block can end after some hours, at most 30 days. The device keeps to
+  the end without the server, and a restart keeps the block.
+- **Signatures:** On a protected device, every mode needs a signature, opening
+  included.
+
 ## Protect devices with signatures
 
 Without this, whoever controls the server can reach root on your devices. With
@@ -314,6 +353,13 @@ Packages and Flatpaks on the lists of automatic apps are installed without askin
 as long as an approver decides their kind and the policy does not forbid them.
 Where groups disagree, the strictest rule wins. sudo always needs a person. On a
 protected device, an automatic approval still waits for a signature.
+
+Once approved, a request shows how its task went: waiting for a signature,
+running, done or failed. For a failure, admins and approvers also see what the
+device said. Members see only that it failed.
+
+A device without Flatpak, such as a minimal desktop, gets the package `flatpak`
+from its package manager before the first Flatpak is installed.
 
 ## Browser trust
 
@@ -636,6 +682,25 @@ KDE shows it in the system tray. GNOME has no tray without an extension, so open
 **Hauswart** from the app menu there. Warnings arrive as notifications either way.
 
 A request needs a Hauswart account whose Linux user is the person at the device.
+
+### What people at a device are told
+
+The agent shows a popup when Hauswart changes something for someone, and the
+**History** tab of the desktop app lists the same, with the person's own requests:
+
+| Change | Who sees it |
+| --- | --- |
+| Their request waits for a signature, was denied, is done, or failed | whoever filed it |
+| sudo granted or taken back, ends in 5 minutes, ended | the person |
+| Account locked, unlocked, new password, group added or removed | the person |
+| Software installed, removed, updated, or a failed change | everyone at a desktop |
+| New or removed rules of the device | everyone at a desktop |
+
+Popups use the language of the policy, the history that of the desktop. They
+need a desktop with a notification service, which GNOME and Plasma have, and they
+work without the desktop app. While someone is at a desktop, the agent asks the
+server every minute how the requests of the device stand. A device keeps the last
+200 changes, and requests of the last 30 days.
 
 **`hauswart-admin-gui`** does on your own computer what `hauswart-admin approve` does in
 a terminal, from the package `hauswart-admin-gui`. Log in once with `hauswart-admin

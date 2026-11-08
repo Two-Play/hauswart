@@ -24,7 +24,11 @@ type UserStatus struct {
 	// is for admins.
 	PolicyIssues bool           `json:"policy_issues,omitempty"`
 	Nextcloud    *NextcloudRule `json:"nextcloud,omitempty"`
-	Dashboard    string         `json:"dashboard"`
+	// Suspended says that Hauswart holds the device back: no requests for now.
+	Suspended bool `json:"suspended,omitempty"`
+	// Access says that this person may not use the device right now.
+	Access    *AccessStatus `json:"access,omitempty"`
+	Dashboard string        `json:"dashboard"`
 }
 
 // ScreenStatus is how someone stands with their screen time.
@@ -45,6 +49,69 @@ const (
 	RequestOpen     = "open"
 	RequestApproved = "approved"
 )
+
+// The further states of a request, as a device learns them from the server.
+const (
+	RequestDenied  = "denied"
+	RequestSigning = "signing"
+	RequestRunning = "running"
+	RequestDone    = "done"
+	RequestFailed  = "failed"
+)
+
+// RequestState is a request filed on a device, for the person who filed it.
+// The reason stays on the server: whoever runs the device may read this.
+type RequestState struct {
+	ID        string `json:"id"`
+	User      string `json:"user"`
+	Kind      string `json:"kind"`
+	Detail    string `json:"detail"`
+	State     string `json:"state"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// What happened on a device, as the desktop app names it.
+const (
+	EventSudoGranted       = "sudo.granted"
+	EventSudoRevoked       = "sudo.revoked"
+	EventSudoExpiring      = "sudo.expiring"
+	EventSudoExpired       = "sudo.expired"
+	EventSoftwareInstalled = "software.installed"
+	EventSoftwareRemoved   = "software.removed"
+	EventSoftwareUpgraded  = "software.upgraded"
+	EventSoftwareFailed    = "software.failed"
+	EventUpdateFailed      = "software.update_failed"
+	EventAccountLocked     = "account.locked"
+	EventAccountUnlocked   = "account.unlocked"
+	EventAccountPassword   = "account.password"
+	EventGroupAdded        = "account.group_added"
+	EventGroupRemoved      = "account.group_removed"
+	EventPolicyChanged     = "policy.changed"
+	EventPolicyCleared     = "policy.cleared"
+	EventDeviceSuspended   = "device.suspended"
+	EventDeviceResumed     = "device.resumed"
+	EventAccessScreen      = "access.screen"
+	EventAccessLogin       = "access.login"
+	EventAccessEnding      = "access.ending"
+	EventAccessOpen        = "access.open"
+)
+
+// DeviceEvent is a change Hauswart made that people at the device should know.
+type DeviceEvent struct {
+	Kind string `json:"kind"`
+	// User is the person it is about. Empty means the whole device.
+	User   string    `json:"user,omitempty"`
+	Detail string    `json:"detail,omitempty"`
+	Until  time.Time `json:"until,omitzero"`
+	At     time.Time `json:"at"`
+}
+
+// History is what the desktop app shows someone: their requests, and what
+// changed for them or for the whole device. Newest first.
+type History struct {
+	Requests []RequestState `json:"requests"`
+	Events   []DeviceEvent  `json:"events"`
+}
 
 // RequestAnswer is what filing a request returns.
 type RequestAnswer struct {

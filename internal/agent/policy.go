@@ -493,11 +493,20 @@ func (e *Executor) installedPackages(ctx context.Context, names []string) (map[s
 func (pe *PolicyEngine) enforceFlatpaks(ctx context.Context, p api.Policy, o *outcome) {
 	e := pe.exec
 	if !e.flatpakInstalled() {
-		// Nothing can be installed, and so nothing forbidden can be there.
-		for _, name := range p.RequiredFlatpaks {
-			o.deviate(deviationFlatpak, name, "flatpak is not installed")
+		// Without it, nothing forbidden can be there. What is required needs
+		// Flatpak first.
+		if len(p.RequiredFlatpaks) == 0 {
+			return
 		}
-		return
+		unlock := e.lockPackages()
+		_, err := e.ensureFlatpak(ctx)
+		unlock()
+		if err != nil {
+			for _, name := range p.RequiredFlatpaks {
+				o.deviate(deviationFlatpak, name, err.Error())
+			}
+			return
+		}
 	}
 	converge(ctx, o, deviationFlatpak, p.ForbiddenFlatpaks, false, e.installedFlatpaks, e.flatpakRemove)
 	converge(ctx, o, deviationFlatpak, p.RequiredFlatpaks, true, e.installedFlatpaks, func(ctx context.Context, names []string) (string, error) {

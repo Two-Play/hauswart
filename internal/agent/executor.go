@@ -128,8 +128,8 @@ func (e *Executor) dispatch(ctx context.Context, t api.Task) (string, json.RawMe
 func (e *Executor) packages(ctx context.Context, taskType string, names []string) (string, error) {
 	defer e.lockPackages()()
 	if taskType == api.TaskFlatpakInstall {
-		if !e.flatpakInstalled() {
-			return "", errors.New("flatpak is not installed")
+		if out, err := e.ensureFlatpak(ctx); err != nil {
+			return out, err
 		}
 		// Fresh systems often have no Flathub remote yet.
 		if out, err := e.Run(ctx, "flatpak", "remote-add", "--system", "--if-not-exists", "flathub", flathubURL); err != nil {
@@ -155,6 +155,28 @@ func (e *Executor) packages(ctx context.Context, taskType string, names []string
 		argv = e.Platform.Backend.Upgrade()
 	}
 	return e.Run(ctx, argv[0], argv[1:]...)
+}
+
+// ensureFlatpak installs Flatpak itself where it is missing, as minimal desktops
+// come without. Whoever approves a Flatpak means the device to have what runs
+// it. The caller holds the package lock.
+func (e *Executor) ensureFlatpak(ctx context.Context) (string, error) {
+	if e.flatpakInstalled() {
+		return "", nil
+	}
+	if e.Platform.Backend == nil {
+		return "", errors.New("flatpak is not installed, and no package manager can install it")
+	}
+	if refresh := e.Platform.Backend.Refresh; refresh != nil {
+		e.Run(ctx, refresh[0], refresh[1:]...)
+	}
+	argv := e.Platform.Backend.Install([]string{"flatpak"})
+	out, err := e.Run(ctx, argv[0], argv[1:]...)
+	if err != nil {
+		return out, fmt.Errorf("flatpak is not installed, and installing it failed: %w", err)
+	}
+	e.Platform.Flatpak = true
+	return out, nil
 }
 
 // filePut writes only below the locally configured allowed paths. The list
@@ -312,14 +334,18 @@ func (e *Executor) sudoRevoke(user string) (string, error) {
 
 // RevokeExpired removes every grant past its expiry. The agent does this on
 // its own, so a grant ends on time even if the server is unreachable.
-func (e *Executor) RevokeExpired() error {
+// It returns who lost a grant.
+func (e *Executor) RevokeExpired() ([]string, error) {
 	var errs []error
+	var revoked []string
 	for _, user := range e.Grants.Expired(time.Now()) {
 		if _, err := e.sudoRevoke(user); err != nil {
 			errs = append(errs, err)
+		} else {
+			revoked = append(revoked, user)
 		}
 	}
-	return errors.Join(errs...)
+	return revoked, errors.Join(errs...)
 }
 
 func (e *Executor) userCreate(ctx context.Context, p api.UserPayload) (string, error) {

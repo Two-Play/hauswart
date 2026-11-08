@@ -143,7 +143,7 @@ func TestSudoGrantLifecycle(t *testing.T) {
 		t.Fatalf("visudo not run: %v", runner.calls)
 	}
 
-	if err := e.RevokeExpired(); err != nil {
+	if _, err := e.RevokeExpired(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(file); err != nil {
@@ -153,7 +153,7 @@ func TestSudoGrantLifecycle(t *testing.T) {
 	if err := e.Grants.Set(name, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.RevokeExpired(); err != nil {
+	if _, err := e.RevokeExpired(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
@@ -330,5 +330,36 @@ func TestParseMeminfo(t *testing.T) {
 	total, used := parseMeminfo([]byte("MemTotal: 1000 kB\nMemFree: 100 kB\nMemAvailable: 400 kB\n"))
 	if total != 1000*1024 || used != 600*1024 {
 		t.Fatalf("total %d used %d", total, used)
+	}
+}
+
+func TestFlatpakComesFirstWhereItIsMissing(t *testing.T) {
+	e, runner := newExecutor(t)
+	e.Has = func(string) bool { return false }
+	res := e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.mozilla.firefox"}}))
+	if !res.OK {
+		t.Fatal(res.Output)
+	}
+	var steps []string
+	for _, call := range runner.calls {
+		steps = append(steps, strings.Join(call, " "))
+	}
+	install := slices.IndexFunc(steps, func(s string) bool { return strings.HasPrefix(s, "dnf5 install") && strings.HasSuffix(s, "flatpak") })
+	app := slices.IndexFunc(steps, func(s string) bool {
+		return strings.Contains(s, "flatpak install") && strings.Contains(s, "org.mozilla.firefox")
+	})
+	if install < 0 || app < install {
+		t.Fatalf("got %v", steps)
+	}
+
+	runner.calls = nil
+	res = e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.gimp.GIMP"}}))
+	if !res.OK || strings.HasPrefix(strings.Join(runner.calls[0], " "), "dnf5") {
+		t.Fatalf("installed flatpak twice: %v", runner.calls)
+	}
+
+	e.Platform.Flatpak, e.Platform.Backend = false, nil
+	if res := e.Execute(context.Background(), task(t, api.TaskFlatpakInstall, api.PackagesPayload{Packages: []string{"org.gimp.GIMP"}})); res.OK || !strings.Contains(res.Output, "no package manager") {
+		t.Fatalf("got %+v", res)
 	}
 }

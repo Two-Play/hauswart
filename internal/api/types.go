@@ -44,6 +44,9 @@ type Task struct {
 	// Approver names the passkey that approved a task, for the device's log.
 	// Only the guard sets it, so it never travels.
 	Approver string `json:"-"`
+	// Request names the request a task came from. Nobody signs it, so the
+	// device uses it for nothing but to tell the person once instead of twice.
+	Request string `json:"request,omitempty"`
 }
 
 type TaskResult struct {
@@ -106,6 +109,8 @@ type Report struct {
 	// it got. Both are only hints for the admin tool, the device decides.
 	Protected bool   `json:"protected"`
 	Counter   uint64 `json:"counter"`
+	// Access is the block the device keeps, if any.
+	Access *AccessPayload `json:"access,omitempty"`
 	// The same goes for what it says about passkeys: which credentials it has
 	// pinned, which task types they may approve and how far their counter got.
 	Passkeys       []string `json:"passkeys,omitempty"`

@@ -39,6 +39,10 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request, u st
 	// buttons only to those who may press them.
 	rules := map[string]api.ApprovalRules{}
 	for i, req := range requests {
+		// Members learn that their request failed, the output is for those who decide.
+		if u.Role == store.RoleMember {
+			requests[i].OutcomeDetail = ""
+		}
 		if req.Status != "open" {
 			continue
 		}
@@ -94,6 +98,9 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request, u s
 		fail(w, http.StatusForbidden, api.ErrDeviceNotAssigned)
 		return
 	}
+	if s.refuseSuspended(w, r, in.DeviceID, http.StatusConflict) {
+		return
+	}
 	mode, err := s.requestMode(r.Context(), in.DeviceID, in.Kind, in.Detail)
 	if err != nil {
 		s.internal(w, err)
@@ -130,7 +137,7 @@ func (s *Server) finishFiling(w http.ResponseWriter, r *http.Request, id, mode, 
 		if won {
 			// A protected device still waits for a signature: the rule decides
 			// for the approver, never for the admin tool.
-			if _, err := s.enqueue(r, device, taskType, payload, api.DecidedAutomatically+":"+u.Username); err != nil {
+			if _, err := s.enqueueFor(r, device, taskType, payload, api.DecidedAutomatically+":"+u.Username, id); err != nil {
 				s.internal(w, err)
 				return
 			}
@@ -153,6 +160,9 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request, dev
 	}
 	if err := api.CheckUserRequest(in.UserRequest); err != nil {
 		failErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if s.refuseSuspended(w, r, device, http.StatusLocked) {
 		return
 	}
 	accounts, err := s.store.UsersByLinuxName(r.Context(), in.User)
@@ -264,6 +274,9 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 		fail(w, http.StatusForbidden, api.ErrOwnRequest)
 		return
 	}
+	if s.refuseSuspended(w, r, req.DeviceID, http.StatusConflict) {
+		return
+	}
 	// The request may be older than the decision to take the device away.
 	allowed, err := s.store.DeviceAllowed(r.Context(), req.UserID, req.DeviceID)
 	if err != nil {
@@ -299,7 +312,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 		fail(w, http.StatusConflict, api.ErrRequestDecided)
 		return
 	}
-	if _, err := s.enqueue(r, req.DeviceID, taskType, payload, u.Username); err != nil {
+	if _, err := s.enqueueFor(r, req.DeviceID, taskType, payload, u.Username, req.ID); err != nil {
 		s.internal(w, err)
 		return
 	}

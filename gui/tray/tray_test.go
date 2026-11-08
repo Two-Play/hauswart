@@ -29,9 +29,12 @@ type fakeAgent struct {
 	approved bool
 	searched []string
 	found    []catalog.Entry
+	history  api.History
 }
 
 func (f *fakeAgent) Status() (api.UserStatus, error) { return f.status, f.err }
+
+func (f *fakeAgent) History() (api.History, error) { return f.history, f.err }
 
 func (f *fakeAgent) Search(kind, q string) ([]catalog.Entry, error) {
 	f.searched = append(f.searched, kind+" "+q)
@@ -246,7 +249,7 @@ func TestNextcloudOnlyWithARule(t *testing.T) {
 	agent.status.Nextcloud = &api.NextcloudRule{URL: "https://cloud.home", Mode: api.NextcloudDrive}
 	app.Refresh()
 	app.Refresh()
-	if count := len(app.tabs.Items); count != 3 {
+	if count := len(app.tabs.Items); count != 4 {
 		t.Fatalf("got %d tabs", count)
 	}
 	test.Type(app.password, "app-password")
@@ -261,7 +264,7 @@ func TestNextcloudOnlyWithARule(t *testing.T) {
 	}
 	agent.status.Nextcloud = nil
 	app.Refresh()
-	if len(app.tabs.Items) != 2 {
+	if len(app.tabs.Items) != 3 {
 		t.Fatal("the tab stayed")
 	}
 }
@@ -298,5 +301,70 @@ func TestPicture(t *testing.T) {
 			t.Fatal(err)
 		}
 		out.Close()
+	}
+}
+
+func TestHistoryShowsNewestFirst(t *testing.T) {
+	agent := &fakeAgent{history: api.History{
+		Requests: []api.RequestState{
+			{ID: "1", Kind: api.RequestSudo, Detail: "30", State: api.RequestSigning, CreatedAt: noon.Add(-time.Hour).Unix()},
+			{ID: "2", Kind: api.RequestSoftware, Detail: "vim", State: api.RequestDenied, CreatedAt: noon.Add(-48 * time.Hour).Unix()},
+		},
+		Events: []api.DeviceEvent{
+			{Kind: api.EventSudoGranted, Until: noon.Add(30 * time.Minute), At: noon.Add(-time.Minute)},
+			{Kind: "something.new", At: noon.Add(-2 * time.Hour)},
+		},
+	}}
+	app, _ := newApp(t, agent)
+	app.Refresh()
+	var got []string
+	for _, line := range app.lines {
+		got = append(got, app.clock(line.at)+" "+line.text)
+	}
+	want := []string{
+		"11:59 " + lang.L("history.event.sudo.granted", map[string]any{"Until": "12:30"}),
+		"11:00 " + lang.L("history.what.sudo", map[string]any{"Minutes": "30"}) + ": " + lang.L("history.state.signing"),
+		"10:00 something.new",
+		noon.Add(-48*time.Hour).Format("02.01.") + " 12:00 vim: " + lang.L("history.state.denied"),
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q", got)
+	}
+	if app.empty.Visible() {
+		t.Fatal("the empty note shows over the history")
+	}
+
+	agent.history = api.History{}
+	app.Refresh()
+	if len(app.lines) != 0 || !app.empty.Visible() {
+		t.Fatalf("got %v", app.lines)
+	}
+}
+
+func TestSuspendedDeviceTakesNoRequests(t *testing.T) {
+	agent := &fakeAgent{status: api.UserStatus{User: "mia", Suspended: true}}
+	app, _ := newApp(t, agent)
+	app.Refresh()
+	if !app.sendButton.Disabled() || app.notice.Text != lang.L("suspended") {
+		t.Fatalf("%v %q", app.sendButton.Disabled(), app.notice.Text)
+	}
+	agent.status.Suspended = false
+	app.Refresh()
+	if app.sendButton.Disabled() || app.notice.Text != "" {
+		t.Fatalf("%v %q", app.sendButton.Disabled(), app.notice.Text)
+	}
+}
+
+func TestBlockedAccessIsShown(t *testing.T) {
+	agent := &fakeAgent{status: api.UserStatus{User: "mia", Access: &api.AccessStatus{Mode: api.AccessScreen, Until: noon.Add(time.Hour)}}}
+	app, _ := newApp(t, agent)
+	app.Refresh()
+	if want := lang.L("access.screen", map[string]any{"Until": "13:00"}); app.notice.Text != want {
+		t.Fatalf("got %q, want %q", app.notice.Text, want)
+	}
+	agent.status.Access = &api.AccessStatus{Mode: api.AccessLogin}
+	app.Refresh()
+	if want := lang.L("access.login", map[string]any{"Until": lang.L("access.lasting")}); app.notice.Text != want {
+		t.Fatalf("got %q", app.notice.Text)
 	}
 }

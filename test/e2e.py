@@ -741,6 +741,11 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         shown = tool.run("approve", input="n\n")
         check(name, "approve shows the popup text", 'titled "Hauswart"' in shown.stdout and "Essen ist fertig" in shown.stdout, shown.stdout + shown.stderr)
         tool.run("approve", input="r\n")
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "access.set", "payload": {"mode": "open"}})
+        queued = next(t for t in admin.call("GET", "/api/tasks")[1] if t["id"] == out["id"])
+        check(name, "access.set waits for a signature, opening as well", queued["status"] == "signing", str(queued))
+        shown = tool.run("approve", input="r\n")
+        check(name, "approve says what opening does", "OPEN ACCESS" in shown.stdout, shown.stdout + shown.stderr)
         task = run_task(admin, device, "power.cancel", {}, wait=45)
         check(name, "power.cancel needs no signature", task["status"] in ("done", "failed") and "signature" not in task["output"], task["output"])
 
@@ -869,6 +874,70 @@ def test_socket(admin, agent_bin):
             check(name, "a blocked kind is refused", "request_blocked" in blocked.stdout and blocked.stdout.strip().endswith("422"), blocked.stdout)
         finally:
             admin.call("PUT", "/api/approval-rules", {})
+
+        # The history: anna sees how her requests ended and what changed, ben only
+        # what changed for the whole device.
+        admin.call("POST", f"/api/requests/{filed[0]['id']}/deny")
+
+        def history(user, done):
+            text = ""
+            for _ in range(40):
+                text = as_user(user, "/history").stdout
+                if done(text):
+                    break
+                time.sleep(2)
+            return text
+
+        hers = history("anna", lambda text: '"state":"denied"' in text and '"state":"done"' in text)
+        check(name, "anna sees vim denied and tree done", '"detail":"vim","state":"denied"' in hers and '"detail":"tree","state":"done"' in hers, hers)
+        check(name, "and that tree was installed", '"kind":"software.installed"' in hers and '"detail":"tree"' in hers, hers)
+        check(name, "but not why she asked", "school" not in hers, hers)
+        his = history("ben", lambda text: "software.installed" in text)
+        check(name, "ben sees the device's change", '"kind":"software.installed"' in his, his)
+        check(name, "ATTACK ben does not see anna's requests", '"requests":[]' in his, his)
+
+        # Suspended, the device takes no requests and ends sudo, and comes back.
+        until = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        task = run_task(admin, device, "sudo.grant", {"user": "anna", "expires_at": until}, wait=60)
+        check(name, "sudo for anna", task["status"] == "done", task["output"])
+        code, _ = admin.call("POST", f"/api/devices/{device}/suspend")
+        check(name, "suspend", code == 204, str(code))
+        status = ""
+        for _ in range(40):
+            status = as_user("anna", "/status").stdout
+            if '"suspended":true' in status:
+                break
+            time.sleep(2)
+        check(name, "anna learns that the device is suspended", '"suspended":true' in status, status)
+        check(name, "and the sudo grant is gone", inside("test -e /etc/sudoers.d/hauswart-anna").returncode != 0)
+        refused = as_user("anna", "/request", '{"kind":"software","detail":"git"}')
+        check(name, "a request is refused", "device_suspended" in refused.stdout and refused.stdout.strip().endswith("422"), refused.stdout)
+        admin.call("POST", f"/api/devices/{device}/resume")
+        for _ in range(40):
+            status = as_user("anna", "/status").stdout
+            if '"suspended":true' not in status:
+                break
+            time.sleep(2)
+        check(name, "after resuming it is managed again", '"suspended":true' not in status, status)
+        hers = as_user("anna", "/history").stdout
+        check(name, "and both are in the history", "device.suspended" in hers and "device.resumed" in hers, hers)
+
+        # Refused logins for the whole device keep everyone but root out through
+        # pam_nologin, and opening again lets them in.
+        task = run_task(admin, device, "access.set", {"mode": "login"}, wait=60)
+        check(name, "logins refused", task["status"] == "done", task["output"])
+        check(name, "through /run/nologin", inside("cat /run/nologin").stdout.startswith("Hauswart"), inside("ls -l /run").stdout)
+        status = as_user("anna", "/status").stdout
+        for _ in range(5):
+            if '"access":' in status:
+                break
+            time.sleep(2)
+            status = as_user("anna", "/status").stdout
+        check(name, "anna learns it", '"access":{"mode":"login"}' in status, status)
+        task = run_task(admin, device, "access.set", {"mode": "open"}, wait=60)
+        check(name, "access open again", task["status"] == "done" and inside("test -e /run/nologin").returncode != 0, task["output"])
+        task = run_task(admin, device, "access.set", {"mode": "open", "users": ["anna"]}, wait=60)
+        check(name, "opening takes no names", task["status"] in ("failed", "rejected"), task["output"])
     finally:
         sh("podman", "rm", "-f", container, check_rc=False)
 

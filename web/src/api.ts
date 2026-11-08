@@ -12,6 +12,7 @@ export interface User {
 
 export interface Report {
   protected?: boolean;
+  access?: { mode: string; users?: string[]; until?: string };
   distro?: string;
   kernel?: string;
   backends?: string[];
@@ -53,6 +54,7 @@ export interface Device {
   id: string;
   hostname: string;
   revoked: boolean;
+  suspended: boolean;
   last_seen: number;
   report: Report | null;
   warnings?: Warning[];
@@ -95,6 +97,10 @@ export interface AccessRequest {
   created_at: number;
   // mode says who decides an open request, by the rules of now.
   mode?: ApprovalMode;
+  // outcome follows an approved request into its task.
+  outcome?: 'open' | 'denied' | 'signing' | 'running' | 'done' | 'failed';
+  // outcome_detail is what the device said about a failure, for those who decide.
+  outcome_detail?: string;
 }
 
 export interface ApprovalRules {

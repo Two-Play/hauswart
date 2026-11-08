@@ -28,6 +28,7 @@ type Agent interface {
 	Status() (api.UserStatus, error)
 	Request(api.UserRequest) (string, error)
 	Search(kind, q string) ([]catalog.Entry, error)
+	History() (api.History, error)
 }
 
 // searchDelay waits for a pause in typing before asking.
@@ -69,24 +70,30 @@ type App struct {
 	suggestions *fyne.Container
 
 	status api.UserStatus
+	// lines are the history, newest first.
+	lines []historyLine
 
-	screen   *widget.Label
-	shares   *widget.Label
-	notice   *widget.Label
-	tabs     *container.AppTabs
-	request  *container.TabItem
-	cloud    *container.TabItem
-	kind     *widget.Select
-	detail   *widget.Entry
-	reason   *widget.Entry
-	result   *widget.Label
-	cloudURL *widget.Label
-	cloudTip *widget.Label
-	password *widget.Entry
-	saveKey  *widget.Button
-	saved    *widget.Label
-	menuTime *fyne.MenuItem
-	menu     *fyne.Menu
+	screen  *widget.Label
+	shares  *widget.Label
+	notice  *widget.Label
+	tabs    *container.AppTabs
+	request *container.TabItem
+	cloud   *container.TabItem
+	history *widget.List
+	empty   *widget.Label
+	kind    *widget.Select
+	detail  *widget.Entry
+	reason  *widget.Entry
+	result  *widget.Label
+	// sendButton is off while the device is suspended.
+	sendButton *widget.Button
+	cloudURL   *widget.Label
+	cloudTip   *widget.Label
+	password   *widget.Entry
+	saveKey    *widget.Button
+	saved      *widget.Label
+	menuTime   *fyne.MenuItem
+	menu       *fyne.Menu
 }
 
 // New builds the app. Refresh fills it.
@@ -108,6 +115,7 @@ func New(a fyne.App, agent Agent, keyring Keyring) *App {
 	t.tabs = container.NewAppTabs(container.NewTabItem(lang.L("tab.status"), container.NewPadded(status)))
 	t.request = container.NewTabItem(lang.L("tab.request"), container.NewPadded(t.requestForm()))
 	t.tabs.Append(t.request)
+	t.tabs.Append(container.NewTabItem(lang.L("tab.history"), container.NewPadded(t.historyView())))
 	t.cloud = container.NewTabItem(lang.L("tab.nextcloud"), container.NewPadded(t.cloudForm()))
 	t.window.SetContent(t.tabs)
 
@@ -150,7 +158,8 @@ func (t *App) requestForm() fyne.CanvasObject {
 		widget.NewFormItem("", container.NewVBox(t.detail, t.suggestions)),
 		widget.NewFormItem(lang.L("request.reason"), t.reason),
 	)
-	return container.NewVBox(form, widget.NewButton(lang.L("request.send"), t.send), t.result)
+	t.sendButton = widget.NewButton(lang.L("request.send"), t.send)
+	return container.NewVBox(form, t.sendButton, t.result)
 }
 
 // suggest offers names for the word being typed. The options are the whole
@@ -361,6 +370,8 @@ func (t *App) Refresh() {
 	t.background(func() {
 		status, err := t.agent.Status()
 		fyne.Do(func() { t.show(status, err) })
+		history, err := t.agent.History()
+		fyne.Do(func() { t.showHistory(history, err) })
 	})
 }
 
@@ -382,6 +393,21 @@ func (t *App) show(status api.UserStatus, err error) {
 	t.notice.SetText("")
 	if status.PolicyIssues {
 		t.notice.SetText(lang.L("policy.issues"))
+	}
+	if a := status.Access; a != nil {
+		until := lang.L("access.lasting")
+		if !a.Until.IsZero() {
+			until = t.clock(a.Until)
+		}
+		t.notice.SetText(lang.L("access."+a.Mode, map[string]any{"Until": until}))
+	}
+	if status.Suspended {
+		t.notice.SetText(lang.L("suspended"))
+		t.sendButton.Disable()
+		t.result.SetText(lang.L("suspended"))
+	} else if t.sendButton.Disabled() {
+		t.sendButton.Enable()
+		t.result.SetText("")
 	}
 	t.showCloud(status.Nextcloud)
 }
@@ -418,4 +444,91 @@ func (t *App) showCloud(rule *api.NextcloudRule) {
 		t.password.Hide()
 		t.saveKey.Hide()
 	}
+}
+
+// historyLine is one entry of the history: a request or a change.
+type historyLine struct {
+	at   time.Time
+	text string
+}
+
+func (t *App) historyView() fyne.CanvasObject {
+	t.empty = widget.NewLabel(lang.L("history.none"))
+	t.empty.Wrapping = fyne.TextWrapWord
+	t.history = widget.NewList(
+		func() int { return len(t.lines) },
+		func() fyne.CanvasObject {
+			when := widget.NewLabel("")
+			when.TextStyle.Monospace = true
+			what := widget.NewLabel("")
+			what.Wrapping = fyne.TextWrapWord
+			return container.NewBorder(nil, nil, when, nil, what)
+		},
+		func(i widget.ListItemID, item fyne.CanvasObject) {
+			row := item.(*fyne.Container)
+			row.Objects[1].(*widget.Label).SetText(t.clock(t.lines[i].at))
+			row.Objects[0].(*widget.Label).SetText(t.lines[i].text)
+			t.history.SetItemHeight(i, row.MinSize().Height)
+		},
+	)
+	return container.NewStack(t.history, container.NewVBox(t.empty))
+}
+
+// clock says when something happened: the time today, the day before that.
+func (t *App) clock(at time.Time) string {
+	at = at.Local()
+	if y, m, d := t.now().Local().Date(); at.Year() == y && at.Month() == m && at.Day() == d {
+		return at.Format("15:04")
+	}
+	return at.Format("02.01. 15:04")
+}
+
+func (t *App) showHistory(h api.History, err error) {
+	if err != nil {
+		// An older agent has no history: then there is nothing to show.
+		h = api.History{}
+	}
+	lines := make([]historyLine, 0, len(h.Requests)+len(h.Events))
+	for _, r := range h.Requests {
+		lines = append(lines, historyLine{time.Unix(r.CreatedAt, 0), requestLine(r)})
+	}
+	for _, e := range h.Events {
+		lines = append(lines, historyLine{e.At, eventLine(e)})
+	}
+	slices.SortStableFunc(lines, func(a, b historyLine) int { return b.at.Compare(a.at) })
+	t.lines = lines
+	if len(lines) == 0 {
+		t.empty.Show()
+	} else {
+		t.empty.Hide()
+	}
+	t.history.Refresh()
+}
+
+// requestLine says what a request was for and how far it got.
+func requestLine(r api.RequestState) string {
+	what := r.Detail
+	if r.Kind == api.RequestSudo || r.Kind == api.RequestScreen {
+		what = lang.L("history.what."+r.Kind, map[string]any{"Minutes": r.Detail})
+	}
+	state := lang.L("history.state." + r.State)
+	if state == "history.state."+r.State {
+		state = r.State
+	}
+	return what + ": " + state
+}
+
+// eventLine says what changed. A change the app does not know yet shows as its
+// name rather than not at all.
+func eventLine(e api.DeviceEvent) string {
+	key := "history.event." + e.Kind
+	until := ""
+	if !e.Until.IsZero() {
+		until = e.Until.Local().Format("15:04")
+	}
+	text := lang.L(key, map[string]any{"Detail": e.Detail, "Until": until})
+	if text == key {
+		return e.Kind
+	}
+	return text
 }
