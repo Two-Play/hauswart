@@ -14,8 +14,9 @@ import (
 
 // A full-screen block runs hauswart-blocker in the kiosk compositor cage, as a
 // system service on a console of its own. It belongs to a system account, not to
-// anyone at the device, so nobody there can end it, and cage does not switch
-// consoles. The sessions behind it are locked as well.
+// anyone at the device, so nobody there can end it. cage may switch consoles,
+// so that others reach the login screen while a block is about one person; the
+// agent brings the block back to whoever it is about, and locks their sessions.
 const (
 	blockUnit    = "hauswart-block.service"
 	blockUser    = "hauswart-block"
@@ -33,8 +34,10 @@ const (
 const blockUnitText = `# Managed by Hauswart
 [Unit]
 Description=Hauswart full-screen block
-After=systemd-user-sessions.service
+After=systemd-user-sessions.service hauswart-agent.service
 Conflicts=getty@` + blockTTY + `.service
+# Without the agent nobody would end the block, so it ends with the agent.
+BindsTo=hauswart-agent.service
 
 [Service]
 User=` + blockUser + `
@@ -49,15 +52,15 @@ StandardError=journal
 UtmpIdentifier=` + blockTTY + `
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
-ExecStart=/usr/bin/cage -- /usr/bin/` + blockProgram + `
+ExecStart=/usr/bin/cage -s -- /usr/bin/` + blockProgram + `
 Restart=always
 RestartSec=1
 `
 
-// blockPAMText opens a logind session for the account, which has no password.
-// Only systemd starts the service, as root.
+// blockPAMText opens a logind session for the account. systemd runs no auth for
+// PAMName, so auth refuses everyone: nothing else may log in through this name.
 const blockPAMText = `# Managed by Hauswart
-auth     required pam_permit.so
+auth     required pam_deny.so
 account  required pam_permit.so
 session  required pam_systemd.so
 `
@@ -101,7 +104,7 @@ func (e *Executor) prepareFullscreen(ctx context.Context, p api.AccessPayload) e
 			return fmt.Errorf("%w: %s", err, clip(out, maxDeviationText))
 		}
 	}
-	return e.writeBlockContent(p)
+	return nil
 }
 
 // writeBlockContent leaves the message and the picture for hauswart-blocker.

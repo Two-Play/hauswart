@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"encoding/base64"
+	"image"
+	_ "image/jpeg" // pictures come as PNG or JPEG
+	_ "image/png"
 	"slices"
 	"time"
 )
@@ -26,6 +29,9 @@ const (
 const MaxAccessImage = 512 << 10
 
 const maxAccessMessage = 200
+
+// MaxAccessPixels caps the width and the height of the picture.
+const MaxAccessPixels = 4096
 
 // MaxAccessBlock caps how long a block may last when it has an end. Without an
 // end it lasts until someone lifts it.
@@ -105,6 +111,11 @@ func AccessImage(encoded string) ([]byte, error) {
 		return nil, Fail(ErrInvalidAccessImage)
 	}
 	if !bytes.HasPrefix(raw, []byte("\x89PNG\r\n\x1a\n")) && !bytes.HasPrefix(raw, []byte{0xff, 0xd8, 0xff}) {
+		return nil, Fail(ErrInvalidAccessImage)
+	}
+	// A small file can claim a huge picture, which decoding would hold in memory.
+	config, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || config.Width < 1 || config.Height < 1 || config.Width > MaxAccessPixels || config.Height > MaxAccessPixels {
 		return nil, Fail(ErrInvalidAccessImage)
 	}
 	return raw, nil

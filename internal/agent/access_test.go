@@ -1,9 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
+	"image"
+	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -75,11 +78,9 @@ func TestBlockedScreenIsLockedAgain(t *testing.T) {
 	if calls := s.done(); !slices.Equal(calls, []string{"lock-session 3"}) {
 		t.Fatalf("got %v", calls)
 	}
-	a.Check(context.Background())
-	if calls := s.done(); len(calls) != 0 {
-		t.Fatalf("locked twice: %v", calls)
-	}
-	s.locked["3"] = false // anna unlocked it
+	// anna unlocked it and set LockedHint herself, which logind lets her do:
+	// the next check locks again all the same.
+	s.locked["3"] = true
 	a.Check(context.Background())
 	if calls := s.done(); !slices.Equal(calls, []string{"lock-session 3"}) {
 		t.Fatalf("got %v", calls)
@@ -229,7 +230,7 @@ func newKiosk(t *testing.T) (*Access, *kiosk) {
 
 func TestFullscreenBlockCoversTheScreen(t *testing.T) {
 	a, k := newKiosk(t)
-	picture := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nrest"))
+	picture := pngOf(t, 4, 4)
 	setAccess(t, a, api.AccessPayload{Mode: api.AccessFullscreen, Message: "Abendessen!", Image: picture})
 	if !k.running || k.front != blockTTY {
 		t.Fatalf("running %v, front %s", k.running, k.front)
@@ -237,7 +238,7 @@ func TestFullscreenBlockCoversTheScreen(t *testing.T) {
 	if raw, _ := os.ReadFile(a.exec.path(blockDir + "/message")); string(raw) != "Abendessen!\n" {
 		t.Fatalf("message %q", raw)
 	}
-	if raw, _ := os.ReadFile(a.exec.path(unitPath)); !strings.Contains(string(raw), "ExecStart=/usr/bin/cage -- /usr/bin/hauswart-blocker") {
+	if raw, _ := os.ReadFile(a.exec.path(unitPath)); !strings.Contains(string(raw), "ExecStart=/usr/bin/cage -s -- /usr/bin/hauswart-blocker") || !strings.Contains(string(raw), "BindsTo=hauswart-agent.service") {
 		t.Fatalf("unit %s", raw)
 	}
 	if !k.locked["3"] {
@@ -280,5 +281,25 @@ func TestFullscreenChecks(t *testing.T) {
 		if err := api.Validate(api.TaskAccessSet, payload(t, p)); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func pngOf(t *testing.T, width, height int) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := png.Encode(&out, image.NewGray(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(out.Bytes())
+}
+
+func TestHugePictureIsRefused(t *testing.T) {
+	// A PNG header that claims 40000 by 40000 pixels, in a few bytes.
+	header := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x9c\x40\x00\x00\x9c\x40\x08\x00\x00\x00\x00")
+	if _, err := api.AccessImage(base64.StdEncoding.EncodeToString(header)); err == nil {
+		t.Fatal("a picture of 40000 by 40000 pixels was accepted")
+	}
+	if _, err := api.AccessImage(pngOf(t, 64, 64)); err != nil {
+		t.Fatal(err)
 	}
 }

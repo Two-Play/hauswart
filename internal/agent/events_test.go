@@ -168,7 +168,7 @@ func TestRequestStatesTellOnce(t *testing.T) {
 		request("sudo", api.RequestSudo, "30", api.RequestDone),
 		request("gimp", api.RequestFlatpak, "org.gimp.GIMP", api.RequestDenied),
 	})
-	if shown := d.popups(n); !slices.Equal(shown, []string{me + ": Your request for org.gimp.GIMP was denied."}) {
+	if shown := d.popups(n); !slices.Equal(shown, []string{me + ": Your request for an app was denied."}) {
 		t.Fatalf("got %v", shown)
 	}
 	if h := n.History(me); len(h.Requests) != 2 || h.Requests[1].State != api.RequestDenied {
@@ -237,5 +237,35 @@ func TestSuspensionEndsSudoOnce(t *testing.T) {
 	}
 	if h := n.History(me); len(h.Events) != 2 || h.Events[0].Kind != api.EventDeviceResumed {
 		t.Fatalf("got %+v", h.Events)
+	}
+}
+
+func TestServerWordsStayOffTheDesktop(t *testing.T) {
+	n, d, me := newNotices(t)
+	ctx := context.Background()
+	n.SetRequests(ctx, nil) // sets the scene
+	n.SetRequests(ctx, []api.RequestState{
+		{ID: "1", User: me, Kind: "phish", Detail: "Call 0800 now", State: api.RequestDenied},
+		{ID: "2", User: "", Kind: api.RequestSoftware, Detail: "vim", State: api.RequestDenied},
+		{ID: "3", User: "no-such-account", Kind: api.RequestSoftware, Detail: "vim", State: api.RequestDenied},
+		{ID: "4", User: me, Kind: api.RequestSoftware, Detail: "vim. Your password expired, call 0800", State: api.RequestDenied},
+	})
+	shown := d.popups(n)
+	if !slices.Equal(shown, []string{me + ": Your request for software was denied."}) {
+		t.Fatalf("got %v", shown)
+	}
+}
+
+func TestPopupFloodIsCut(t *testing.T) {
+	n, d, _ := newNotices(t)
+	ctx := context.Background()
+	for range 50 {
+		n.AfterTask(ctx, api.Task{Type: api.TaskPkgUpgrade, Payload: []byte(`{}`)}, api.TaskResult{OK: true})
+	}
+	if shown := d.popups(n); len(shown) != popupsPerMinute {
+		t.Fatalf("%d popups", len(shown))
+	}
+	if h := n.History("anyone"); len(h.Events) != 50 {
+		t.Fatalf("the history lost events: %d", len(h.Events))
 	}
 }
