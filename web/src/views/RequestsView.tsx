@@ -1,4 +1,4 @@
-import { Button, Group, Paper, Select, SimpleGrid, Stack, TextInput, Title } from '@mantine/core';
+import { Button, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -144,7 +144,14 @@ export function RequestsView({ user }: { user: User }) {
                   r.hostname,
                   describe(r),
                   r.reason,
-                  <StatusBadge status={r.status} />,
+                  <Stack gap={2}>
+                    <StatusBadge status={r.outcome ?? r.status} />
+                    {r.outcome_detail && (
+                      <Text size="xs" c="red" maw={260} style={{ wordBreak: 'break-word' }}>
+                        {r.outcome_detail}
+                      </Text>
+                    )}
+                  </Stack>,
                   decider(r),
                   canDecide(r) && (
                     <Group gap="xs" wrap="nowrap">

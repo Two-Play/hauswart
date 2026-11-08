@@ -308,6 +308,10 @@ A popup always carries the title `Hauswart`, so it cannot pose as the system. It
 can still lie: whoever is allowed to send one can write "call this number". Everyone
 should know that Hauswart never asks for a password.
 
+A signed Flatpak install also installs the package `flatpak` where it is missing,
+from the device's own repositories. Approving a Flatpak means the device needs what
+runs it.
+
 Popups about changes come from fixed texts on the device. A package or group name is
 the only part from outside, and it is escaped. A hacked server can claim that a
 request was denied or approved without doing it, which confuses but grants nothing:
