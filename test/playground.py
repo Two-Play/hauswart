@@ -84,6 +84,13 @@ def build():
     tray = f"{ROOT}/dist/hauswart-tray-{VERSION}-1.x86_64.rpm"
     if not os.path.exists(tray):
         sys.exit("the desktop app is missing, run make packages first")
+    # The desktop apps are built apart, so they can lag behind. An old admin app
+    # refuses to sign what it does not know, an old tray misses new notices.
+    changed = subprocess.run(["git", "log", "-1", "--format=%ct", "--", "gui", "internal/api", "internal/admintool"],
+                             cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    for app in (tray, f"{ROOT}/dist/hauswart-admin-gui"):
+        if changed and os.path.exists(app) and os.path.getmtime(app) < int(changed):
+            print(f"WARNING: {os.path.basename(app)} is older than the code it is built from, run make packages", flush=True)
     return tray
 
 
