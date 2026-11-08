@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   AppShell,
+  Badge,
   Burger,
   Button,
   Center,
@@ -33,7 +34,7 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, isApprover, setUnauthorizedHandler, type User } from './api';
+import { api, isApprover, setUnauthorizedHandler, useResource, type User } from './api';
 import { LANGUAGES, setLanguage } from './i18n';
 import { NavigationContext } from './navigation';
 import { ActionsView } from './views/ActionsView';
@@ -91,6 +92,18 @@ function ColorSchemeToggle() {
   );
 }
 
+interface Attention {
+  failed_tasks: number;
+  deviating_devices: number;
+}
+
+/** Attention counts what an admin should look at, next to the views that show it. */
+function useAttention(admin: boolean): Partial<Record<string, number>> {
+  const { data } = useResource<Attention>(admin ? '/api/attention' : '', 30_000);
+  if (!admin || !data) return {};
+  return { tasks: data.failed_tasks, groups: data.deviating_devices };
+}
+
 function LanguageSwitch() {
   const { i18n } = useTranslation();
   return (
@@ -111,6 +124,7 @@ export function App() {
   const [chosen, setChosen] = useState<string>();
   const [opened, { toggle, close }] = useDisclosure();
   const [changingPassword, setChangingPassword] = useState(false);
+  const attention = useAttention(user?.role === 'admin');
 
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
@@ -172,6 +186,13 @@ export function App() {
               component="button"
               label={t(`nav.${v.key}`)}
               leftSection={<v.icon size={18} />}
+              rightSection={
+                attention[v.key] ? (
+                  <Badge size="sm" color="red" circle aria-label={t(`nav.attention.${v.key}`, { count: attention[v.key] })}>
+                    {attention[v.key]}
+                  </Badge>
+                ) : undefined
+              }
               active={v.key === active}
               onClick={() => {
                 setChosen(undefined);

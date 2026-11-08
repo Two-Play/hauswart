@@ -24,7 +24,11 @@
     "menu": "Navigation ein- oder ausblenden",
     "password": "Passwort ändern",
     "actions": "Aktionen",
-    "screentime": "Bildschirmzeit"
+    "screentime": "Bildschirmzeit",
+    "attention": {
+      "tasks": "{{count}} fehlgeschlagen am letzten Tag",
+      "groups": "{{count}} Geräte weichen von ihrer Richtlinie ab"
+    }
   },
   "devices": {
     "add": "Gerät hinzufügen",

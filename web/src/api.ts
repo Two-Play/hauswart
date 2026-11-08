@@ -181,6 +181,8 @@ export function useResource<T>(path: string, pollMs?: number) {
   const [error, setError] = useState<string>();
 
   const reload = useCallback(async () => {
+    // An empty path asks for nothing, for hooks that wait for something else.
+    if (!path) return;
     try {
       setData(await api<T>('GET', path));
       setError(undefined);
