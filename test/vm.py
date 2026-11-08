@@ -1440,7 +1440,10 @@ def test_desktop(admin, agent_bin, work, public_key):
         # The full-screen notice: a console of its own, back in front within seconds.
         vm.copy(f"{ROOT}/dist/hauswart-blocker", "/tmp/hauswart-blocker")
         vm.ssh("install -m755 /tmp/hauswart-blocker /usr/bin/hauswart-blocker && restorecon /usr/bin/hauswart-blocker")
+        # GDM does not log anna in again on its own after her logins were refused.
+        vm.ssh(f"systemctl restart {'gdm'}", timeout=60)
         check(group, "anna is back", wait_for(lambda: len(anna_session()) == 1, 120), str(anna_session()))
+        time.sleep(10)  # the shell settles on its console
 
         def front():
             return vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip()
