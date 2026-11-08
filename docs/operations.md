@@ -709,6 +709,23 @@ Each person logs in to Nextcloud for themselves, so no policy holds a password.
   At the next login the drive is there. On a laptop without a connection it stays
   away and tries again, every minute.
 
+
+### Wi-Fi and printers
+
+**Wi-Fi** in a policy lists networks with a password, WPA2 or WPA3 Personal, hidden
+or not. The agent writes a NetworkManager connection per network to
+`/etc/NetworkManager/system-connections`, readable by root only, and removes its
+own when a network leaves the policy. Connections that were there before stay. The
+password is in the policy, so admins see it in the dashboard; the signing tool shows
+only its length.
+
+**Printers** need an address such as `ipp://drucker.local/ipp/print` and no driver:
+the printer has to speak IPP Everywhere, as most printers since 2012 do. The agent
+sets up a CUPS queue `hauswart-<name>` for everyone on the device, makes one of them
+the default if you choose, and removes its own queues that leave the policy.
+
+A device without NetworkManager or CUPS shows that as a deviation, and admins hear
+about it once.
 ## Desktop apps
 
 **`hauswart-tray`** is for everyone on a device. It shows the screen time left and the

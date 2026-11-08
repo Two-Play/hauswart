@@ -139,6 +139,25 @@ func policyLines(p api.Policy) []string {
 	if n := p.Nextcloud; n != nil {
 		add("Nextcloud %s as %s", n.URL, n.Mode)
 	}
+	for _, w := range p.Wifi {
+		security := w.Security
+		if security == "" {
+			security = "wpa2"
+		}
+		hidden := ""
+		if w.Hidden {
+			hidden = ", hidden"
+		}
+		// The password stays out of the terminal and its scrollback.
+		add("join Wi-Fi %q with %s and a password of %d characters%s", w.SSID, strings.ToUpper(security), len(w.Password), hidden)
+	}
+	for _, printer := range p.Printers {
+		def := ""
+		if printer.Default {
+			def = ", as the default"
+		}
+		add("printer %s at %s for everyone%s", printer.Name, printer.URI, def)
+	}
 	return lines
 }
 

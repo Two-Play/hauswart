@@ -331,6 +331,10 @@ and only root and the end of the block get around it. If `access.json` is broken
 the agent refuses logins until access is set again, rather than opening what was
 blocked.
 
+A Wi-Fi password in a policy is readable by admins and by the server, and on the
+device by root only. Use a network for the devices that you can change when
+someone leaves.
+
 A signed Flatpak install also installs the package `flatpak` where it is missing,
 from the device's own repositories. Approving a Flatpak means the device needs what
 runs it.
