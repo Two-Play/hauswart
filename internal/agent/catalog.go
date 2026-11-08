@@ -57,6 +57,11 @@ func (e *Executor) collectCatalog(ctx context.Context) (api.PackageCatalog, erro
 	if backend == nil || backend.Available == nil {
 		return api.PackageCatalog{}, errNoCatalog
 	}
+	// zypper locks the whole package system even to search, and a package task
+	// at the same time would fail. Reading changes nothing, so unlike
+	// lockPackages this leaves the inventory and the update check alone.
+	e.insight.pkg.Lock()
+	defer e.insight.pkg.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, catalogTimeout)
 	defer cancel()
 	out, err := e.Run(ctx, backend.Available[0], backend.Available[1:]...)

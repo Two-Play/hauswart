@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
 	"github.com/Two-Play/hauswart/internal/catalog"
@@ -52,6 +53,32 @@ func TestCollectCatalog(t *testing.T) {
 	if _, err := e.collectCatalog(context.Background()); !errors.Is(err, errNoCatalog) {
 		t.Fatalf("got %v", err)
 	}
+}
+
+// zypper refuses to run twice, so listing waits for a package task to end.
+func TestCollectCatalogWaitsForPackageTasks(t *testing.T) {
+	ran := make(chan struct{}, 1)
+	e := &Executor{
+		Platform: Platform{Backend: &Backend{Available: []string{"zypper", "search"}}},
+		Run: func(context.Context, string, ...string) (string, error) {
+			ran <- struct{}{}
+			return "vim\n", nil
+		},
+	}
+	release := e.lockPackages()
+	done := make(chan struct{})
+	go func() {
+		e.collectCatalog(context.Background())
+		close(done)
+	}()
+	select {
+	case <-ran:
+		t.Fatal("listed while a package task ran")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	<-done
+	<-ran
 }
 
 func TestEveryBackendWithAListCanSearch(t *testing.T) {
