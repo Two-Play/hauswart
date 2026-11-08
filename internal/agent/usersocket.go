@@ -495,13 +495,13 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		recent:    map[uint32]recentStatus{},
 		send:      a.sendRequest,
 		search:    a.search,
-		history:   a.notices.History,
-		filed: func() {
-			select {
-			case a.requestsChanged <- struct{}{}:
-			default:
+		history: func(user string) api.History {
+			if a.notices.Stale() {
+				a.askForRequests()
 			}
+			return a.notices.History(user)
 		},
+		filed: a.askForRequests,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

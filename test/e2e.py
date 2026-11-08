@@ -869,6 +869,27 @@ def test_socket(admin, agent_bin):
             check(name, "a blocked kind is refused", "request_blocked" in blocked.stdout and blocked.stdout.strip().endswith("422"), blocked.stdout)
         finally:
             admin.call("PUT", "/api/approval-rules", {})
+
+        # The history: anna sees how her requests ended and what changed, ben only
+        # what changed for the whole device.
+        admin.call("POST", f"/api/requests/{filed[0]['id']}/deny")
+
+        def history(user, done):
+            text = ""
+            for _ in range(40):
+                text = as_user(user, "/history").stdout
+                if done(text):
+                    break
+                time.sleep(2)
+            return text
+
+        hers = history("anna", lambda text: '"state":"denied"' in text and '"state":"done"' in text)
+        check(name, "anna sees vim denied and tree done", '"detail":"vim","state":"denied"' in hers and '"detail":"tree","state":"done"' in hers, hers)
+        check(name, "and that tree was installed", '"kind":"software.installed"' in hers and '"detail":"tree"' in hers, hers)
+        check(name, "but not why she asked", "school" not in hers, hers)
+        his = history("ben", lambda text: "software.installed" in text)
+        check(name, "ben sees the device's change", '"kind":"software.installed"' in his, his)
+        check(name, "ATTACK ben does not see anna's requests", '"requests":[]' in his, his)
     finally:
         sh("podman", "rm", "-f", container, check_rc=False)
 

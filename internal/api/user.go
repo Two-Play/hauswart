@@ -76,6 +76,7 @@ const (
 	EventSoftwareRemoved   = "software.removed"
 	EventSoftwareUpgraded  = "software.upgraded"
 	EventSoftwareFailed    = "software.failed"
+	EventUpdateFailed      = "software.update_failed"
 	EventAccountLocked     = "account.locked"
 	EventAccountUnlocked   = "account.unlocked"
 	EventAccountPassword   = "account.password"

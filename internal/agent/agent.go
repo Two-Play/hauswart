@@ -694,12 +694,13 @@ func (a *Agent) post(ctx context.Context, path string, v any) error {
 }
 
 // requestLoop asks how the requests of this device stand while someone is at a
-// desktop to be told, and right after someone filed one.
+// desktop to be told, and when someone filed one or looks at their history.
 func (a *Agent) requestLoop(ctx context.Context) {
 	ticker := time.NewTicker(requestInterval)
 	defer ticker.Stop()
+	asked := false
 	for {
-		if people, err := a.exec.desktopUsers(ctx); err == nil && len(people) > 0 {
+		if asked || a.someoneAtDesktop(ctx) {
 			var requests []api.RequestState
 			if err := a.get(ctx, "/agent/requests", &requests); err != nil {
 				if ctx.Err() == nil {
@@ -713,8 +714,23 @@ func (a *Agent) requestLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			asked = false
 		case <-a.requestsChanged:
+			asked = true
 		}
+	}
+}
+
+func (a *Agent) someoneAtDesktop(ctx context.Context) bool {
+	people, err := a.exec.desktopUsers(ctx)
+	return err == nil && len(people) > 0
+}
+
+// askForRequests wakes the request loop, unless it is busy already.
+func (a *Agent) askForRequests() {
+	select {
+	case a.requestsChanged <- struct{}{}:
+	default:
 	}
 }
 
