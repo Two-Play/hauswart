@@ -121,6 +121,17 @@ def ensure_person(device):
         sys.exit(f"could not assign the device to {PERSON}: {code} {body}")
 
 
+def ensure_terminal(machine, kde):
+    """The desktop comes without weak dependencies, and so without a terminal. You
+    want one to try sudo as anna. Runs on every start to repair older playgrounds."""
+    terminal = "konsole" if kde else "ptyxis"
+    if machine.ssh(f"rpm -q {terminal}").returncode != 0:
+        print(f"installing {terminal}, a terminal for the desktop", flush=True)
+        installed = machine.ssh(f"dnf5 install -y {terminal}", timeout=600)
+        if installed.returncode != 0:
+            sys.exit(f"{terminal} did not install:\n" + installed.stderr[-800:])
+
+
 def first_run(machine, signer, tray, kde, state):
     admin = login()
     command = admin.call("POST", "/api/enroll-tokens")[1]["command"]
@@ -201,6 +212,7 @@ def main():
         elif not machine.wait_ssh():
             sys.exit(f"the VM did not come up, see {machine.log}")
         ensure_person(state["device"])
+        ensure_terminal(machine, kde)
         # The login of the tool may have run out since the last time.
         if signer.run("devices").returncode != 0:
             signer.run("login", "--server", e2e.URL, "--ca-fingerprint", state["fingerprint"], "--user", "admin",
