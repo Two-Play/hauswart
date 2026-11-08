@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/base64"
 	"slices"
 	"time"
 )
@@ -14,7 +16,16 @@ const (
 	AccessScreen = "screen"
 	AccessLogin  = "login"
 	AccessOpen   = "open"
+	// AccessFullscreen covers the screen with a notice of its own, which the
+	// people at the device cannot close.
+	AccessFullscreen = "fullscreen"
 )
+
+// MaxAccessImage caps the picture of a full-screen block, so that it stays well
+// within a signed task.
+const MaxAccessImage = 512 << 10
+
+const maxAccessMessage = 200
 
 // MaxAccessBlock caps how long a block may last when it has an end. Without an
 // end it lasts until someone lifts it.
@@ -28,6 +39,10 @@ type AccessPayload struct {
 	Mode  string    `json:"mode"`
 	Users []string  `json:"users,omitempty"`
 	Until time.Time `json:"until,omitzero"`
+	// Message and Image are what a full-screen block shows: one line of text, and
+	// a PNG or JPEG, base64 encoded.
+	Message string `json:"message,omitempty"`
+	Image   string `json:"image,omitempty"`
 }
 
 // AccessStatus is how a person at the device is blocked, if at all.
@@ -43,8 +58,19 @@ func init() {
 }
 
 func checkAccess(p AccessPayload) error {
-	if p.Mode != AccessScreen && p.Mode != AccessLogin && p.Mode != AccessOpen {
+	if p.Mode != AccessScreen && p.Mode != AccessLogin && p.Mode != AccessOpen && p.Mode != AccessFullscreen {
 		return Fail(ErrInvalidAccessMode, p.Mode)
+	}
+	if p.Mode != AccessFullscreen && (p.Message != "" || p.Image != "") {
+		return Fail(ErrInvalidAccessMode, p.Mode)
+	}
+	if !ValidText(p.Message, maxAccessMessage) {
+		return Fail(ErrInvalidMessage)
+	}
+	if p.Image != "" {
+		if _, err := AccessImage(p.Image); err != nil {
+			return err
+		}
 	}
 	if p.Mode == AccessOpen && (len(p.Users) > 0 || !p.Until.IsZero()) {
 		return Fail(ErrInvalidAccessMode, p.Mode)
@@ -66,4 +92,20 @@ func checkAccess(p AccessPayload) error {
 		}
 	}
 	return nil
+}
+
+// AccessImage decodes the picture of a full-screen block and checks that it is a
+// PNG or JPEG of at most MaxAccessImage bytes.
+func AccessImage(encoded string) ([]byte, error) {
+	if len(encoded) > base64.StdEncoding.EncodedLen(MaxAccessImage) {
+		return nil, Fail(ErrInvalidAccessImage)
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(raw) > MaxAccessImage {
+		return nil, Fail(ErrInvalidAccessImage)
+	}
+	if !bytes.HasPrefix(raw, []byte("\x89PNG\r\n\x1a\n")) && !bytes.HasPrefix(raw, []byte{0xff, 0xd8, 0xff}) {
+		return nil, Fail(ErrInvalidAccessImage)
+	}
+	return raw, nil
 }

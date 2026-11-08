@@ -85,6 +85,7 @@ def test(target):
         done = inside(install)
         check(target, "installs", done.returncode == 0, done.stdout + done.stderr)
         check(target, "no service started by the package", inside("systemctl is-active hauswart-server").returncode != 0)
+        check(target, "the desktop package brings the full-screen notice", inside("test -x /usr/bin/hauswart-blocker").returncode == 0)
 
         check(target, "default config in place", inside("test -f /etc/hauswart/server.env").returncode == 0)
         notify = inside("stat -c '%a %U' /etc/hauswart/notify.env").stdout.strip()

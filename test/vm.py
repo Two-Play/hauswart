@@ -1436,6 +1436,29 @@ def test_desktop(admin, agent_bin, work, public_key):
         check(group, "and a new one does not last", wait_for(lambda: anna_session() == [], 60), str(anna_session()))
         task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
         check(group, "access open again", task["status"] == "done", task["output"])
+
+        # The full-screen notice: a console of its own, back in front within seconds.
+        vm.copy(f"{ROOT}/dist/hauswart-blocker", "/tmp/hauswart-blocker")
+        vm.ssh("install -m755 /tmp/hauswart-blocker /usr/bin/hauswart-blocker && restorecon /usr/bin/hauswart-blocker")
+        check(group, "anna is back", wait_for(lambda: len(anna_session()) == 1, 120), str(anna_session()))
+
+        def front():
+            return vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip()
+        before = front()
+        task, shown = signed_task(admin, tool, device, "access.set", {"mode": "fullscreen", "message": "Abendessen um 18 Uhr"}, wait=600)
+        check(group, "approve says the screen is covered", "COVER THE SCREEN" in shown and "Abendessen um 18 Uhr" in shown, shown)
+        check(group, "the full-screen block is in force", task["status"] == "done", task["output"])
+        check(group, "it is in front on its own console", wait_for(lambda: front() == "tty9", 60),
+              front() + vm.ssh("systemctl status hauswart-block --no-pager | tail -15").stdout)
+        check(group, "it belongs to the system, not to anna",
+              vm.ssh("systemctl show hauswart-block -p User --value").stdout.strip() == "hauswart-block")
+        time.sleep(5)
+        screendump(monitor, f"{shots}/desktop-fullscreen.png")
+        vm.ssh("chvt 2")
+        check(group, "switching away comes back", wait_for(lambda: front() == "tty9", 20), front())
+        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        check(group, "opened, the block is gone", wait_for(lambda: vm.ssh("systemctl is-active hauswart-block").returncode != 0, 20))
+        check(group, "and the console from before is in front", wait_for(lambda: front() == before, 20), front() + " " + before)
     finally:
         vm.stop()
 

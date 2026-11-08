@@ -83,6 +83,17 @@ func init() {
 			who = "Linux user(s) " + strings.Join(p.Users, ", ")
 		}
 		text := fmt.Sprintf("BLOCK THE SCREEN of %s. Sessions stay open, but are locked again at once.", who)
+		if p.Mode == api.AccessFullscreen {
+			text = fmt.Sprintf("COVER THE SCREEN of %s with a full-screen notice nobody at the device can close, and lock the sessions behind it.", who)
+			if p.Message != "" {
+				text += fmt.Sprintf("\n  Text: %q", clean(p.Message))
+			}
+			if p.Image != "" {
+				if raw, err := api.AccessImage(p.Image); err == nil {
+					text += fmt.Sprintf("\n  With a picture of %d KB. Look at it in the dashboard before you sign.", (len(raw)+1023)/1024)
+				}
+			}
+		}
 		if p.Mode == api.AccessLogin {
 			text = fmt.Sprintf("REFUSE LOGINS of %s. Running sessions end after a minute, and unsaved work is lost.", who)
 		}

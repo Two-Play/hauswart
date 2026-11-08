@@ -19,6 +19,7 @@ tray)
 	install -Dm644 packaging/desktop/hauswart-tray.desktop "$work/data/usr/share/applications/hauswart-tray.desktop"
 	install -Dm644 packaging/desktop/hauswart-tray-autostart.desktop "$work/data/etc/xdg/autostart/hauswart-tray.desktop"
 	install -Dm644 packaging/desktop/hauswart.svg "$work/data/usr/share/icons/hicolor/scalable/apps/hauswart.svg"
+	install -m755 dist/hauswart-blocker "$work/data/usr/bin/"
 	;;
 admin-gui)
 	install -Dm644 packaging/desktop/hauswart-admin-gui.desktop "$work/data/usr/share/applications/hauswart-admin-gui.desktop"
