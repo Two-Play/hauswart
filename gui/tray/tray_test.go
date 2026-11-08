@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/Two-Play/hauswart/gui/agentclient"
 	"github.com/Two-Play/hauswart/gui/translations"
@@ -198,6 +199,13 @@ func TestNamesAreSuggestedWhileTyping(t *testing.T) {
 	}
 	if got := app.options; len(got) != 2 || got[0] != "vim org.gimp.GIMP" {
 		t.Fatalf("options %v", got)
+	}
+	if len(app.suggestions.Objects) != 2 {
+		t.Fatalf("%d suggestions shown", len(app.suggestions.Objects))
+	}
+	test.Tap(app.suggestions.Objects[0].(*widget.Button))
+	if app.detail.Text != "vim org.gimp.GIMP " || len(app.suggestions.Objects) != 0 {
+		t.Fatalf("picked %q, %d left", app.detail.Text, len(app.suggestions.Objects))
 	}
 	app.detail.SetText("g")
 	app.ShowRequest(api.RequestScreen)

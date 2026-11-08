@@ -22,6 +22,8 @@ import { api, useResource, type Device, type User } from '../api';
 import { buildPayload, TASK_FIELDS, taskKey } from '../tasks';
 import { formatBytes, Loaded, showError } from '../ui';
 import { DeviceInsight, InsightBadges } from './DeviceInsight';
+import { knownNames, NameInput } from './NameInput';
+import { PackageSearch } from './PackageSearch';
 
 const ONLINE_SECONDS = 90;
 
@@ -60,6 +62,7 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [startPassword, setStartPassword] = useState<string>();
+  const names = knownNames([device]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -123,14 +126,40 @@ function TaskModal({ device, onClose }: { device: Device; onClose: (ran: boolean
             data={Object.keys(TASK_FIELDS).map((key) => ({ value: key, label: t(taskKey(key)) }))}
           />
           {TASK_FIELDS[type].map((field) => {
+            const value = values[field.name] ?? '';
+            const set = (next: string) => setValues((v) => ({ ...v, [field.name]: next }));
+            const label = t(`fields.${field.label ?? field.name}`);
+            if (field.name === 'packages') {
+              return (
+                <PackageSearch
+                  key={`${type}-${field.name}`}
+                  kind={type === 'flatpak.install' ? 'flatpak' : 'package'}
+                  scope={{ device: device.id }}
+                  label={label}
+                  required={field.required}
+                  value={value.split(/\s+/).filter(Boolean)}
+                  onChange={(next) => set(next.join(' '))}
+                />
+              );
+            }
+            if (field.name === 'user' || field.name === 'group') {
+              return (
+                <NameInput
+                  key={field.name}
+                  of={field.name === 'user' ? 'users' : 'groups'}
+                  names={names}
+                  label={label}
+                  required={field.required}
+                  value={value}
+                  onChange={set}
+                />
+              );
+            }
             const shared = {
-              label: t(`fields.${field.label ?? field.name}`),
+              label,
               required: field.required,
-              value: values[field.name] ?? '',
-              onChange: (e: { currentTarget: { value: string } }) => {
-                const { value } = e.currentTarget;
-                setValues((v) => ({ ...v, [field.name]: value }));
-              },
+              value,
+              onChange: (e: { currentTarget: { value: string } }) => set(e.currentTarget.value),
             };
             return field.kind === 'textarea' ? (
               <Textarea key={field.name} autosize minRows={5} maxRows={14} ff="monospace" {...shared} />
