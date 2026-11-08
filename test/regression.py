@@ -14,6 +14,7 @@ during the tests would pull the dashboard away from under them.
 import argparse
 import json
 import os
+import socket
 import signal
 import subprocess
 import sys
@@ -63,10 +64,32 @@ def suites(fast):
     return found
 
 
+def free(port):
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def port_for(index):
+    """The port of a suite. Another program may hold the usual one, so the next
+    hundred is tried, which keeps each suite apart from the others."""
+    for step in range(0, 1000, 100):
+        if step == 100:  # the playground lives there
+            continue
+        if free(FIRST_PORT + step + index):
+            return FIRST_PORT + step + index
+    return FIRST_PORT + index
+
+
 def environment(index):
+    port = str(port_for(index))
     return {
         **os.environ, "VERSION": VERSION, "E2E_TMP": TMP,
-        "E2E_PORT": str(FIRST_PORT + index), "VM_PORT": str(FIRST_PORT + index),
+        "E2E_PORT": port, "VM_PORT": port,
         "E2E_PREFIX": f"hauswart-r{index}", "E2E_SUFFIX": f"-r{index}",
         "VM_SSH_OFFSET": str(index * SSH_STEP),
     }
