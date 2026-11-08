@@ -81,7 +81,10 @@ func TestTaskEvents(t *testing.T) {
 			api.DeviceEvent{}, false},
 	} {
 		got, listed := taskEvent(c.task, api.TaskResult{OK: c.ok})
-		if listed != c.listed || got != c.want {
+		// Until goes through JSON, which keeps the moment but not the zone.
+		sameTime := got.Until.Equal(c.want.Until)
+		got.Until, c.want.Until = time.Time{}, time.Time{}
+		if listed != c.listed || got != c.want || !sameTime {
 			t.Errorf("%s: got %+v %v", name, got, listed)
 		}
 	}
