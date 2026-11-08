@@ -256,12 +256,25 @@ func (e *Executor) groupChange(ctx context.Context, p api.GroupPayload, add bool
 // groupInSudoers catches groups that only this device treats as privileged. A
 // name on a fixed list cannot know about a local "%family ALL=(ALL) ALL".
 func (e *Executor) groupInSudoers(group string) (bool, error) {
+	byName := regexp.MustCompile(`%:?` + regexp.QuoteMeta(group) + `([^a-z0-9_-]|$)`)
+	var byID *regexp.Regexp
+	if g, err := user.LookupGroup(group); err == nil {
+		// sudo also takes a group by its number, written %#1001.
+		byID = regexp.MustCompile(`%:?#` + regexp.QuoteMeta(g.Gid) + `([^0-9]|$)`)
+	}
 	files, err := filepath.Glob(e.path("/etc/sudoers.d/*"))
 	if err != nil {
 		return false, err
 	}
-	rule := regexp.MustCompile(`%:?` + regexp.QuoteMeta(group) + `([^a-z0-9_-]|$)`)
-	for _, file := range append(files, e.path("/etc/sudoers")) {
+	queue := append([]string{e.path("/etc/sudoers")}, files...)
+	seen := map[string]bool{}
+	for len(queue) > 0 {
+		file := queue[0]
+		queue = queue[1:]
+		if seen[file] || len(seen) > 256 {
+			continue
+		}
+		seen[file] = true
 		raw, err := os.ReadFile(file)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -270,7 +283,30 @@ func (e *Executor) groupInSudoers(group string) (bool, error) {
 			return false, err
 		}
 		for line := range strings.Lines(string(raw)) {
-			if text, _, _ := strings.Cut(line, "#"); rule.MatchString(text) {
+			text := strings.TrimSpace(line)
+			// Files named by @include and @includedir hold rules as well; the old
+			// spelling starts with #, which is otherwise a comment.
+			if directive, target, ok := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(text, "@"), "#"), " "); ok &&
+				(directive == "include" || directive == "includedir") {
+				target = strings.TrimSpace(target)
+				if !filepath.IsAbs(target) {
+					target = filepath.Join("/etc", target)
+				}
+				if directive == "include" {
+					queue = append(queue, e.path(target))
+				} else if more, err := filepath.Glob(e.path(filepath.Join(target, "*"))); err == nil {
+					queue = append(queue, more...)
+				}
+				continue
+			}
+			if strings.HasPrefix(text, "#") {
+				continue
+			}
+			if byID != nil && byID.MatchString(text) {
+				return true, nil
+			}
+			// A # after the start may still begin a comment.
+			if rule, _, _ := strings.Cut(text, " #"); byName.MatchString(rule) {
 				return true, nil
 			}
 		}

@@ -333,10 +333,9 @@ Removing `pkg.remove` and `flatpak.install` is a sensible first step. An empty l
 turns passkeys off on that device. Restart the agent after a change. Types beyond
 the default stay refused, so the list can only get shorter. The default is
 `pkg.install`, `pkg.remove`, `pkg.upgrade`, `flatpak.install`, `power.reboot`,
-`power.shutdown`, `power.cancel`, `notify.send`, `screen.extend`, `access.set`,
-`group.add`, `group.remove`, `user.lock` and `user.unlock`. A device keeps the list
-it was enrolled with, so add newer types to its file to approve them with a
-passkey.
+`power.shutdown`, `power.cancel`, `notify.send`, `screen.extend` and `access.set`.
+A block approved with a passkey must end within 24 hours. A device keeps the list it
+was enrolled with, so add newer types to its file to approve them with a passkey.
 
 To see what passkeys approved on a device:
 

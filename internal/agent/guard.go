@@ -250,6 +250,9 @@ func (g *Guard) admitPasskey(task api.Task, device string, now time.Time) (api.T
 	if !g.passkeyTypes[env.Type] {
 		return api.Task{}, fmt.Errorf("a passkey may not approve %s on this device", env.Type)
 	}
+	if err := api.PasskeyLimits(env.Type, env.Payload, now); err != nil {
+		return api.Task{}, err
+	}
 	if env.Counter <= g.state.PasskeyCounter {
 		return api.Task{}, fmt.Errorf("counter %d is not above %d", env.Counter, g.state.PasskeyCounter)
 	}

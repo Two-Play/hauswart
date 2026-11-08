@@ -296,12 +296,17 @@ func TestGroupRefusesSystemAccounts(t *testing.T) {
 
 func TestGroupRefusesWhatSudoersPrivileges(t *testing.T) {
 	me, group := primaryGroup(t)
+	gid := me.Gid
 	for rule, refused := range map[string]bool{
 		"%" + group + " ALL=(ALL) ALL\n":       true,
 		"%:" + group + " ALL=(ALL) ALL\n":      true,
 		"# %" + group + " ALL=(ALL) ALL\n":     false,
 		"%" + group + "-other ALL=(ALL) ALL\n": false,
 		"anna ALL=(ALL) ALL\n":                 false,
+		"%#" + gid + " ALL=(ALL) ALL\n":        true,
+		"%#" + gid + "0 ALL=(ALL) ALL\n":       false,
+		"@includedir /etc/more\n":              true,
+		"#includedir /etc/more\n":              true,
 	} {
 		e, _ := newExecutor(t)
 		dir := e.path("/etc/sudoers.d")
@@ -311,6 +316,8 @@ func TestGroupRefusesWhatSudoersPrivileges(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "family"), []byte(rule), 0o440); err != nil {
 			t.Fatal(err)
 		}
+		// What an include points at.
+		writeFile(t, e.Root, "/etc/more/rules", "%"+group+" ALL=(ALL) ALL\n")
 		result := e.Execute(context.Background(), api.Task{Type: api.TaskGroupAdd,
 			Payload: payload(t, api.GroupPayload{User: me.Username, Group: group})})
 		if result.OK == refused {

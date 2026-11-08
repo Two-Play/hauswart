@@ -37,6 +37,23 @@ def stores():
     return found
 
 
+def scope(ca):
+    """The names the CA may vouch for, or exit if it is not limited to this machine."""
+    text = subprocess.run(["openssl", "x509", "-noout", "-text", "-in", ca], capture_output=True, text=True).stdout
+    if "X509v3 Name Constraints: critical" not in text:
+        sys.exit(f"{ca} may vouch for any name, refusing to trust it")
+    permitted = text.split("Permitted:", 1)[1].split("Excluded:", 1)[0] if "Permitted:" in text else ""
+    names = [line.strip() for line in permitted.splitlines() if line.strip()]
+    allowed = ("DNS:localhost", "DNS:.localhost")
+    for name in names:
+        host = name.split(":", 1)[1] if ":" in name else name
+        ok = name in allowed or name.startswith("DNS:") and host.endswith(".localhost") \
+            or name.startswith("IP:127.") or name.startswith("IP:0:0:0:0:0:0:0:1")
+        if not ok:
+            sys.exit(f"{ca} may vouch for {name}, which is not this machine, refusing to trust it")
+    return names
+
+
 def main():
     parser = argparse.ArgumentParser(description="Trust the playground CA in your browsers.")
     parser.add_argument("--remove", action="store_true", help="take the CA out again")
@@ -53,15 +70,21 @@ def main():
     for name, path in found:
         print(f"  {name}: {path}")
     if not args.remove:
+        names = scope(CA)
         fingerprint = subprocess.run(["openssl", "x509", "-noout", "-fingerprint", "-sha256", "-in", CA],
                                      capture_output=True, text=True).stdout.strip()
         print(f"The CA: {fingerprint}")
-        print("It can only vouch for the names in its scope, which the playground chose.")
+        print(f"It can only vouch for: {', '.join(names)}")
     if input("[y/N] ").strip().lower() != "y":
         return
     for name, path in found:
         if args.remove:
-            command = ["certutil", "-D", "-n", NICKNAME, "-d", f"sql:{path}"]
+            # The store may hold a CA of an earlier playground under the same name.
+            removed = 0
+            while subprocess.run(["certutil", "-D", "-n", NICKNAME, "-d", f"sql:{path}"], capture_output=True).returncode == 0:
+                removed += 1
+            print(f"  {name}: removed {removed}")
+            continue
         else:
             command = ["certutil", "-A", "-n", NICKNAME, "-t", "C,,", "-i", CA, "-d", f"sql:{path}"]
         result = subprocess.run(command, capture_output=True, text=True)
