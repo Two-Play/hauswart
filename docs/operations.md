@@ -146,6 +146,7 @@ run **Block access** on it:
 | Mode | What happens |
 | --- | --- |
 | Block the screen | Sessions are locked, and locked again within seconds whenever someone unlocks them. Work stays open. |
+| Full-screen notice | Your text and picture cover the screen, and the sessions behind are locked. Nobody at the device can close it, and work stays open. |
 | Refuse logins | Running sessions get a minute's warning, then they end, and unsaved work is lost. New logins are refused. |
 | Open access again | Lifts the block. |
 
@@ -161,6 +162,14 @@ run **Block access** on it:
   the end without the server, and a restart keeps the block.
 - **Signatures:** On a protected device, every mode needs a signature, opening
   included.
+- **Full-screen notice:**
+  - It needs the package `hauswart-tray` on the device. The agent installs the kiosk
+    compositor `cage` itself.
+  - It runs as the system account `hauswart-block` on console 9, and cage lets
+    nobody switch away. If someone gets away anyway, the block comes back within
+    seconds.
+  - For single people it shows while their session is in front.
+  - The picture is a PNG or JPEG of at most 512 KB, and travels in the signed task.
 
 ## Protect devices with signatures
 

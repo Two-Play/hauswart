@@ -311,6 +311,11 @@ should know that Hauswart never asks for a password.
 A hacked server can suspend a device. That ends sudo grants and stops requests,
 and nothing more.
 
+A full-screen notice runs under its own system account with a PAM service that lets
+only systemd start it, as root does. It takes no input, and the text and picture
+it shows are those someone signed, so it cannot pose as anything but what the admin
+wrote. A hacked server can still write any text on an unprotected device.
+
 Blocking access is a signed task on a protected device, opening included, so a
 hacked server can neither lock people out nor let them back in. On an unprotected
 device it can do both. A block for the whole device also locks out local admins,
