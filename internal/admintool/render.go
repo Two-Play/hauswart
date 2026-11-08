@@ -60,7 +60,13 @@ func reviewer[T any](taskType string, show func(T) (string, error)) {
 
 // review turns a task from the server into what the admin sees and signs.
 func review(taskType string, raw json.RawMessage) (string, []byte, error) {
+	if !api.Known(taskType) {
+		return "", nil, fmt.Errorf("this hauswart-admin does not know the task type %s: update hauswart-admin", clean(taskType))
+	}
 	if err := api.Validate(taskType, raw); err != nil {
+		if _, field, ok := strings.Cut(err.Error(), "unknown field "); ok {
+			return "", nil, fmt.Errorf("the task has a field this hauswart-admin does not know, %s: update hauswart-admin", clean(field))
+		}
 		return "", nil, err
 	}
 	show, ok := reviewers[taskType]

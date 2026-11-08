@@ -18,6 +18,7 @@ func init() {
 		mux.HandleFunc("POST /api/login", s.handleLogin)
 		mux.Handle("POST /api/logout", s.user(s.handleLogout))
 		mux.Handle("GET /api/me", s.user(s.handleMe))
+		mux.Handle("GET /api/version", s.user(s.handleVersion))
 		mux.Handle("POST /api/password", s.user(s.handleChangePassword))
 	})
 }
@@ -234,4 +235,10 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// handleVersion tells tools which tasks the server knows, so that an older
+// hauswart-admin can say why it skips some.
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request, _ store.User) {
+	writeJSON(w, http.StatusOK, map[string]string{"schema": api.Schema()})
 }

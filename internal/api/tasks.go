@@ -1,12 +1,17 @@
 package api
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"reflect"
+)
 
 // taskSpec is what the system knows about a task type. Each feature registers
 // its types from its own file, so adding one does not touch the others.
 type taskSpec struct {
 	validate func(json.RawMessage) error
 	unsigned bool
+	// payload is the type of the payload, which Schema describes.
+	payload reflect.Type
 }
 
 var specs = map[string]taskSpec{}
@@ -20,6 +25,7 @@ type Unsigned bool
 func register[T any](taskType string, unsigned Unsigned, check func(T) error) {
 	specs[taskType] = taskSpec{
 		unsigned: bool(unsigned),
+		payload:  reflect.TypeFor[T](),
 		validate: func(raw json.RawMessage) error {
 			var payload T
 			if err := strictDecode(raw, &payload); err != nil {
@@ -43,4 +49,10 @@ func Validate(taskType string, payload json.RawMessage) error {
 // device. Unknown types do.
 func NeedsSignature(taskType string) bool {
 	return !specs[taskType].unsigned
+}
+
+// Known says whether this program knows a task type.
+func Known(taskType string) bool {
+	_, ok := specs[taskType]
+	return ok
 }

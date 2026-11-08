@@ -109,5 +109,6 @@
   "blocker.default": "This device is blocked for now.",
   "terminal.live": "Live access: an admin works here as {{.User}} since {{.Since}}, approved by {{.Approver}}, until {{.Until}} at the latest.",
   "history.event.terminal.started": "Live terminal as {{.Detail}} until {{.Until}}",
-  "history.event.terminal.ended": "Live terminal ended"
+  "history.event.terminal.ended": "Live terminal ended",
+  "admin.outdated": "This app and the server know different tasks: one of them is older. Update both to the same version, or tasks with something new are skipped."
 }
