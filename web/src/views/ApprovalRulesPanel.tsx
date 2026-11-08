@@ -1,9 +1,10 @@
-import { Badge, Button, Divider, Group, Modal, Select, SimpleGrid, Stack, TagsInput, Text, Title } from '@mantine/core';
+import { Badge, Button, Divider, Group, Modal, Select, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type ApprovalMode, type ApprovalRules, type RequestKind } from '../api';
 import { Loaded, showError } from '../ui';
+import { PackageSearch, SearchScopeContext, type SearchScope } from './PackageSearch';
 
 export const REQUEST_KINDS: RequestKind[] = ['software', 'flatpak', 'sudo', 'screen'];
 const MODES: ApprovalMode[] = ['auto', 'approver', 'admin', 'blocked'];
@@ -67,19 +68,19 @@ function RulesForm({
           />
         ))}
       </SimpleGrid>
-      <TagsInput
+      <PackageSearch
+        kind="package"
         label={t('approvalRules.autoPackages')}
         description={t('approvalRules.autoHint')}
         value={packages}
         onChange={setPackages}
-        clearable
       />
-      <TagsInput
+      <PackageSearch
+        kind="flatpak"
         label={t('approvalRules.autoFlatpaks')}
         description={t('approvalRules.autoHint')}
         value={flatpaks}
         onChange={setFlatpaks}
-        clearable
       />
       <Group justify="flex-end">
         <Button variant="subtle" onClick={onClose}>
@@ -128,7 +129,7 @@ function Summary({ rules, inherit }: { rules: ApprovalRules; inherit: boolean })
 // ApprovalRulesPanel shows and edits who decides requests. A group inherits each
 // kind it leaves open from the defaults; the defaults themselves fall back to
 // an approver.
-export function ApprovalRulesPanel({ path, inherit }: { path: string; inherit: boolean }) {
+export function ApprovalRulesPanel({ path, inherit, scope = {} }: { path: string; inherit: boolean; scope?: SearchScope }) {
   const { t } = useTranslation();
   const rules = useResource<ApprovalRules>(path);
   const [editing, setEditing] = useState(false);
@@ -163,7 +164,9 @@ export function ApprovalRulesPanel({ path, inherit }: { path: string; inherit: b
               title={t(inherit ? 'approvalRules.title' : 'approvalRules.defaultTitle')}
               size="lg"
             >
-              <RulesForm initial={data} inherit={inherit} onSave={save} onClose={() => setEditing(false)} />
+              <SearchScopeContext.Provider value={scope}>
+                <RulesForm initial={data} inherit={inherit} onSave={save} onClose={() => setEditing(false)} />
+              </SearchScopeContext.Provider>
             </Modal>
           </Stack>
         )}

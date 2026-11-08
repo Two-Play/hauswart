@@ -388,6 +388,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.renewLoop(ctx) })
 	wg.Go(func() { a.updateLoop(ctx) })
 	wg.Go(func() { a.inventoryLoop(ctx) })
+	wg.Go(func() { a.catalogLoop(ctx) })
 	wg.Go(func() { a.policy.Loop(ctx) })
 	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })

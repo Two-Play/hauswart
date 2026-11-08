@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Two-Play/hauswart/internal/backup"
+	"github.com/Two-Play/hauswart/internal/catalog"
 	"github.com/Two-Play/hauswart/internal/pki"
 	"github.com/Two-Play/hauswart/internal/server"
 	"github.com/Two-Play/hauswart/internal/store"
@@ -56,6 +57,7 @@ func run(log *slog.Logger) error {
 	devHTTP := flag.String("dev-http", "", "development only: also serve the dashboard without TLS on this loopback address")
 	notifyEnv := flag.String("notify-env", "/etc/hauswart/notify.env", "file with the credentials for admin notifications, mode 0600")
 	oidcEnv := flag.String("oidc-env", "/etc/hauswart/oidc.env", "file with the settings for login through Authentik, mode 0600")
+	flathubSearch := flag.Bool("flathub-search", true, "search Flatpaks on Flathub, which sends the search terms there")
 	flag.Parse()
 
 	if *devHTTP != "" && !isLoopback(*devHTTP) {
@@ -126,6 +128,9 @@ func run(log *slog.Logger) error {
 	}
 	srv.StartNotifications(ctx, *notifyEnv)
 	srv.StartOIDC(*oidcEnv)
+	if *flathubSearch {
+		srv.SetFlathub(catalog.NewFlathub(catalog.FlathubURL))
+	}
 	go srv.Janitor(ctx)
 	go func() {
 		<-ctx.Done()

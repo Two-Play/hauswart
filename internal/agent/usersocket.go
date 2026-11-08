@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/catalog"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 	// has no rights here.
 	maxUserBody     = 4 << 10
 	userRequestsMax = 10
+	userSearchesMax = 60
 	userRequestSpan = time.Hour
 	userTimeout     = 10 * time.Second
 	// Anyone on the device can reach this socket, and the agent has more important
@@ -77,13 +79,16 @@ type userService struct {
 	// send hands a request to the server and returns its status, approved
 	// when a rule approved it at once.
 	send func(context.Context, api.DeviceRequest) (string, error)
-	now  func() time.Time
+	// search finds packages or Flatpaks through the server.
+	search func(ctx context.Context, kind, q string) ([]catalog.Entry, error)
+	now    func() time.Time
 
-	mu     sync.Mutex
-	asked  map[uint32][]time.Time
-	active map[uint32]int
-	names  map[uint32]knownName
-	recent map[uint32]recentStatus
+	mu       sync.Mutex
+	asked    map[uint32][]time.Time
+	searched map[uint32][]time.Time
+	active   map[uint32]int
+	names    map[uint32]knownName
+	recent   map[uint32]recentStatus
 }
 
 type knownName struct {
@@ -169,6 +174,7 @@ func (u *userService) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", u.handleStatus)
 	mux.HandleFunc("POST /request", u.handleRequest)
+	mux.HandleFunc("GET /search", u.handleSearch)
 	return u.perUser(http.MaxBytesHandler(mux, maxUserBody))
 }
 
@@ -273,6 +279,47 @@ func (u *userService) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(api.RequestAnswer{Status: status})
 	}
+}
+
+// handleSearch helps someone find the name of what they ask for. Typing sends a
+// search per pause, so the limit is higher than for requests, and an empty
+// list is the answer to anything that goes wrong.
+func (u *userService) handleSearch(w http.ResponseWriter, r *http.Request) {
+	uid, _, ok := u.peerName(r)
+	if !ok {
+		http.Error(w, "unknown user", http.StatusForbidden)
+		return
+	}
+	kind := r.URL.Query().Get("kind")
+	q, worth := catalog.NormalizeQuery(r.URL.Query().Get("q"))
+	if kind != api.SearchPackage && kind != api.SearchFlatpak {
+		http.Error(w, "invalid search", http.StatusBadRequest)
+		return
+	}
+	entries := []catalog.Entry{}
+	if worth && u.search != nil && u.allowSearch(uid, u.now()) {
+		found, err := u.search(r.Context(), kind, q)
+		if err == nil {
+			entries = found
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+func (u *userService) allowSearch(uid uint32, now time.Time) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.searched == nil {
+		u.searched = map[uint32][]time.Time{}
+	}
+	recent := slices.DeleteFunc(u.searched[uid], func(at time.Time) bool { return !now.Before(at.Add(time.Minute)) })
+	if len(recent) >= userSearchesMax {
+		u.searched[uid] = recent
+		return false
+	}
+	u.searched[uid] = append(recent, now)
+	return true
 }
 
 func (u *userService) giveBack(uid uint32) {
@@ -413,6 +460,7 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		names:     map[uint32]knownName{},
 		recent:    map[uint32]recentStatus{},
 		send:      a.sendRequest,
+		search:    a.search,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

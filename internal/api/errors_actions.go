@@ -41,6 +41,10 @@ const (
 	ErrApprovalsTooLarge   = "approvals_too_large"
 	ErrRequestBlocked      = "request_blocked"
 	ErrAdminDecides        = "admin_decides"
+
+	ErrInvalidCatalog = "invalid_catalog"
+	ErrUnknownCatalog = "unknown_catalog"
+	ErrInvalidSearch  = "invalid_search"
 )
 
 func init() {
@@ -82,5 +86,9 @@ func init() {
 		ErrApprovalsTooLarge:   "an approval list has more than %s entries",
 		ErrRequestBlocked:      "requests of this kind are not allowed on this device",
 		ErrAdminDecides:        "only an admin may decide this request",
+
+		ErrInvalidCatalog: "invalid package catalog: %s",
+		ErrUnknownCatalog: "this package catalog is not known yet",
+		ErrInvalidSearch:  "invalid search %s",
 	})
 }

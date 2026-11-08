@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api, isApprover, useResource, type AccessRequest, type Device, type User } from '../api';
 import { DataTable, formatTime, Loaded, showError, StatusBadge } from '../ui';
 import { REQUEST_KINDS } from './ApprovalRulesPanel';
+import { PackageSearch } from './PackageSearch';
 
 export function RequestsView({ user }: { user: User }) {
   const { t } = useTranslation();
@@ -81,16 +82,30 @@ export function RequestsView({ user }: { user: User }) {
                 label={t('requests.kind')}
                 allowDeselect={false}
                 value={kind}
-                onChange={(next) => setKind(next ?? kind)}
+                onChange={(next) => {
+                  if (next && next !== kind) setDetail('');
+                  setKind(next ?? kind);
+                }}
                 data={REQUEST_KINDS.map((k) => ({ value: k, label: t(`requests.kinds.${k}`) }))}
               />
-              <TextInput
-                label={t(kind === 'sudo' || kind === 'screen' ? 'requests.minutes' : 'requests.packages')}
-                type={kind === 'sudo' || kind === 'screen' ? 'number' : 'text'}
-                required
-                value={detail}
-                onChange={(e) => setDetail(e.currentTarget.value)}
-              />
+              {kind === 'sudo' || kind === 'screen' ? (
+                <TextInput
+                  label={t('requests.minutes')}
+                  type="number"
+                  required
+                  value={detail}
+                  onChange={(e) => setDetail(e.currentTarget.value)}
+                />
+              ) : (
+                <PackageSearch
+                  kind={kind === 'flatpak' ? 'flatpak' : 'package'}
+                  scope={{ device: deviceId ?? undefined }}
+                  label={t('requests.packages')}
+                  required
+                  value={detail.split(/\s+/).filter(Boolean)}
+                  onChange={(next) => setDetail(next.join(' '))}
+                />
+              )}
               <TextInput
                 label={t('requests.reason')}
                 value={reason}
