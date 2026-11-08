@@ -288,6 +288,10 @@ type Agent struct {
 	guard *Guard
 	// policy keeps this device in the state its admin signed.
 	policy *PolicyEngine
+	// notices tell people at the device what changed for them.
+	notices *Notices
+	// requestsChanged asks for the state of requests now, after one was filed.
+	requestsChanged chan struct{}
 }
 
 // Load reads the enrolled state from dir.
@@ -348,6 +352,8 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 		log:      log,
 	}
 	a.policy = OpenPolicy(dir, a.exec, log)
+	a.notices = OpenNotices(dir, a.exec, a.policy.Language, log)
+	a.requestsChanged = make(chan struct{}, 1)
 	a.client = &http.Client{
 		Timeout: (pollWaitSecs + 15) * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
@@ -392,6 +398,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.policy.Loop(ctx) })
 	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })
+	wg.Go(func() { a.requestLoop(ctx) })
 	wg.Wait()
 }
 
@@ -486,9 +493,11 @@ func (a *Agent) grantLoop(ctx context.Context) {
 	for {
 		// Runs immediately on start, so grants that expired while the device
 		// was off are gone before anything else happens.
-		if err := a.exec.RevokeExpired(); err != nil {
+		revoked, err := a.exec.RevokeExpired()
+		if err != nil {
 			a.log.Error("revoking expired sudo grants failed", "err", err)
 		}
+		a.notices.CheckGrants(ctx, a.exec.Grants.All(), revoked)
 		select {
 		case <-ctx.Done():
 			return
@@ -556,7 +565,8 @@ func (a *Agent) taskLoop(ctx context.Context) {
 }
 
 // handle runs a task after the guard admitted it. On a protected device, the
-// guard replaces what the server sent with what the admin signed.
+// guard replaces what the server sent with what the admin signed, and that is
+// also what people are told about.
 func (a *Agent) handle(ctx context.Context, task api.Task) api.TaskResult {
 	if a.guard != nil {
 		admitted, err := a.guard.Admit(task, a.cfg.DeviceID, time.Now())
@@ -566,6 +576,14 @@ func (a *Agent) handle(ctx context.Context, task api.Task) api.TaskResult {
 		}
 		task = admitted
 	}
+	result := a.run(ctx, task)
+	if a.notices != nil {
+		a.notices.AfterTask(ctx, task, result)
+	}
+	return result
+}
+
+func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 	if task.Approver != "" {
 		// The server's audit log proves nothing, so this is the record that
 		// counts of what an approval in a browser really did.
@@ -673,4 +691,62 @@ func (a *Agent) post(ctx context.Context, path string, v any) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// requestLoop asks how the requests of this device stand while someone is at a
+// desktop to be told, and when someone filed one or looks at their history.
+func (a *Agent) requestLoop(ctx context.Context) {
+	ticker := time.NewTicker(requestInterval)
+	defer ticker.Stop()
+	asked := false
+	for {
+		if asked || a.someoneAtDesktop(ctx) {
+			var requests []api.RequestState
+			if err := a.get(ctx, "/agent/requests", &requests); err != nil {
+				if ctx.Err() == nil {
+					a.log.Warn("asking for the state of requests failed", "err", err)
+				}
+			} else {
+				a.notices.SetRequests(ctx, requests)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			asked = false
+		case <-a.requestsChanged:
+			asked = true
+		}
+	}
+}
+
+func (a *Agent) someoneAtDesktop(ctx context.Context) bool {
+	people, err := a.exec.desktopUsers(ctx)
+	return err == nil && len(people) > 0
+}
+
+// askForRequests wakes the request loop, unless it is busy already.
+func (a *Agent) askForRequests() {
+	select {
+	case a.requestsChanged <- struct{}{}:
+	default:
+	}
+}
+
+// get reads a JSON answer of the server.
+func (a *Agent) get(ctx context.Context, path string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.cfg.Server+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(v)
 }

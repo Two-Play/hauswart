@@ -226,7 +226,7 @@ func (g *Guard) Admit(task api.Task, device string, now time.Time) (api.Task, er
 		return api.Task{}, err
 	}
 	g.state = next
-	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload}, nil
+	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload, Request: task.Request}, nil
 }
 
 // admitPasskey is Admit for a task approved in a browser. The server may have
@@ -277,7 +277,7 @@ func (g *Guard) admitPasskey(task api.Task, device string, now time.Time) (api.T
 		return api.Task{}, err
 	}
 	g.state = next
-	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload, Approver: passkey.Name}, nil
+	return api.Task{ID: task.ID, Type: env.Type, Payload: env.Payload, Approver: passkey.Name, Request: task.Request}, nil
 }
 
 // Touch moves the last seen time forward, so that a later clock rollback shows.

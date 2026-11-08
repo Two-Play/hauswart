@@ -637,6 +637,25 @@ KDE shows it in the system tray. GNOME has no tray without an extension, so open
 
 A request needs a Hauswart account whose Linux user is the person at the device.
 
+### What people at a device are told
+
+The agent shows a popup when Hauswart changes something for someone, and the
+**History** tab of the desktop app lists the same, with the person's own requests:
+
+| Change | Who sees it |
+| --- | --- |
+| Their request waits for a signature, was denied, is done, or failed | whoever filed it |
+| sudo granted or taken back, ends in 5 minutes, ended | the person |
+| Account locked, unlocked, new password, group added or removed | the person |
+| Software installed, removed, updated, or a failed change | everyone at a desktop |
+| New or removed rules of the device | everyone at a desktop |
+
+Popups use the language of the policy, the history that of the desktop. They
+need a desktop with a notification service, which GNOME and Plasma have, and they
+work without the desktop app. While someone is at a desktop, the agent asks the
+server every minute how the requests of the device stand. A device keeps the last
+200 changes, and requests of the last 30 days.
+
 **`hauswart-admin-gui`** does on your own computer what `hauswart-admin approve` does in
 a terminal, from the package `hauswart-admin-gui`. Log in once with `hauswart-admin
 login`, and pin keys there as well. Keys stay in your ssh-agent, so a security key

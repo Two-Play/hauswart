@@ -312,14 +312,18 @@ func (e *Executor) sudoRevoke(user string) (string, error) {
 
 // RevokeExpired removes every grant past its expiry. The agent does this on
 // its own, so a grant ends on time even if the server is unreachable.
-func (e *Executor) RevokeExpired() error {
+// It returns who lost a grant.
+func (e *Executor) RevokeExpired() ([]string, error) {
 	var errs []error
+	var revoked []string
 	for _, user := range e.Grants.Expired(time.Now()) {
 		if _, err := e.sudoRevoke(user); err != nil {
 			errs = append(errs, err)
+		} else {
+			revoked = append(revoked, user)
 		}
 	}
-	return errors.Join(errs...)
+	return revoked, errors.Join(errs...)
 }
 
 func (e *Executor) userCreate(ctx context.Context, p api.UserPayload) (string, error) {

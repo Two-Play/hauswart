@@ -251,6 +251,8 @@ var migrations = []string{
 		hash TEXT NOT NULL REFERENCES catalogs(hash),
 		updated_at INTEGER NOT NULL
 	);`,
+	// The task an approval created, so the device can tell how a request ended.
+	`ALTER TABLE requests ADD COLUMN task_id TEXT NOT NULL DEFAULT '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -674,7 +676,8 @@ func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, erro
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET status = 'running', claimed_at = ?
 		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY passkey_counter, created_at, rowid LIMIT 1)
-		RETURNING id, type, payload, signed`, time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed)
+		RETURNING id, type, payload, signed, COALESCE((SELECT id FROM requests WHERE task_id = tasks.id), '')`,
+		time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed, &t.Request)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -837,6 +840,57 @@ func (s *Store) DecideRequest(ctx context.Context, id, status, decidedBy string)
 	}
 	n, err := res.RowsAffected()
 	return n == 1, err
+}
+
+// SetRequestTask remembers the task an approved request became.
+func (s *Store) SetRequestTask(ctx context.Context, requestID, taskID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE requests SET task_id = ? WHERE id = ?`, taskID, requestID)
+	return err
+}
+
+// DeviceRequests returns the requests filed for a device since a time, newest
+// first, with how far each one got.
+func (s *Store) DeviceRequests(ctx context.Context, deviceID string, since time.Time) ([]api.RequestState, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT r.id, u.linux_user, r.kind, r.detail, r.status, COALESCE(t.status, ''), r.created_at
+		FROM requests r JOIN users u ON u.id = r.user_id LEFT JOIN tasks t ON t.id = r.task_id AND r.task_id != ''
+		WHERE r.device_id = ? AND r.created_at >= ?
+		ORDER BY r.created_at DESC, r.rowid DESC LIMIT 200`, deviceID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	states := []api.RequestState{}
+	for rows.Next() {
+		var r api.RequestState
+		var decision, task string
+		if err := rows.Scan(&r.ID, &r.User, &r.Kind, &r.Detail, &decision, &task, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.State = requestState(decision, task)
+		states = append(states, r)
+	}
+	return states, rows.Err()
+}
+
+// requestState follows a request into its task. An approval without a known
+// task counts as running: requests from before the link look like that.
+func requestState(decision, task string) string {
+	switch decision {
+	case "open":
+		return api.RequestOpen
+	case "denied":
+		return api.RequestDenied
+	}
+	switch task {
+	case "signing":
+		return api.RequestSigning
+	case "done":
+		return api.RequestDone
+	case "failed":
+		return api.RequestFailed
+	}
+	return api.RequestRunning
 }
 
 // --- audit ---
