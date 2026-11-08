@@ -215,8 +215,13 @@ Daily use:
 
 ```bash
 hauswart-admin approve
+hauswart-admin approve --all
 hauswart-admin start-password --device <device-id> --user anna
 ```
+
+`approve --all` shows every waiting task in full and then asks once. The admin app
+does the same with **Sign everything**. A security key still wants a touch per
+task, because each task carries a signature of its own.
 
 `approve` shows each task in full. Read it, especially what it says about root.
 Start passwords can only come from this tool on a protected device.
@@ -316,9 +321,10 @@ Removing `pkg.remove` and `flatpak.install` is a sensible first step. An empty l
 turns passkeys off on that device. Restart the agent after a change. Types beyond
 the default stay refused, so the list can only get shorter. The default is
 `pkg.install`, `pkg.remove`, `pkg.upgrade`, `flatpak.install`, `power.reboot`,
-`power.shutdown`, `power.cancel`, `notify.send` and `screen.extend`. A device
-enrolled before `screen.extend` existed has the older list in its file, so add it
-there to extend screen time with a passkey.
+`power.shutdown`, `power.cancel`, `notify.send`, `screen.extend`, `access.set`,
+`group.add`, `group.remove`, `user.lock` and `user.unlock`. A device keeps the list
+it was enrolled with, so add newer types to its file to approve them with a
+passkey.
 
 To see what passkeys approved on a device:
 
