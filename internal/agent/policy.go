@@ -293,6 +293,8 @@ func (pe *PolicyEngine) Enforce(ctx context.Context) {
 	}
 	pe.enforceMounts(ctx, policy.Mounts, directory == checkOn, &o)
 	pe.enforceNextcloud(ctx, policy.Nextcloud, &o)
+	pe.enforceWifi(ctx, policy.Wifi, &o)
+	pe.enforcePrinters(ctx, policy.Printers, &o)
 	pe.enforceApps(ctx, policy, &o)
 	pe.forgetUnusedAccounts(policy)
 	apps := pe.exec.launchers().entries()

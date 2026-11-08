@@ -80,7 +80,20 @@
     "dailyMinutes": "Minuten pro Tag",
     "dailyMinutesHint": "Leer für kein Limit",
     "quotaAllDay": "Keine Zeitfenster: jederzeit am Tag, bis die Minuten pro Tag verbraucht sind.",
-    "noWindows": "Keine Zeitfenster und keine Minuten: gar keine Sitzung."
+    "noWindows": "Keine Zeitfenster und keine Minuten: gar keine Sitzung.",
+    "wifi": "WLAN",
+    "wifiHint": "Netze, in die die Geräte sich selbst einwählen, WPA2 oder WPA3 mit Passwort. Das Passwort steht in der Richtlinie: Admins sehen es, auf dem Gerät liest es nur root.",
+    "ssid": "Netzname (SSID)",
+    "wifiPassword": "Passwort",
+    "wifiSecurity": "Sicherheit",
+    "wifiHidden": "Verstecktes Netz",
+    "addWifi": "WLAN hinzufügen",
+    "printers": "Drucker",
+    "printersHint": "Drucker für alle am Gerät, ohne Treiber: Der Drucker muss IPP Everywhere sprechen, wie die meisten Drucker seit 2012.",
+    "printerName": "Name",
+    "printerUri": "Adresse",
+    "printerDefault": "Standarddrucker",
+    "addPrinter": "Drucker hinzufügen"
   },
   "errors": {
     "policy_too_large": "Die Policy hat zu viele Einträge oder ist größer als {{value}} KiB.",
@@ -89,7 +102,9 @@
     "invalid_reboot": "Die Neustart-Regel ist ungültig: {{value}}",
     "invalid_window": "Das Zeitfenster ist ungültig: {{value}}",
     "policy_conflict": "Die Policy widerspricht sich selbst: {{value}}",
-    "invalid_extension": "Eine Verlängerung braucht ein Ende höchstens {{value}} von jetzt."
+    "invalid_extension": "Eine Verlängerung braucht ein Ende höchstens {{value}} von jetzt.",
+    "invalid_wifi": "Das Netz {{value}} braucht einen Namen mit 1 bis 32 Bytes, ein Passwort mit 8 bis 63 einfachen Zeichen und WPA2 oder WPA3.",
+    "invalid_printer": "Der Drucker {{value}} braucht einen Namen aus Buchstaben, Ziffern, - und _ und eine Adresse mit ipp:// oder ipps://."
   },
   "fields": {
     "extend_minutes": "Mehr Zeit in Minuten"

@@ -64,6 +64,8 @@ export interface Policy {
   directory?: { uri: string; base_dn: string; bind_dn: string; bind_password: string; ca: string };
   mounts?: { server: string; share: string; folder: string }[];
   nextcloud?: { url: string; mode: string };
+  wifi?: { ssid: string; password: string; hidden?: boolean; security?: string }[];
+  printers?: { name: string; uri: string; default?: boolean }[];
   apps?: AppRule[];
 }
 
@@ -325,6 +327,8 @@ function PolicyForm({
   const security = p.security ?? {};
   const mounts = p.mounts ?? [];
   const appRules = p.apps ?? [];
+  const wifi = p.wifi ?? [];
+  const printers = p.printers ?? [];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
@@ -614,6 +618,100 @@ function PolicyForm({
           />
         </>
       )}
+
+      <Divider />
+      <Title order={5}>{t('policies.wifi')}</Title>
+      <Text size="xs" c="dimmed">
+        {t('policies.wifiHint')}
+      </Text>
+      {wifi.map((net, i) => (
+        <Paper withBorder p="xs" key={i}>
+          <Group align="flex-end" grow>
+            <TextInput
+              label={t('policies.ssid')}
+              required
+              value={net.ssid}
+              onChange={(e) => change({ wifi: replaced(wifi, i, { ...net, ssid: e.currentTarget.value }) })}
+            />
+            <PasswordInput
+              label={t('policies.wifiPassword')}
+              required
+              value={net.password}
+              onChange={(e) => change({ wifi: replaced(wifi, i, { ...net, password: e.currentTarget.value }) })}
+            />
+            <Select
+              label={t('policies.wifiSecurity')}
+              allowDeselect={false}
+              value={net.security ?? 'wpa2'}
+              onChange={(security) => change({ wifi: replaced(wifi, i, { ...net, security: security ?? 'wpa2' }) })}
+              data={['wpa2', 'wpa3'].map((value) => ({ value, label: value.toUpperCase() }))}
+            />
+          </Group>
+          <Group mt="xs">
+            <Checkbox
+              label={t('policies.wifiHidden')}
+              checked={!!net.hidden}
+              onChange={(e) => change({ wifi: replaced(wifi, i, { ...net, hidden: e.currentTarget.checked || undefined }) })}
+            />
+            <Button size="xs" variant="subtle" color="red" onClick={() => change({ wifi: without(wifi, i) })}>
+              {t('policies.remove')}
+            </Button>
+          </Group>
+        </Paper>
+      ))}
+      <Group>
+        <Button size="xs" variant="light" onClick={() => change({ wifi: [...wifi, { ssid: '', password: '' }] })}>
+          {t('policies.addWifi')}
+        </Button>
+      </Group>
+
+      <Divider />
+      <Title order={5}>{t('policies.printers')}</Title>
+      <Text size="xs" c="dimmed">
+        {t('policies.printersHint')}
+      </Text>
+      {printers.map((printer, i) => (
+        <Paper withBorder p="xs" key={i}>
+          <Group align="flex-end" grow>
+            <TextInput
+              label={t('policies.printerName')}
+              required
+              value={printer.name}
+              onChange={(e) => change({ printers: replaced(printers, i, { ...printer, name: e.currentTarget.value }) })}
+            />
+            <TextInput
+              label={t('policies.printerUri')}
+              placeholder="ipp://drucker.local/ipp/print"
+              required
+              value={printer.uri}
+              onChange={(e) => change({ printers: replaced(printers, i, { ...printer, uri: e.currentTarget.value }) })}
+            />
+          </Group>
+          <Group mt="xs">
+            <Checkbox
+              label={t('policies.printerDefault')}
+              checked={!!printer.default}
+              onChange={(e) =>
+                change({
+                  // Only one printer can be the default.
+                  printers: printers.map((other, j) => ({
+                    ...other,
+                    default: j === i ? e.currentTarget.checked || undefined : e.currentTarget.checked ? undefined : other.default,
+                  })),
+                })
+              }
+            />
+            <Button size="xs" variant="subtle" color="red" onClick={() => change({ printers: without(printers, i) })}>
+              {t('policies.remove')}
+            </Button>
+          </Group>
+        </Paper>
+      ))}
+      <Group>
+        <Button size="xs" variant="light" onClick={() => change({ printers: [...printers, { name: '', uri: '' }] })}>
+          {t('policies.addPrinter')}
+        </Button>
+      </Group>
 
       <Group justify="flex-end">
         <Button variant="subtle" onClick={onClose}>

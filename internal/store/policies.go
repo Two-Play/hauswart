@@ -86,6 +86,12 @@ func (s *Store) WaitingPolicyTask(ctx context.Context, device string) (*PolicyTa
 	return s.policyTask(ctx, device, `status = 'signing'`)
 }
 
+// DonePolicyTask returns the newest policy task the device finished, which is
+// the policy it has now.
+func (s *Store) DonePolicyTask(ctx context.Context, device string) (*PolicyTask, error) {
+	return s.policyTask(ctx, device, `status = 'done'`)
+}
+
 // SignedPolicyTask returns the newest policy task that is signed and on its way.
 // Nothing can stop that one any more, so it decides what the device will have.
 func (s *Store) SignedPolicyTask(ctx context.Context, device string) (*PolicyTask, error) {

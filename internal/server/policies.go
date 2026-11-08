@@ -185,7 +185,16 @@ func (s *Server) syncPolicy(r *http.Request, actor, device string) error {
 		return err
 	}
 	settled := matches(signed)
+	// A policy task the device finished says what it has, even before its next
+	// report: emptying a policy right after it arrived must still end it.
+	var done *store.PolicyTask
 	if signed == nil {
+		if done, err = s.store.DonePolicyTask(ctx, device); err != nil {
+			return err
+		}
+		settled = matches(done)
+	}
+	if signed == nil && done == nil {
 		current := ""
 		if report.Policy != nil {
 			current = report.Policy.Hash

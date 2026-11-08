@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -447,5 +448,43 @@ func TestSharedLinuxAccountIsNotGuessed(t *testing.T) {
 	code, data := e.do(agent, "POST", "/agent/requests", in)
 	if code != http.StatusConflict || !strings.Contains(string(data), api.ErrSharedAccount) {
 		t.Fatalf("%d %s", code, data)
+	}
+}
+
+func TestEmptyingAPolicyWithNetworksEndsIt(t *testing.T) {
+	e := setup(t)
+	id, agent := protectedDevice(t, e)
+	admin := e.login("admin")
+	path := newGroup(t, e, admin, id)
+	policy := api.Policy{Wifi: []api.WifiRule{{SSID: "Büro", Password: "very secret pw", Security: "wpa3"}},
+		Printers: []api.PrinterRule{{Name: "flur", URI: "ipp://localhost:18631/ipp/print", Default: true}}}
+	putPolicy(t, e, admin, path, policy)
+	report(t, e, agent, api.Report{Hostname: "laptop", Protected: true, Policy: &api.PolicyStatus{Hash: policy.Hash()}})
+	putPolicy(t, e, admin, path, api.Policy{})
+	if queue := queueOf(t, e, admin); len(queue) != 1 || queue[0].Type != api.TaskPolicyClear {
+		t.Fatalf("got %+v", queue)
+	}
+}
+
+// The device finished the policy, but has not reported since. Emptying the
+// policy then must still end it on the device.
+func TestEmptyingBeforeTheNextReportEndsThePolicy(t *testing.T) {
+	e := setup(t)
+	id, agent := protectedDevice(t, e)
+	admin := e.login("admin")
+	path := newGroup(t, e, admin, id)
+	report(t, e, agent, api.Report{Hostname: "laptop", Protected: true})
+	putPolicy(t, e, admin, path, api.Policy{RequiredPackages: []string{"vim"}})
+	db, err := sql.Open("sqlite", e.dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE tasks SET status = 'done' WHERE type = ?`, api.TaskPolicySet); err != nil {
+		t.Fatal(err)
+	}
+	putPolicy(t, e, admin, path, api.Policy{})
+	if queue := queueOf(t, e, admin); len(queue) != 1 || queue[0].Type != api.TaskPolicyClear {
+		t.Fatalf("got %+v", queue)
 	}
 }
