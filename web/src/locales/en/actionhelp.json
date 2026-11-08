@@ -1,0 +1,33 @@
+{
+  "actionHelp": {
+    "pkg_install": "Installs packages from the device's repositories. Their scripts run as root.",
+    "flatpak_install": "Installs apps from Flathub for everyone on the device.",
+    "pkg_remove": "Removes packages, with what depends on them.",
+    "pkg_upgrade": "Updates all packages now instead of at the next scheduled time.",
+    "access_set": "Blocks the screen, refuses logins or covers the screen, for some or everyone, or opens the device again.",
+    "screen_extend": "Gives someone more screen time, for today only.",
+    "sudo_grant": "Gives someone admin rights on this device for a limited time.",
+    "sudo_revoke": "Takes admin rights back at once.",
+    "user_create": "Creates a Linux account on the device.",
+    "user_lock": "Locks an account so nobody can log in with it.",
+    "user_unlock": "Unlocks an account again.",
+    "user_passwd": "Sets a start password, shown once, which must be changed at the first login.",
+    "group_add": "Adds someone to a Linux group, such as printing or media.",
+    "group_remove": "Takes someone out of a Linux group.",
+    "limit_set": "Limits how much processor and memory someone's programs may use.",
+    "power_reboot": "Restarts the device after a warning on the screen.",
+    "power_shutdown": "Shuts the device down after a warning on the screen.",
+    "power_cancel": "Cancels a restart or shutdown that is waiting.",
+    "notify_send": "Shows a message on the desktops of the device.",
+    "file_put": "Puts a file into an allowed folder of the device.",
+    "ca_install": "Makes the device trust a certificate authority.",
+    "terminal_open": "Opens a live shell on the device, as root or as one of its accounts."
+  },
+  "actions": {
+    "approval": {
+      "passkey": "Passkey or signature",
+      "signature": "Signature",
+      "direct": "No approval"
+    }
+  }
+}

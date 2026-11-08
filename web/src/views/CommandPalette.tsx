@@ -4,6 +4,7 @@ import { useHotkeys } from '@mantine/hooks';
 import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type Device } from '../api';
+import { ACTION_ICONS, helpKey } from '../actionIcons';
 import { ACTION_AREAS, taskKey } from '../tasks';
 import { showError } from '../ui';
 import { ActionForm } from './ActionForm';
@@ -35,7 +36,7 @@ export function CommandPalette() {
   const close = () => setOpened(false);
   useHotkeys([['mod+K', open]]);
 
-  const actions = ALL_TYPES.filter((each) => matches(t(taskKey(each)), each, query));
+  const actions = ALL_TYPES.filter((each) => matches(t(taskKey(each)), each, query, t(helpKey(each))));
   const machines = (devices ?? []).filter(
     (d) => d.hostname.toLowerCase().includes(query.trim().toLowerCase()) && (type !== TERMINAL || d.report?.protected),
   );
@@ -82,7 +83,16 @@ export function CommandPalette() {
           <ScrollArea.Autosize mah={360}>
             {!type &&
               actions.map((each) => (
-                <NavLink key={each} label={t(taskKey(each))} description={each} onClick={() => (setType(each), setQuery(''))} />
+                <NavLink
+                  key={each}
+                  label={t(taskKey(each))}
+                  description={t(helpKey(each))}
+                  leftSection={(() => {
+                    const ActionIcon = ACTION_ICONS[each];
+                    return ActionIcon ? <ActionIcon size={18} /> : null;
+                  })()}
+                  onClick={() => (setType(each), setQuery(''))}
+                />
               ))}
             {type &&
               machines.map((each) => <NavLink key={each.id} label={each.hostname} onClick={() => setDevice(each)} />)}

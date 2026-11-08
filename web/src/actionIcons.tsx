@@ -1,0 +1,56 @@
+import {
+  IconApps,
+  IconCertificate,
+  IconClockPlus,
+  IconFileUpload,
+  IconGauge,
+  IconKey,
+  IconLock,
+  IconMessage,
+  IconPackage,
+  IconPackageOff,
+  IconPlayerStop,
+  IconPower,
+  IconRefresh,
+  IconRefreshDot,
+  IconShieldCheck,
+  IconShieldOff,
+  IconTerminal2,
+  IconUserCancel,
+  IconUserCheck,
+  IconUserPlus,
+  IconUsersMinus,
+  IconUsersPlus,
+  type Icon,
+} from '@tabler/icons-react';
+
+/** The icon of each action, on its tile and in the command palette. */
+export const ACTION_ICONS: Record<string, Icon> = {
+  'pkg.install': IconPackage,
+  'flatpak.install': IconApps,
+  'pkg.remove': IconPackageOff,
+  'pkg.upgrade': IconRefreshDot,
+  'access.set': IconLock,
+  'screen.extend': IconClockPlus,
+  'sudo.grant': IconShieldCheck,
+  'sudo.revoke': IconShieldOff,
+  'user.create': IconUserPlus,
+  'user.lock': IconUserCancel,
+  'user.unlock': IconUserCheck,
+  'user.passwd': IconKey,
+  'group.add': IconUsersPlus,
+  'group.remove': IconUsersMinus,
+  'limit.set': IconGauge,
+  'power.reboot': IconRefresh,
+  'power.shutdown': IconPower,
+  'power.cancel': IconPlayerStop,
+  'notify.send': IconMessage,
+  'file.put': IconFileUpload,
+  'ca.install': IconCertificate,
+  'terminal.open': IconTerminal2,
+};
+
+/** The key of an action's one-line description. */
+export function helpKey(type: string): string {
+  return `actionHelp.${type.replace('.', '_')}`;
+}

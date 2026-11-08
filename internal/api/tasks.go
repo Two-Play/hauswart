@@ -56,3 +56,15 @@ func Known(taskType string) bool {
 	_, ok := specs[taskType]
 	return ok
 }
+
+// UnsignedTypes lists the task types a protected device runs without any
+// approval, sorted.
+func UnsignedTypes() []string {
+	var types []string
+	for name, spec := range specs {
+		if spec.unsigned {
+			types = append(types, name)
+		}
+	}
+	return SortedTypes(types)
+}
