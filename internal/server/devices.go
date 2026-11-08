@@ -15,6 +15,8 @@ func init() {
 		mux.Handle("GET /api/devices", s.user(s.handleDevices))
 		mux.Handle("POST /api/enroll-tokens", s.admin(s.handleEnrollToken))
 		mux.Handle("POST /api/devices/{id}/revoke", s.admin(s.handleRevoke))
+		mux.Handle("POST /api/devices/{id}/suspend", s.admin(s.handleSuspend(true)))
+		mux.Handle("POST /api/devices/{id}/resume", s.admin(s.handleSuspend(false)))
 	})
 }
 
@@ -79,4 +81,40 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request, u store.Us
 	}
 	s.audit(r, u.Username, "device.revoked", id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSuspend holds a device back or lets it go on. Its tasks wait meanwhile.
+func (s *Server) handleSuspend(suspend bool) userHandler {
+	return func(w http.ResponseWriter, r *http.Request, u store.User) {
+		id := r.PathValue("id")
+		err := s.store.SuspendDevice(r.Context(), id, suspend)
+		if errors.Is(err, store.ErrNotFound) {
+			fail(w, http.StatusNotFound, api.ErrNoSuchDevice)
+			return
+		}
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		action := "device.resumed"
+		if suspend {
+			action = "device.suspended"
+		}
+		s.audit(r, u.Username, action, id)
+		s.wake(id)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// refuseSuspended answers for a suspended device and says whether it did.
+func (s *Server) refuseSuspended(w http.ResponseWriter, r *http.Request, device string, status int) bool {
+	suspended, err := s.store.DeviceSuspended(r.Context(), device)
+	if err != nil {
+		s.internal(w, err)
+		return true
+	}
+	if suspended {
+		fail(w, status, api.ErrDeviceSuspended)
+	}
+	return suspended
 }
