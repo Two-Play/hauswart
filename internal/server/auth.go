@@ -74,6 +74,12 @@ func (s *Server) approver(next userHandler) http.Handler {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// A form on another site can post JSON as text, but cannot set this header:
+	// without it, a page could log the admin into someone else's account.
+	if r.Header.Get("X-Hauswart") != "1" {
+		fail(w, http.StatusForbidden, api.ErrMissingHeader)
+		return
+	}
 	var in struct {
 		Username string `json:"username"`
 		Password string `json:"password"`

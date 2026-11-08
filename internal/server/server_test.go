@@ -678,3 +678,17 @@ func TestMemberSeesNoDeviceDetails(t *testing.T) {
 		t.Fatal("report leaked to member")
 	}
 }
+
+func TestLoginNeedsTheHeader(t *testing.T) {
+	e := setup(t)
+	// What a form on another site can send: JSON as text, without the header.
+	resp, err := e.client().Post(e.ts.URL+"/api/login", "text/plain",
+		strings.NewReader(`{"username":"admin","password":"`+testPassword+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || len(resp.Cookies()) != 0 {
+		t.Fatalf("got %d with %d cookies", resp.StatusCode, len(resp.Cookies()))
+	}
+}

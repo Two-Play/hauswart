@@ -702,7 +702,9 @@ func (s *Store) ClaimTask(ctx context.Context, deviceID string) (*api.Task, erro
 	var payload, signed string
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET status = 'running', claimed_at = ?
-		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending' ORDER BY passkey_counter, created_at, rowid LIMIT 1)
+		WHERE id = (SELECT id FROM tasks WHERE device_id = ? AND status = 'pending'
+			AND NOT (SELECT suspended FROM devices WHERE id = tasks.device_id)
+			ORDER BY passkey_counter, created_at, rowid LIMIT 1)
 		RETURNING id, type, payload, signed, COALESCE((SELECT id FROM requests WHERE task_id = tasks.id), '')`,
 		time.Now().Unix(), deviceID).Scan(&t.ID, &t.Type, &payload, &signed, &t.Request)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -888,6 +890,32 @@ func clipDetail(s string) string {
 		return string(r[:limit]) + "…"
 	}
 	return s
+}
+
+// CreateLinkedTask queues a task, waiting for a signature if signing is set, and
+// links it to a request in the same transaction. An empty request links nothing.
+func (s *Store) CreateLinkedTask(ctx context.Context, deviceID, taskType string, payload []byte, createdBy string, signing bool, requestID string) (string, error) {
+	status := "pending"
+	if signing {
+		status = "signing"
+	}
+	id := RandomToken()[:32]
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO tasks (id, device_id, type, payload, status, created_by, created_at)
+		VALUES (?,?,?,?,?,?,?)`, id, deviceID, taskType, string(payload), status, createdBy, time.Now().Unix()); err != nil {
+		return "", err
+	}
+	if requestID != "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE requests SET task_id = ? WHERE id = ?`, id, requestID); err != nil {
+			return "", err
+		}
+	}
+	return id, tx.Commit()
 }
 
 // SetRequestTask remembers the task an approved request became.

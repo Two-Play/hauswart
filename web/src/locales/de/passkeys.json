@@ -1,5 +1,7 @@
 {
-  "nav": { "approvals": "Freigaben" },
+  "nav": {
+    "approvals": "Freigaben"
+  },
   "users": {
     "approver": "Freigabe",
     "devices": "Geräte",
@@ -48,6 +50,7 @@
     "passkey_refused": "Die Passkey-Freigabe wurde abgelehnt.",
     "passkey_retry": "Eine andere Freigabe war schneller. Bitte gib diese Aufgabe noch einmal frei.",
     "no_passkey_host": "Passkeys brauchen einen DNS-Namen in der Server-URL, keine IP-Adresse.",
-    "passkey_not_pinned": "Keiner deiner Passkeys ist auf diesem Gerät hinterlegt."
+    "passkey_not_pinned": "Keiner deiner Passkeys ist auf diesem Gerät hinterlegt.",
+    "passkey_block_too_long": "Eine per Passkey freigegebene Sperre muss innerhalb von {{value}} enden. Längere signierst du mit hauswart-admin."
   }
 }

@@ -202,6 +202,9 @@ var privilegedGroups = map[string]bool{
 	"root": true, "wheel": true, "sudo": true, "adm": true,
 	"docker": true, "lxd": true, "libvirt": true, "disk": true, "shadow": true,
 	"admin": true, "kmem": true, "tty": true, "input": true, "incus": true, "incus-admin": true,
+	// staff owns /usr/local on Debian, which comes first in root's PATH; ssh_keys
+	// reads the host keys on Fedora; the others run containers or VMs as root.
+	"staff": true, "ssh_keys": true, "libvirtd": true, "microk8s": true, "systemd-journal": true,
 }
 
 func strictDecode(raw json.RawMessage, v any) error {

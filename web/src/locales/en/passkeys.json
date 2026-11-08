@@ -1,5 +1,7 @@
 {
-  "nav": { "approvals": "Approvals" },
+  "nav": {
+    "approvals": "Approvals"
+  },
   "users": {
     "approver": "Approver",
     "devices": "Devices",
@@ -48,6 +50,7 @@
     "passkey_refused": "The passkey approval was refused.",
     "passkey_retry": "Another approval went first. Please approve this task again.",
     "no_passkey_host": "Passkeys need a DNS name in the server URL, not an IP address.",
-    "passkey_not_pinned": "None of your passkeys is pinned on this device yet."
+    "passkey_not_pinned": "None of your passkeys is pinned on this device yet.",
+    "passkey_block_too_long": "A block approved with a passkey must end within {{value}}. Sign longer ones with hauswart-admin."
   }
 }
