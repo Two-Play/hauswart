@@ -1,6 +1,6 @@
 import { ACTION_FIELDS, addActionPayload } from './tasks_actions';
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'image';
 
 export interface TaskField {
   name: string;

@@ -22,9 +22,11 @@ export const ACTION_FIELDS: Record<string, TaskField[]> = {
   'group.remove': [user, group],
   'screen.extend': [user, { name: 'extend_minutes', kind: 'number', required: true }],
   'access.set': [
-    { name: 'access_mode', kind: 'select', required: true, options: ['screen', 'login', 'open'], hint: 'access_hint' },
+    { name: 'access_mode', kind: 'select', required: true, options: ['screen', 'fullscreen', 'login', 'open'], hint: 'access_hint' },
     { name: 'access_users', label: 'access_users' },
     { name: 'access_hours', label: 'access_hours', kind: 'number' },
+    { name: 'access_message', label: 'access_message' },
+    { name: 'access_image', label: 'access_image', kind: 'image' },
   ],
 };
 
@@ -44,9 +46,15 @@ export function addActionPayload(type: string, payload: Record<string, unknown>)
     if (payload.access_hours !== undefined) {
       payload.until = new Date(Date.now() + Number(payload.access_hours) * 3_600_000).toISOString();
     }
+    if (payload.mode === 'fullscreen') {
+      if (payload.access_message) payload.message = payload.access_message;
+      if (payload.access_image) payload.image = payload.access_image;
+    }
     delete payload.access_mode;
     delete payload.access_users;
     delete payload.access_hours;
+    delete payload.access_message;
+    delete payload.access_image;
   }
   if (payload.delay_minutes !== undefined) {
     payload.delay_minutes = Number(payload.delay_minutes);
