@@ -34,6 +34,9 @@ type Agent interface {
 // searchDelay waits for a pause in typing before asking.
 const searchDelay = 300 * time.Millisecond
 
+// maxSuggestions keeps the window small.
+const maxSuggestions = 6
+
 // Keyring keeps the Nextcloud password of the person running this.
 type Keyring interface {
 	StoreNextcloud(password string) error
@@ -61,8 +64,10 @@ type App struct {
 	// searches counts searches, so that a late answer does not win.
 	searches int
 	timer    *time.Timer
-	// options are what the name field offers now.
-	options []string
+	// options are what the name field offers now, as the whole text with the
+	// last word completed, and suggestions shows them as buttons.
+	options     []string
+	suggestions *fyne.Container
 
 	status api.UserStatus
 	// lines are the history, newest first.
@@ -77,7 +82,7 @@ type App struct {
 	history *widget.List
 	empty   *widget.Label
 	kind    *widget.Select
-	detail  *widget.SelectEntry
+	detail  *widget.Entry
 	reason  *widget.Entry
 	result  *widget.Label
 	// sendButton is off while the device is suspended.
@@ -138,8 +143,11 @@ func (t *App) requestForm() fyne.CanvasObject {
 	for i, kind := range kinds {
 		labels[i] = lang.L("request.kind." + kind)
 	}
-	t.detail = widget.NewSelectEntry(nil)
+	t.detail = widget.NewEntry()
 	t.detail.OnChanged = t.suggest
+	// A list that is always in view: the drop-down of a select entry only
+	// opens on a click, so nobody would see the suggestions while typing.
+	t.suggestions = container.NewVBox()
 	t.reason = widget.NewEntry()
 	t.result = widget.NewLabel("")
 	t.result.Wrapping = fyne.TextWrapWord
@@ -147,7 +155,7 @@ func (t *App) requestForm() fyne.CanvasObject {
 	t.kind.SetSelectedIndex(0)
 	form := widget.NewForm(
 		widget.NewFormItem(lang.L("request.kind"), t.kind),
-		widget.NewFormItem("", t.detail),
+		widget.NewFormItem("", container.NewVBox(t.detail, t.suggestions)),
 		widget.NewFormItem(lang.L("request.reason"), t.reason),
 	)
 	t.sendButton = widget.NewButton(lang.L("request.send"), t.send)
@@ -165,7 +173,7 @@ func (t *App) suggest(text string) {
 	ticket := t.searches
 	words := strings.Fields(text)
 	if timed(kind) || len(words) == 0 || strings.HasSuffix(text, " ") || len(words[len(words)-1]) < catalog.MinQuery {
-		t.setOptions(nil)
+		t.setOptions(nil, nil)
 		return
 	}
 	search := api.SearchPackage
@@ -180,21 +188,42 @@ func (t *App) suggest(text string) {
 				if ticket != t.searches {
 					return
 				}
-				var options []string
+				var options, labels []string
 				for _, entry := range entries {
-					if err == nil && entry.Name != last {
-						options = append(options, strings.Join(append(slices.Clone(prefix), entry.Name), " "))
+					if err != nil || entry.Name == last || len(options) == maxSuggestions {
+						continue
 					}
+					options = append(options, strings.Join(append(slices.Clone(prefix), entry.Name), " "))
+					label := entry.Name
+					if entry.Title != "" {
+						label = entry.Title + " (" + entry.Name + ")"
+					}
+					labels = append(labels, label)
 				}
-				t.setOptions(options)
+				t.setOptions(options, labels)
 			})
 		})
 	})
 }
 
-func (t *App) setOptions(options []string) {
+func (t *App) setOptions(options, labels []string) {
 	t.options = options
-	t.detail.SetOptions(options)
+	t.suggestions.RemoveAll()
+	for i, option := range options {
+		button := widget.NewButton(labels[i], func() { t.pick(option) })
+		button.Alignment = widget.ButtonAlignLeading
+		button.Importance = widget.LowImportance
+		t.suggestions.Add(button)
+	}
+	t.suggestions.Refresh()
+}
+
+// pick takes a suggestion. The text then holds a whole name, which needs no
+// more suggestions.
+func (t *App) pick(option string) {
+	t.detail.SetText(option + " ")
+	t.setOptions(nil, nil)
+	t.window.Canvas().Focus(t.detail)
 }
 
 func (t *App) selectedKind() string {
