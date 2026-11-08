@@ -83,6 +83,12 @@ fi
 if [ "$1" = 0 ] && [ -d /run/systemd/system ]; then
 	systemctl disable --now hauswart-agent.service || :
 fi
+# A full-screen block of the agent must not outlive it, nor its PAM service.
+if [ "$1" = 0 ]; then
+	systemctl stop hauswart-block.service 2>/dev/null || :
+	rm -f /etc/systemd/system/hauswart-block.service /etc/pam.d/hauswart-block
+	systemctl daemon-reload 2>/dev/null || :
+fi
 
 %files server
 /usr/bin/hauswart-server

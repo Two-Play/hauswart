@@ -278,6 +278,9 @@ programs, and they end where a program that is allowed runs what it is given:
   them too, and with bubblewrap also start the files of another Flatpak. Without Flatpaks
   a strict rule blocks them, and some desktops then show no previews of images. `unshare`
   and `nsenter` are always blocked.
+
+A blocked screen is locked again on every check, whether or not the session says it
+is locked: the owner of a session can set that hint themselves.
 - **Network shares are not watched.** A server that hangs would hold up every program on
   the device. Shares from a policy are mounted `noexec`, others are not covered.
 - **Web apps** run in the browser. A rule cannot see them.
@@ -315,8 +318,8 @@ should know that Hauswart never asks for a password.
 A hacked server can suspend a device. That ends sudo grants and stops requests,
 and nothing more.
 
-A full-screen notice runs under its own system account with a PAM service that lets
-only systemd start it, as root does. It takes no input, and the text and picture
+A full-screen notice runs under its own system account. Its PAM service refuses
+every authentication, as systemd starts it without one. It takes no input, and the text and picture
 it shows are those someone signed, so it cannot pose as anything but what the admin
 wrote. A hacked server can still write any text on an unprotected device.
 
@@ -331,8 +334,11 @@ A signed Flatpak install also installs the package `flatpak` where it is missing
 from the device's own repositories. Approving a Flatpak means the device needs what
 runs it.
 
-Popups about changes come from fixed texts on the device. A package or group name is
-the only part from outside, and it is escaped. A hacked server can claim that a
+Popups about changes come from fixed texts on the device. A package or group name
+from a task is the only part from outside, and it is escaped. Popups about requests
+name only the kind of request, never what the server says was asked for, and go
+only to ordinary local accounts. At most ten popups go out in a minute, whatever
+the server sends, and the history keeps the rest. A hacked server can claim that a
 request was denied or approved without doing it, which confuses but grants nothing:
 what a device does still needs a task, and on a protected device a signature.
 

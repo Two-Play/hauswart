@@ -502,13 +502,16 @@ func (e *Executor) installedPackages(ctx context.Context, names []string) (map[s
 
 func (pe *PolicyEngine) enforceFlatpaks(ctx context.Context, p api.Policy, o *outcome) {
 	e := pe.exec
-	if !e.flatpakInstalled() {
+	unlock := e.lockPackages()
+	installed := e.flatpakInstalled()
+	unlock()
+	if !installed {
 		// Without it, nothing forbidden can be there. What is required needs
 		// Flatpak first.
 		if len(p.RequiredFlatpaks) == 0 {
 			return
 		}
-		unlock := e.lockPackages()
+		unlock = e.lockPackages()
 		_, err := e.ensureFlatpak(ctx)
 		unlock()
 		if err != nil {

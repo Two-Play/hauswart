@@ -6,7 +6,9 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"os/user"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -98,9 +100,13 @@ var eventTexts = map[string]map[string]string{
 
 // requestNames say what a request was for in a popup, when its detail alone
 // would not, such as the minutes of a sudo request.
+// The detail of a request comes from the server, so a popup names only its kind:
+// a hacked server must not get its own words onto the desktop.
 var requestNames = map[string]map[string]string{
-	"en": {api.RequestSudo: "admin rights", api.RequestScreen: "more screen time"},
-	"de": {api.RequestSudo: "Admin-Rechte", api.RequestScreen: "mehr Bildschirmzeit"},
+	"en": {api.RequestSudo: "admin rights", api.RequestScreen: "more screen time",
+		api.RequestSoftware: "software", api.RequestFlatpak: "an app"},
+	"de": {api.RequestSudo: "Admin-Rechte", api.RequestScreen: "mehr Bildschirmzeit",
+		api.RequestSoftware: "Software", api.RequestFlatpak: "eine App"},
 }
 
 func eventText(language, kind, detail string, until time.Time) string {
@@ -127,10 +133,7 @@ func requestName(language string, r api.RequestState) string {
 	if !ok {
 		names = requestNames["en"]
 	}
-	if name, ok := names[r.Kind]; ok {
-		return name
-	}
-	return r.Detail
+	return names[r.Kind]
 }
 
 // Notices tells people at the device what Hauswart changed for them, in a popup
@@ -146,7 +149,8 @@ type Notices struct {
 	mu       sync.Mutex
 	state    noticeState
 	requests []api.RequestState
-	// asked is when the server last said how the requests stand.
+	// asked is when the agent last asked how the requests stand, whether or not
+	// the server answered, so that an unreachable server is not asked in a loop.
 	asked time.Time
 	// warned is the end of the grant each person was warned about.
 	warned map[string]time.Time
@@ -154,6 +158,9 @@ type Notices struct {
 	told map[string]bool
 	// popups counts the popups on their way, for tests.
 	popups sync.WaitGroup
+	// slots bounds the popups at once, and shown holds when recent ones went out.
+	slots chan struct{}
+	shown []time.Time
 }
 
 // noticeState is what survives a restart.
@@ -169,7 +176,7 @@ type noticeState struct {
 func OpenNotices(dir string, exec *Executor, language func() string, log *slog.Logger) *Notices {
 	n := &Notices{
 		exec: exec, log: log, path: dir + "/" + eventsFile, language: language, now: time.Now,
-		warned: map[string]time.Time{}, told: map[string]bool{},
+		warned: map[string]time.Time{}, told: map[string]bool{}, slots: make(chan struct{}, popupsAtOnce),
 	}
 	raw, err := os.ReadFile(n.path)
 	if err == nil {
@@ -198,8 +205,49 @@ func (n *Notices) record(ctx context.Context, e api.DeviceEvent, urgency string)
 }
 
 // show runs apart from the caller: a person's session bus is theirs to slow down.
+// A server that floods the device with changes gets a few popups, not a process
+// for each: the history keeps the rest.
+const (
+	popupsAtOnce    = 4
+	popupsPerMinute = 10
+	popupRateWindow = time.Minute
+)
+
 func (n *Notices) show(ctx context.Context, user, message, urgency string) {
-	n.popups.Go(func() { n.exec.popup(context.WithoutCancel(ctx), user, message, urgency) })
+	now := n.now()
+	n.mu.Lock()
+	recent := n.shown[:0]
+	for _, at := range n.shown {
+		if now.Sub(at) < popupRateWindow {
+			recent = append(recent, at)
+		}
+	}
+	n.shown = recent
+	if len(n.shown) >= popupsPerMinute {
+		n.mu.Unlock()
+		return
+	}
+	n.shown = append(n.shown, now)
+	n.mu.Unlock()
+	n.popups.Go(func() {
+		n.slots <- struct{}{}
+		defer func() { <-n.slots }()
+		n.exec.popup(context.WithoutCancel(ctx), user, message, urgency)
+	})
+}
+
+// localAccount says whether a name from the server is an ordinary account of
+// this device, which a popup may go to.
+func localAccount(name string) bool {
+	if !api.ValidUser(name) {
+		return false
+	}
+	u, err := user.Lookup(name)
+	if err != nil {
+		return false
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	return uid >= minUserUID
 }
 
 func (n *Notices) saveLocked() {
@@ -353,7 +401,7 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 		if before, known := n.state.Seen[r.ID]; first || (known && before == r.State) {
 			continue
 		}
-		if requestPopup(r.State, n.told[r.ID]) {
+		if requestPopup(r.State, n.told[r.ID]) && requestName("en", r) != "" && localAccount(r.User) {
 			popups = append(popups, r)
 		}
 	}
@@ -408,6 +456,13 @@ func (n *Notices) Stale() bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.now().Sub(n.asked) >= requestInterval
+}
+
+// Asked notes an attempt to learn the state of requests.
+func (n *Notices) Asked() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.asked = n.now()
 }
 
 // History is what one person may see: their requests, their events and those

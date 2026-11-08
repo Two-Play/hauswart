@@ -47,6 +47,8 @@ type Access struct {
 	// console that was in front before it.
 	shown    bool
 	returnTo string
+	// checking keeps checks from overlapping.
+	checking sync.Mutex
 }
 
 func OpenAccess(dir string, exec *Executor, notices *Notices, log *slog.Logger) *Access {
@@ -134,6 +136,12 @@ func (a *Access) Set(ctx context.Context, task api.Task) api.TaskResult {
 		return api.TaskResult{OK: false, Output: err.Error()}
 	}
 	a.mu.Unlock()
+	// What the block shows changes only once the block itself is saved.
+	if p.Mode == api.AccessFullscreen {
+		if err := a.exec.writeBlockContent(p); err != nil {
+			return api.TaskResult{OK: false, Output: err.Error()}
+		}
+	}
 
 	if p.Mode == api.AccessOpen {
 		a.tell(ctx, before, api.EventAccessOpen)
@@ -195,6 +203,10 @@ func (a *Access) Loop(ctx context.Context) {
 
 // Check ends a block whose time has come, and enforces the one in force.
 func (a *Access) Check(ctx context.Context) {
+	// One check at a time: a check that read the old block must not undo what
+	// Set just did.
+	a.checking.Lock()
+	defer a.checking.Unlock()
 	now := a.now()
 	a.mu.Lock()
 	var ended api.AccessPayload
@@ -205,7 +217,6 @@ func (a *Access) Check(ctx context.Context) {
 		}
 	}
 	block, active, fresh := a.block, a.activeLocked(now), a.fresh
-	a.fresh = false
 	a.mu.Unlock()
 	if ended.Mode != "" {
 		a.log.Info("a block ended on time", "mode", ended.Mode)
@@ -234,6 +245,10 @@ func (a *Access) Check(ctx context.Context) {
 		a.log.Warn("cannot see the sessions to block", "err", err)
 		return
 	}
+	// Only a check that saw the sessions uses up the grace of a new block.
+	a.mu.Lock()
+	a.fresh = false
+	a.mu.Unlock()
 	for uid, session := range sessions {
 		if number, _ := strconv.Atoi(uid); number < minUserUID || !affects(block, session.name) {
 			continue
@@ -247,16 +262,17 @@ func (a *Access) Check(ctx context.Context) {
 	}
 }
 
-// lockScreens locks every graphical session that is not locked, so that whoever
-// unlocks one is locked out again within a few seconds.
+// lockScreens locks every graphical session on each check, so that whoever
+// unlocks one is locked out again within a few seconds. LockedHint does not
+// count: the owner of a session can set it.
 func (a *Access) lockScreens(ctx context.Context, session *loginUser) {
 	for _, id := range session.ids {
-		shown, err := a.exec.Run(ctx, "loginctl", "show-session", id, "-p", "Type", "-p", "LockedHint")
+		shown, err := a.exec.Run(ctx, "loginctl", "show-session", id, "-p", "Type")
 		if err != nil {
 			continue
 		}
 		props := parseProperties(shown)
-		if (props["Type"] != "wayland" && props["Type"] != "x11") || props["LockedHint"] == "yes" {
+		if props["Type"] != "wayland" && props["Type"] != "x11" {
 			continue
 		}
 		if out, err := a.exec.Run(ctx, "loginctl", "lock-session", id); err != nil {
