@@ -1,0 +1,33 @@
+{
+  "taskTypes": { "terminal_open": "Live-Terminal öffnen" },
+  "terminal": {
+    "open": "Terminal",
+    "title": "Live-Terminal auf {{name}}",
+    "user": "Ausführen als",
+    "root": "root (Administrator)",
+    "minutes": "Endet nach (Minuten)",
+    "hint": "Die Shell läuft auf dem Gerät, bis du sie schließt, 15 Minuten lang niemand tippt oder die Zeit um ist. Wer am Gerät sitzt, sieht solange einen Hinweis. Start und Ende kommen ins Audit-Log, was du tippst, nicht.",
+    "unprotected": "Ein Live-Terminal braucht ein geschütztes Gerät, denn nur dessen hinterlegte Passkeys und Schlüssel können eine Shell freigeben.",
+    "noPasskeys": "Passkeys gehen in diesem Browser nicht. Öffne das Terminal stattdessen mit hauswart-admin terminal.",
+    "start": "Weiter",
+    "confirm": "Dein Passkey bestätigt eine Shell als {{user}} auf {{device}} für höchstens {{minutes}} Minuten, die innerhalb von 15 Minuten starten muss.",
+    "approve": "Mit Passkey freigeben",
+    "waiting": "Warte auf das Gerät …",
+    "running": "Verbunden · endet spätestens um {{time}}",
+    "ended": "Sitzung beendet: {{reason}}",
+    "exit": "Die Shell hat mit Code {{code}} geendet.",
+    "close": "Schließen",
+    "palette": "Live-Terminal öffnen"
+  },
+  "errors": {
+    "invalid_terminal": "Die Terminal-Sitzung ist ungültig ({{value}}).",
+    "terminal_unprotected": "Ein Live-Terminal braucht ein geschütztes Gerät.",
+    "terminal_gone": "Die Terminal-Sitzung ist beendet oder hat nie begonnen.",
+    "terminal_approval_too_long": "Eine freigegebene Terminal-Sitzung muss innerhalb von {{value}} starten."
+  },
+  "exposure": {
+    "title": "Der Server ist womöglich aus dem Internet erreichbar",
+    "listening": "Er lauscht auf der öffentlichen Adresse {{address}}. Hauswart ist fürs lokale Netz gedacht: Stell ihn hinter deinen Router oder ein VPN, oder starte ihn mit -allow-public, wenn das so gewollt ist.",
+    "reached": "Um {{time}} kam eine Anfrage von der öffentlichen Adresse {{address}}. Hauswart ist fürs lokale Netz gedacht: Prüfe die Portfreigaben deines Routers, oder starte ihn mit -allow-public, wenn das so gewollt ist."
+  }
+}

@@ -106,5 +106,8 @@
   "admin.signevery": "Sign everything…",
   "admin.signevery.title": "Sign these {{.Count}} tasks?",
   "history.event.software.flatpak_arrived": "Flatpak installed, new apps show after the next login",
-  "blocker.default": "This device is blocked for now."
+  "blocker.default": "This device is blocked for now.",
+  "terminal.live": "Live access: an admin works here as {{.User}} since {{.Since}}, approved by {{.Approver}}, until {{.Until}} at the latest.",
+  "history.event.terminal.started": "Live terminal as {{.Detail}} until {{.Until}}",
+  "history.event.terminal.ended": "Live terminal ended"
 }

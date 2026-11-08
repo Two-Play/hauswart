@@ -80,6 +80,10 @@ type Server struct {
 	oidc *oidcLogin
 	// flathub answers Flatpak searches, nil if they stay on the server.
 	flathub *catalog.Flathub
+	// terminals are the live shells that are open or about to be.
+	terminals terminalHub
+	// exposure is what makes the server look reachable from the internet.
+	exposure exposureWatch
 }
 
 type loginFailure struct {
@@ -110,6 +114,7 @@ func New(st *store.Store, ca *pki.CA, publicURL string, log *slog.Logger) (*Serv
 		waiters:       map[string]chan struct{}{},
 		failures:      map[string]*loginFailure{},
 		registrations: map[int64]registration{},
+		terminals:     terminalHub{sessions: map[string]*terminalSession{}},
 		dummyHash:     dummy,
 		index:         index,
 	}, nil
@@ -141,7 +146,11 @@ func (s *Server) Handler() http.Handler {
 		add(s, mux)
 	}
 
-	return securityHeaders(http.MaxBytesHandler(mux, maxBody))
+	limited := securityHeaders(http.MaxBytesHandler(mux, maxBody))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.seen(r)
+		limited.ServeHTTP(w, r)
+	})
 }
 
 // Janitor expires stale state until ctx ends.

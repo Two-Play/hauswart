@@ -105,6 +105,10 @@ const installed = join(tmp, 'installed');
 mkdirSync(fakeBin);
 writeFileSync(join(fakeBin, 'dnf5'), `#!/bin/sh\necho "$@" >> ${installed}\n`);
 chmodSync(join(fakeBin, 'dnf5'), 0o755);
+// The agent runs as this user, which cannot switch to another; the live
+// terminal gets a shell of this user instead.
+writeFileSync(join(fakeBin, 'runuser'), '#!/bin/sh\nexec /bin/sh -i\n');
+chmodSync(join(fakeBin, 'runuser'), 0o755);
 const agentEnv = { PATH: `${fakeBin}:${process.env.PATH}` };
 const agentDir = join(tmp, 'agent');
 
@@ -317,6 +321,64 @@ await until('the confirm button', () => clickButton('Confirm with passkey'));
 await until('the fake dnf', async () => readFileSync(installed, 'utf8').includes('vim'), 40);
 check('approved task ran on the device', true);
 await shot('3-approved');
+
+// --- a live terminal, approved with the admin's own passkey ---
+
+await loginAs('admin', adminPassword);
+await until('the approvals link', () => clickButton('Approvals'));
+await until('the passkey name field', () => ev(`!!document.querySelector('input[placeholder="For example: phone"]')`));
+await ev(`document.querySelector('input[placeholder="For example: phone"]').focus()`);
+await cdp('Input.insertText', { text: 'desk' });
+await until('the add button', () => clickButton('Add passkey'));
+const adminKey = await until('the admin passkey on the server', async () => {
+  const list = await call('GET', '/api/passkeys');
+  return list.body?.find((p) => p.name === 'desk');
+});
+admin(['passkeys', 'pin', '--device', deviceId, '--passkey', String(adminKey.id)], 'y\n');
+await until('the second pin', async () => {
+  const config = JSON.parse(readFileSync(join(agentDir, 'agent.json'), 'utf8'));
+  return config.passkeys?.length === 2;
+});
+await restartAgent();
+await until('the report with both pins', async () => {
+  const devices = await call('GET', '/api/devices');
+  return devices.body?.[0]?.report?.passkeys?.length === 2;
+}, 30);
+
+await navigate(`${ORIGIN}/`);
+await until('the dashboard', () => ev(`!!document.querySelector('nav')`));
+await ev(`window.violations = []; document.addEventListener('securitypolicyviolation', (e) => window.violations.push(e.violatedDirective + ' ' + e.blockedURI))`);
+await until('the terminal button', () => clickButton('Terminal'));
+await until('the terminal form', async () => (await pageText()).includes('Run as'));
+await until('the continue button', () => clickButton('Continue'));
+await until('the terminal confirmation', async () => (await pageText()).includes('Your passkey confirms a shell as root'));
+await until('the approve button', () => clickButton('Approve with passkey'));
+const connected = await until('the connected terminal', async () => (await pageText()).includes('Connected'), 60).catch(() => false);
+check('the terminal connects', connected, connected ? '' : `${JSON.stringify((await call('GET', '/api/tasks')).body?.find((t) => t.type === 'terminal.open'))}\n${(await pageText()).slice(-300)}\n${readFileSync(agent.log, 'utf8').slice(-1500)}\n${readFileSync(server.log, 'utf8').slice(-1500)}`);
+await ev(`document.querySelector('.xterm-helper-textarea').focus()`);
+await cdp('Input.insertText', { text: 'echo term-$((6*7))' });
+await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+const screen = await until('the shell output', async () => {
+  const text = await ev(`document.querySelector('.xterm-rows')?.innerText ?? ''`);
+  return text.includes('term-42') ? text : undefined;
+}, 20).catch((err) => String(err));
+check('a live terminal runs through the dashboard', screen.includes('term-42'), screen.includes('term-42') ? '' : screen.slice(-200));
+const violations = await ev('window.violations');
+check('the terminal keeps to the content security policy', violations.length === 0, violations.join(', '));
+await shot('3b-terminal');
+const audit = await call('GET', '/api/audit');
+check('the audit log has the start', JSON.stringify(audit.body).includes('terminal.started'));
+check('and not what was typed', !JSON.stringify(audit.body).includes('term-'));
+await ev(`document.querySelector('.xterm-helper-textarea').focus()`);
+await cdp('Input.insertText', { text: 'exit' });
+await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+const ended = await until('the end of the session', async () => {
+  const text = await pageText();
+  return text.includes('Session ended') ? text : undefined;
+}, 20).catch((err) => String(err));
+check('the session ends with the shell', ended.includes('shell ended'), ended.includes('shell ended') ? '' : ended.slice(-300));
 
 // --- a hacked server: straight into the database ---
 
