@@ -21,6 +21,11 @@ export const ACTION_FIELDS: Record<string, TaskField[]> = {
   'group.add': [user, group],
   'group.remove': [user, group],
   'screen.extend': [user, { name: 'extend_minutes', kind: 'number', required: true }],
+  'access.set': [
+    { name: 'access_mode', kind: 'select', required: true, options: ['screen', 'login', 'open'], hint: 'access_hint' },
+    { name: 'access_users', label: 'access_users' },
+    { name: 'access_hours', label: 'access_hours', kind: 'number' },
+  ],
 };
 
 /** Adds what these tasks need beyond the form. */
@@ -31,6 +36,17 @@ export function addActionPayload(type: string, payload: Record<string, unknown>)
   if (payload.extend_minutes !== undefined) {
     payload.until = new Date(Date.now() + Number(payload.extend_minutes) * 60_000).toISOString();
     delete payload.extend_minutes;
+  }
+  if (type === 'access.set') {
+    payload.mode = payload.access_mode;
+    const users = String(payload.access_users ?? '').split(/[\s,]+/).filter(Boolean);
+    if (users.length > 0) payload.users = users;
+    if (payload.access_hours !== undefined) {
+      payload.until = new Date(Date.now() + Number(payload.access_hours) * 3_600_000).toISOString();
+    }
+    delete payload.access_mode;
+    delete payload.access_users;
+    delete payload.access_hours;
   }
   if (payload.delay_minutes !== undefined) {
     payload.delay_minutes = Number(payload.delay_minutes);

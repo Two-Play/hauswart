@@ -87,7 +87,9 @@ type userService struct {
 	filed   func()
 	// suspended says that the server holds this device back.
 	suspended func() bool
-	now       func() time.Time
+	// access says how a person is blocked from the device.
+	access func(user string) *api.AccessStatus
+	now    func() time.Time
 
 	mu       sync.Mutex
 	asked    map[uint32][]time.Time
@@ -243,6 +245,9 @@ func (u *userService) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		status.PolicyIssues, status.Nextcloud = u.policy.userView()
 		status.Suspended = u.suspended != nil && u.suspended()
+		if u.access != nil {
+			status.Access = u.access(name)
+		}
 		u.mu.Lock()
 		u.recent[uid] = recentStatus{status, now}
 		u.mu.Unlock()
@@ -506,6 +511,7 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 		},
 		filed:     a.askForRequests,
 		suspended: a.notices.Suspended,
+		access:    a.access.StatusFor,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)

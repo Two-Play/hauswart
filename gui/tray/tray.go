@@ -365,6 +365,13 @@ func (t *App) show(status api.UserStatus, err error) {
 	if status.PolicyIssues {
 		t.notice.SetText(lang.L("policy.issues"))
 	}
+	if a := status.Access; a != nil {
+		until := lang.L("access.lasting")
+		if !a.Until.IsZero() {
+			until = t.clock(a.Until)
+		}
+		t.notice.SetText(lang.L("access."+a.Mode, map[string]any{"Until": until}))
+	}
 	if status.Suspended {
 		t.notice.SetText(lang.L("suspended"))
 		t.sendButton.Disable()
