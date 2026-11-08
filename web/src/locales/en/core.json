@@ -49,7 +49,8 @@
     "suspend": "Suspend",
     "resume": "Resume",
     "access_screen": "Screen blocked",
-    "access_login": "Logins refused"
+    "access_login": "Logins refused",
+    "access_fullscreen": "Full-screen block"
   },
   "actions": {
     "title": "Action for {{name}}",

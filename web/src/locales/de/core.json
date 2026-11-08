@@ -49,7 +49,8 @@
     "suspend": "Sperren",
     "resume": "Entsperren",
     "access_screen": "Bildschirm gesperrt",
-    "access_login": "Anmeldung verweigert"
+    "access_login": "Anmeldung verweigert",
+    "access_fullscreen": "Vollbild-Sperre"
   },
   "actions": {
     "title": "Aktion für {{name}}",
