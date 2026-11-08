@@ -30,7 +30,7 @@
     "empty": "Noch keine Geräte angemeldet.",
     "online": "Online",
     "offline": "Offline",
-    "revoked": "Gesperrt",
+    "revoked": "Entfernt",
     "unknownDistro": "Unbekanntes System",
     "kernel": "Kernel {{version}}",
     "memory": "Arbeitsspeicher",
@@ -39,11 +39,14 @@
     "load": "Last {{load}} auf {{cpus}} Kernen",
     "noBackend": "kein Paketmanager",
     "action": "Aktion ausführen",
-    "revoke": "Sperren",
-    "revokeTitle": "{{name}} sperren?",
-    "revokeText": "Das Gerät verliert sofort den Zugriff und muss neu angemeldet werden.",
-    "revokeConfirm": "Gerät sperren",
-    "protected": "Geschützt"
+    "revoke": "Entfernen",
+    "revokeTitle": "{{name}} entfernen?",
+    "revokeText": "Das ist endgültig: Das Gerät verliert sofort den Zugriff und kommt nur durch neues Einschreiben zurück. Um es eine Weile zurückzuhalten, sperre es stattdessen.",
+    "revokeConfirm": "Gerät entfernen",
+    "protected": "Geschützt",
+    "suspended": "Gesperrt",
+    "suspend": "Sperren",
+    "resume": "Entsperren"
   },
   "actions": {
     "title": "Aktion für {{name}}",
@@ -204,6 +207,7 @@
     "unknown_request_kind": "Die Anfrageart {{value}} ist unbekannt.",
     "invalid_keys": "Die Signaturschlüssel sind ungültig.",
     "use_admin_tool": "Dieses Gerät ist geschützt. Nutze hauswart-admin auf deinem Rechner.",
-    "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur."
+    "not_waiting_for_signature": "Diese Aufgabe wartet nicht auf eine Signatur.",
+    "device_suspended": "Das Gerät ist in Hauswart gesperrt."
   }
 }

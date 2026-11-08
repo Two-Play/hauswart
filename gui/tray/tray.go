@@ -68,25 +68,27 @@ type App struct {
 	// lines are the history, newest first.
 	lines []historyLine
 
-	screen   *widget.Label
-	shares   *widget.Label
-	notice   *widget.Label
-	tabs     *container.AppTabs
-	request  *container.TabItem
-	cloud    *container.TabItem
-	history  *widget.List
-	empty    *widget.Label
-	kind     *widget.Select
-	detail   *widget.SelectEntry
-	reason   *widget.Entry
-	result   *widget.Label
-	cloudURL *widget.Label
-	cloudTip *widget.Label
-	password *widget.Entry
-	saveKey  *widget.Button
-	saved    *widget.Label
-	menuTime *fyne.MenuItem
-	menu     *fyne.Menu
+	screen  *widget.Label
+	shares  *widget.Label
+	notice  *widget.Label
+	tabs    *container.AppTabs
+	request *container.TabItem
+	cloud   *container.TabItem
+	history *widget.List
+	empty   *widget.Label
+	kind    *widget.Select
+	detail  *widget.SelectEntry
+	reason  *widget.Entry
+	result  *widget.Label
+	// sendButton is off while the device is suspended.
+	sendButton *widget.Button
+	cloudURL   *widget.Label
+	cloudTip   *widget.Label
+	password   *widget.Entry
+	saveKey    *widget.Button
+	saved      *widget.Label
+	menuTime   *fyne.MenuItem
+	menu       *fyne.Menu
 }
 
 // New builds the app. Refresh fills it.
@@ -148,7 +150,8 @@ func (t *App) requestForm() fyne.CanvasObject {
 		widget.NewFormItem("", t.detail),
 		widget.NewFormItem(lang.L("request.reason"), t.reason),
 	)
-	return container.NewVBox(form, widget.NewButton(lang.L("request.send"), t.send), t.result)
+	t.sendButton = widget.NewButton(lang.L("request.send"), t.send)
+	return container.NewVBox(form, t.sendButton, t.result)
 }
 
 // suggest offers names for the word being typed. The options are the whole
@@ -361,6 +364,14 @@ func (t *App) show(status api.UserStatus, err error) {
 	t.notice.SetText("")
 	if status.PolicyIssues {
 		t.notice.SetText(lang.L("policy.issues"))
+	}
+	if status.Suspended {
+		t.notice.SetText(lang.L("suspended"))
+		t.sendButton.Disable()
+		t.result.SetText(lang.L("suspended"))
+	} else if t.sendButton.Disabled() {
+		t.sendButton.Enable()
+		t.result.SetText("")
 	}
 	t.showCloud(status.Nextcloud)
 }

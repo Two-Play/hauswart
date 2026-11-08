@@ -53,6 +53,7 @@ export interface Device {
   id: string;
   hostname: string;
   revoked: boolean;
+  suspended: boolean;
   last_seen: number;
   report: Report | null;
   warnings?: Warning[];
