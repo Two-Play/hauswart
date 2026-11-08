@@ -170,11 +170,18 @@ type SecurityRule struct {
 }
 
 // ScreenTimeRule says when a user may be logged in. A day without a window is a
-// day without a session.
+// day without a session, unless the rule has no windows at all and a daily
+// quota: then any time of the day counts, up to the quota.
 type ScreenTimeRule struct {
 	User    string   `json:"user"`
 	Windows []Window `json:"windows"`
+	// DailyMinutes is how long someone may be at the desktop each day, within
+	// the windows. 0 means no quota.
+	DailyMinutes int `json:"daily_minutes,omitempty"`
 }
+
+// AllDay is every day from midnight to midnight.
+var AllDay = Window{Days: []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}, Start: "00:00", End: "24:00"}
 
 // PolicyStatus is what a device reports about its policy.
 type PolicyStatus struct {
@@ -354,6 +361,9 @@ func CheckPolicy(p Policy) error {
 		}
 		if len(rule.Windows) > maxRuleWindows {
 			return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
+		}
+		if rule.DailyMinutes < 0 || rule.DailyMinutes > 24*60 {
+			return Fail(ErrInvalidQuota, rule.User)
 		}
 		for _, window := range rule.Windows {
 			if err := checkTimeWindow(window); err != nil {
