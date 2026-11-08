@@ -102,5 +102,7 @@
   "history.event.access.screen": "Bildschirm gesperrt bis {{.Until}}",
   "history.event.access.login": "Anmeldung verweigert bis {{.Until}}",
   "history.event.access.ending": "Sitzung endet um {{.Until}}",
-  "history.event.access.open": "Zugang wieder offen"
+  "history.event.access.open": "Zugang wieder offen",
+  "admin.signevery": "Alles signieren …",
+  "admin.signevery.title": "Diese {{.Count}} Aufgaben signieren?"
 }

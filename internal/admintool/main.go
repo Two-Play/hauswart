@@ -265,7 +265,7 @@ func usage() {
   trust-command           print the command to protect an enrolled device
   devices                 list devices
   name ID NAME            name a device, which is needed before signing for it
-  approve                 review and sign waiting tasks
+  approve [--all]         review and sign waiting tasks; --all shows them all and asks once
   start-password --device ID --user NAME
   rotate-keys --device ID replace the keys pinned on a device
   passkeys list           show registered passkeys and what is pinned from here
@@ -603,7 +603,10 @@ type queued struct {
 	CreatedBy string          `json:"created_by"`
 }
 
-func approve(_ []string) error {
+func approve(args []string) error {
+	fs := flag.NewFlagSet("approve", flag.ExitOnError)
+	all := fs.Bool("all", false, "show every waiting task, then sign them all after one question")
+	fs.Parse(args)
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -625,6 +628,9 @@ func approve(_ []string) error {
 		return err
 	}
 	input := bufio.NewReader(os.Stdin)
+	if *all {
+		return approveAll(cfg, key, list, queue, input)
+	}
 	// Policies that were accepted for every device they are queued for.
 	acceptedPolicies := map[string]bool{}
 	for i, task := range queue {
@@ -676,6 +682,47 @@ func approve(_ []string) error {
 			fmt.Println("Left in the queue.")
 		}
 	}
+	return nil
+}
+
+// approveAll shows every waiting task in full and asks once. What cannot be
+// signed is shown with its reason and stays in the queue.
+func approveAll(cfg *config, key ssh.Signer, list map[string]serverDevice, queue []queued, input *bufio.Reader) error {
+	var items []Item
+	for i, task := range queue {
+		item := prepare(cfg, list, task, queue[i+1:])
+		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
+		if item.Problem != "" {
+			fmt.Printf("  %s\n  Left in the queue.\n", item.Problem)
+			continue
+		}
+		fmt.Printf("  Device: %s (%s)\n  %s\n", item.DeviceName, task.DeviceID, item.Text)
+		if item.Changes != "" {
+			fmt.Println(item.Changes)
+		}
+		if item.Warning != "" {
+			fmt.Println(item.Warning)
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	fmt.Printf("\nSign all %d tasks above? [y/N] ", len(items))
+	line, err := input.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	if strings.ToLower(strings.TrimSpace(line)) != "y" {
+		fmt.Println("Left in the queue.")
+		return nil
+	}
+	for _, item := range items {
+		if err := signItem(cfg, key, list, item); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("Signed %d tasks.\n", len(items))
 	return nil
 }
 
