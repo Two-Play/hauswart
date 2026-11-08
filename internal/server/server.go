@@ -156,7 +156,8 @@ func (s *Server) Janitor(ctx context.Context) {
 	}
 }
 
-const cspBase = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+// img-src allows data: for the preview of a picture someone chose themselves.
+const cspBase = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
