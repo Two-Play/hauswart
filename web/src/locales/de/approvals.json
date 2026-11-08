@@ -33,6 +33,9 @@
     "invalid_approval_mode": "Die Freigabeart {{value}} ist ungültig.",
     "approvals_too_large": "Eine Freigabeliste hat mehr als {{value}} Einträge.",
     "request_blocked": "Anfragen dieser Art sind auf diesem Gerät nicht erlaubt.",
-    "admin_decides": "Über diese Anfrage entscheidet nur ein Admin."
+    "admin_decides": "Über diese Anfrage entscheidet nur ein Admin.",
+    "invalid_catalog": "Der Paketkatalog ist ungültig: {{value}}.",
+    "unknown_catalog": "Dieser Paketkatalog ist noch nicht bekannt.",
+    "invalid_search": "Diese Suche ist ungültig: {{value}}."
   }
 }

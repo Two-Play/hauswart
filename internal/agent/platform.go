@@ -32,6 +32,9 @@ type Backend struct {
 	Present func(out string, err error) bool
 	// List prints what is installed, for parseInstalled.
 	List []string
+	// Available prints the names of what could be installed, for
+	// parseCatalog. Without it, searches only find what is installed.
+	Available []string
 }
 
 func rpmQuery(pkg string) []string { return []string{"rpm", "-q", "--whatprovides", pkg} }
@@ -92,15 +95,19 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 	case has("dnf5"):
 		// Like rpm-ostree, the dnf5 of a freshly installed Fedora 44 refuses "--".
 		// Names are validated to not start with a dash.
-		return simpleBackend("dnf5",
+		backend := simpleBackend("dnf5",
 			[]string{"dnf5", "install", "-y"},
 			[]string{"dnf5", "remove", "-y"},
 			[]string{"dnf5", "upgrade", "-y"})
+		backend.Available = []string{"dnf5", "-q", "repoquery", "--available", "--qf", "%{name}\\n"}
+		return backend
 	case has("dnf"):
-		return simpleBackend("dnf",
+		backend := simpleBackend("dnf",
 			[]string{"dnf", "install", "-y", "--"},
 			[]string{"dnf", "remove", "-y", "--"},
 			[]string{"dnf", "upgrade", "-y"})
+		backend.Available = []string{"dnf", "-q", "repoquery", "--available", "--qf", "%{name}"}
+		return backend
 	case has("apt-get"):
 		return &Backend{
 			Name:    "apt",
@@ -113,13 +120,16 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			Present: func(out string, err error) bool {
 				return err == nil && strings.TrimSpace(out) == "installed"
 			},
-			List: []string{"dpkg-query", "-W", "-f=${db:Status-Status} ${binary:Package} ${Version}\\n"},
+			List:      []string{"dpkg-query", "-W", "-f=${db:Status-Status} ${binary:Package} ${Version}\\n"},
+			Available: []string{"apt-cache", "pkgnames"},
 		}
 	case has("zypper"):
-		return simpleBackend("zypper",
+		backend := simpleBackend("zypper",
 			[]string{"zypper", "--non-interactive", "install", "--"},
 			[]string{"zypper", "--non-interactive", "remove", "--"},
 			[]string{"zypper", "--non-interactive", "update"})
+		backend.Available = []string{"zypper", "--non-interactive", "-q", "search", "-t", "package"}
+		return backend
 	case has("pacman"):
 		backend := simpleBackend("pacman",
 			[]string{"pacman", "-S", "--noconfirm", "--needed", "--"},
@@ -127,6 +137,7 @@ func detectBackend(has func(string) bool, atomic bool) *Backend {
 			[]string{"pacman", "-Syu", "--noconfirm"})
 		backend.Query = func(pkg string) []string { return []string{"pacman", "-Q", pkg} }
 		backend.List = []string{"pacman", "-Q"}
+		backend.Available = []string{"pacman", "-Slq"}
 		return backend
 	}
 	return nil
