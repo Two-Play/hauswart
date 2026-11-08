@@ -779,9 +779,21 @@ then. Flatpaks come from Flathub, through the server: only the search term goes
 there. To turn that off, add `-flathub-search=false` to `HAUSWART_ARGS` in
 `/etc/hauswart/server.env`.
 
-## Notifications about requests
+## Notifications for admins
 
-To hear about new requests, edit `/etc/hauswart/notify.env`. Everything is off until
+Hauswart tells admins through ntfy, mail or both:
+
+- **New request:** who asks for what kind of thing, on which device.
+- **Failed task:** of any kind, with the device and, for a request, who asked. What
+  the device said stays in the dashboard, under **Tasks**.
+- **New deviation from a policy:** a device that cannot reach its policy, such as a
+  Flatpak that does not install. A deviation is told once, not with every report,
+  and what the device put right itself is not told at all.
+
+The dashboard counts the same at **Tasks**, for the failures of the last day, and at
+**Groups**, for devices that differ from their policy.
+
+To turn notifications on, edit `/etc/hauswart/notify.env`. Everything is off until
 you do. Either channel works alone.
 
 ```bash
