@@ -892,6 +892,34 @@ func clipDetail(s string) string {
 	return s
 }
 
+// FailedTasksSince counts the tasks that failed since a moment.
+func (s *Store) FailedTasksSince(ctx context.Context, since time.Time) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE status = 'failed' AND finished_at >= ?`, since.Unix()).Scan(&n)
+	return n, err
+}
+
+// TaskSummary is what a notification says about a task.
+type TaskSummary struct {
+	Type      string
+	Hostname  string
+	Requester string
+}
+
+// TaskSummary looks up the kind and the device of a task, and who asked for it
+// if it came from a request.
+func (s *Store) TaskSummary(ctx context.Context, id string) (TaskSummary, error) {
+	var t TaskSummary
+	err := s.db.QueryRowContext(ctx, `
+		SELECT t.type, d.hostname, COALESCE((SELECT u.username FROM requests r JOIN users u ON u.id = r.user_id
+			WHERE r.task_id = t.id), '')
+		FROM tasks t JOIN devices d ON d.id = t.device_id WHERE t.id = ?`, id).Scan(&t.Type, &t.Hostname, &t.Requester)
+	if errors.Is(err, sql.ErrNoRows) {
+		return t, ErrNotFound
+	}
+	return t, err
+}
+
 // CreateLinkedTask queues a task, waiting for a signature if signing is set, and
 // links it to a request in the same transaction. An empty request links nothing.
 func (s *Store) CreateLinkedTask(ctx context.Context, deviceID, taskType string, payload []byte, createdBy string, signing bool, requestID string) (string, error) {

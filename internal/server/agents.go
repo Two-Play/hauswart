@@ -121,6 +121,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, id string)
 		s.internal(w, err)
 		return
 	}
+	s.notifyDeviations(rep.Hostname, before, &rep)
 	// A device that just became protected can receive its policy from now on.
 	if rep.Protected && !before.Protected {
 		if err := s.syncPolicies(r, "agent:"+id, []string{id}); err != nil {
@@ -201,6 +202,9 @@ func (s *Server) handleResult(w http.ResponseWriter, r *http.Request, id string)
 	if err != nil {
 		s.internal(w, err)
 		return
+	}
+	if !res.OK {
+		s.notifyFailure(r.Context(), r.PathValue("id"))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
