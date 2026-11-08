@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
+import { useNavigation } from '../navigation';
 import type { DeviceGroup } from './GroupsView';
 import { showError, Loaded } from '../ui';
 import { knownNames, KnownNamesContext } from './NameInput';
@@ -59,6 +60,7 @@ export function ScreenTimeView() {
   const { t } = useTranslation();
   const groups = useResource<DeviceGroup[]>('/api/groups');
   const devices = useResource<Device[]>('/api/devices');
+  const navigation = useNavigation();
   return (
     <Stack>
       <Title order={2}>{t('nav.screentime')}</Title>
@@ -68,7 +70,12 @@ export function ScreenTimeView() {
       <Loaded data={groups.data} error={groups.error}>
         {(list) =>
           list.length === 0 ? (
-            <Text c="dimmed">{t('screen.noGroups')}</Text>
+            <Stack align="flex-start">
+              <Text c="dimmed">{t('screen.noGroups')}</Text>
+              <Button variant="light" onClick={() => navigation.open('groups')}>
+                {t('screen.toGroups')}
+              </Button>
+            </Stack>
           ) : (
             list.map((group) => <GroupScreenTime key={group.id} group={group} devices={devices.data ?? []} />)
           )
