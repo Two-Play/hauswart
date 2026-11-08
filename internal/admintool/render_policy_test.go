@@ -244,3 +244,15 @@ func TestQuotaIsShown(t *testing.T) {
 		t.Fatalf("got %s", text)
 	}
 }
+
+func TestNetworksAreShownWithoutThePassword(t *testing.T) {
+	text := strings.Join(policyLines(api.Policy{
+		Wifi:     []api.WifiRule{{SSID: "Büro", Password: "very-secret-pw", Security: "wpa3"}},
+		Printers: []api.PrinterRule{{Name: "flur", URI: "ipp://drucker.local/ipp/print", Default: true}},
+	}), "\n")
+	if !strings.Contains(text, `join Wi-Fi "Büro" with WPA3 and a password of 14 characters`) ||
+		!strings.Contains(text, "printer flur at ipp://drucker.local/ipp/print for everyone, as the default") ||
+		strings.Contains(text, "very-secret") {
+		t.Fatalf("got %s", text)
+	}
+}

@@ -72,6 +72,10 @@ type Policy struct {
 	Mounts []MountRule `json:"mounts,omitempty"`
 	// Nextcloud sets up the shared cloud for everyone on the device.
 	Nextcloud *NextcloudRule `json:"nextcloud,omitempty"`
+	// Wifi are networks the device joins on its own, and Printers the printers
+	// everyone on it can use.
+	Wifi     []WifiRule    `json:"wifi,omitempty"`
+	Printers []PrinterRule `json:"printers,omitempty"`
 	// Apps says what some people may start. Everyone else is left alone.
 	Apps []AppRule `json:"apps,omitempty"`
 }
@@ -109,6 +113,56 @@ type MountRule struct {
 	Server string `json:"server"`
 	Share  string `json:"share"`
 	Folder string `json:"folder"`
+}
+
+// WifiRule is a network with a password, WPA2 or WPA3 Personal.
+type WifiRule struct {
+	SSID     string `json:"ssid"`
+	Password string `json:"password"`
+	Hidden   bool   `json:"hidden,omitempty"`
+	// Security is wpa2 or wpa3. Empty means wpa2.
+	Security string `json:"security,omitempty"`
+}
+
+// PrinterRule is a printer that speaks IPP Everywhere, so it needs no driver.
+type PrinterRule struct {
+	Name    string `json:"name"`
+	URI     string `json:"uri"`
+	Default bool   `json:"default,omitempty"`
+}
+
+const maxPolicyNetworks = 16
+
+var (
+	printerNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+	// printerURIRe takes ipp and ipps with a host, a port and a path, and
+	// nothing a shell, CUPS or a log could read otherwise.
+	printerURIRe = regexp.MustCompile(`^ipps?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$`)
+)
+
+func checkWifi(rule WifiRule) error {
+	if len(rule.SSID) < 1 || len(rule.SSID) > 32 || !ValidText(rule.SSID, 32) {
+		return Fail(ErrInvalidWifi, "ssid")
+	}
+	if len(rule.Password) < 8 || len(rule.Password) > 63 {
+		return Fail(ErrInvalidWifi, rule.SSID)
+	}
+	for _, r := range rule.Password {
+		if r < 0x20 || r > 0x7e {
+			return Fail(ErrInvalidWifi, rule.SSID)
+		}
+	}
+	if rule.Security != "" && rule.Security != "wpa2" && rule.Security != "wpa3" {
+		return Fail(ErrInvalidWifi, rule.SSID)
+	}
+	return nil
+}
+
+func checkPrinter(rule PrinterRule) error {
+	if !printerNameRe.MatchString(rule.Name) || !printerURIRe.MatchString(rule.URI) {
+		return Fail(ErrInvalidPrinter, rule.Name)
+	}
+	return nil
 }
 
 // How Nextcloud appears on a device.
@@ -342,6 +396,26 @@ func CheckPolicy(p Policy) error {
 			return Fail(ErrInvalidMount, mount.Server+"/"+mount.Share)
 		}
 	}
+	if len(p.Wifi) > maxPolicyNetworks || len(p.Printers) > maxPolicyNetworks {
+		return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
+	}
+	for _, rule := range p.Wifi {
+		if err := checkWifi(rule); err != nil {
+			return err
+		}
+	}
+	defaults := 0
+	for _, rule := range p.Printers {
+		if err := checkPrinter(rule); err != nil {
+			return err
+		}
+		if rule.Default {
+			defaults++
+		}
+	}
+	if defaults > 1 {
+		return Fail(ErrPolicyConflict, "more than one default printer")
+	}
 	if len(p.Apps) > maxScreenRules {
 		return Fail(ErrPolicyTooLarge, strconv.Itoa(maxPolicyBytes>>10))
 	}
@@ -469,6 +543,20 @@ func hasDuplicates(p Policy) bool {
 			return true
 		}
 		names[ca.Name] = true
+	}
+	networks := map[string]bool{}
+	for _, rule := range p.Wifi {
+		if networks[rule.SSID] {
+			return true
+		}
+		networks[rule.SSID] = true
+	}
+	printers := map[string]bool{}
+	for _, rule := range p.Printers {
+		if printers[rule.Name] {
+			return true
+		}
+		printers[rule.Name] = true
 	}
 	folders := map[string]bool{}
 	for _, mount := range p.Mounts {
@@ -655,6 +743,20 @@ func MergePolicies(groups map[string]Policy) (Policy, []PolicyConflict) {
 		func(c CAInstallPayload) string { return c.Name })
 	out.Mounts = keyed(m, "mount", names, groups, func(p Policy) []MountRule { return p.Mounts },
 		func(r MountRule) string { return r.Folder })
+	out.Wifi = keyed(m, "wifi", names, groups, func(p Policy) []WifiRule { return p.Wifi },
+		func(r WifiRule) string { return r.SSID })
+	out.Printers = keyed(m, "printer", names, groups, func(p Policy) []PrinterRule { return p.Printers },
+		func(r PrinterRule) string { return r.Name })
+	// Two groups can each name a default printer, and only one can be it.
+	var defaults []string
+	for _, printer := range out.Printers {
+		if printer.Default {
+			defaults = append(defaults, printer.Name)
+		}
+	}
+	if len(defaults) > 1 {
+		m.conflict("default printer "+strings.Join(defaults, ", "), names...)
+	}
 	out.Apps = keyed(m, "app rule of", names, groups, func(p Policy) []AppRule { return p.Apps },
 		func(r AppRule) string { return r.User })
 	out.ScreenTime = keyed(m, "screen time of", names, groups, func(p Policy) []ScreenTimeRule { return p.ScreenTime },

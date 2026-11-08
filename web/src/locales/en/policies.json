@@ -80,7 +80,20 @@
     "dailyMinutes": "Minutes per day",
     "dailyMinutesHint": "Empty for no limit",
     "quotaAllDay": "No windows: any time of the day, up to the minutes per day.",
-    "noWindows": "No windows and no minutes: no session at all."
+    "noWindows": "No windows and no minutes: no session at all.",
+    "wifi": "Wi-Fi",
+    "wifiHint": "Networks the devices join on their own, WPA2 or WPA3 with a password. The password is in the policy: admins can see it, and on the device only root can read it.",
+    "ssid": "Network name (SSID)",
+    "wifiPassword": "Password",
+    "wifiSecurity": "Security",
+    "wifiHidden": "Hidden network",
+    "addWifi": "Add Wi-Fi",
+    "printers": "Printers",
+    "printersHint": "Printers for everyone on the device, without a driver: the printer has to speak IPP Everywhere, as most printers since 2012 do.",
+    "printerName": "Name",
+    "printerUri": "Address",
+    "printerDefault": "Default printer",
+    "addPrinter": "Add printer"
   },
   "errors": {
     "policy_too_large": "The policy has too many entries or is larger than {{value}} KiB.",
@@ -89,7 +102,9 @@
     "invalid_reboot": "The restart rule is not valid: {{value}}",
     "invalid_window": "The time window is not valid: {{value}}",
     "policy_conflict": "The policy contradicts itself: {{value}}",
-    "invalid_extension": "An extension needs an end at most {{value}} from now."
+    "invalid_extension": "An extension needs an end at most {{value}} from now.",
+    "invalid_wifi": "The network {{value}} needs a name of 1 to 32 bytes, a password of 8 to 63 plain characters, and WPA2 or WPA3.",
+    "invalid_printer": "The printer {{value}} needs a name of letters, digits, - and _, and an ipp:// or ipps:// address."
   },
   "fields": {
     "extend_minutes": "More time in minutes"
