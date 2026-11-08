@@ -103,6 +103,11 @@ first run takes 10 to 20 minutes, later runs start from the same state. It print
 dashboard address, the password and how to sign tasks. It needs KVM, QEMU and
 `make packages`, and keeps its data in `~/.cache/hauswart-playground`.
 
+The server is `https://hauswart.localhost:18600`, a name browsers send to this
+machine by themselves, so passkeys work. `make playground-trust` puts the playground
+CA into the browsers of your account, after asking. A playground from before the
+name starts its server over and enrolls the VM again, keeping the desktop.
+
 | Command | Checks |
 | --- | --- |
 | `make regression` | All suites below at once, with a table of how long each took. `make regression-fast` leaves out the virtual machines |

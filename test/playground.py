@@ -31,9 +31,17 @@ sys.path.insert(0, f"{ROOT}/test")
 import e2e  # noqa: E402
 import vm  # noqa: E402
 
+# A DNS name, because passkeys refuse bare addresses. Browsers send *.localhost to
+# this machine by themselves, and the VM gets the name in /etc/hosts.
+HOST = os.environ.get("PLAYGROUND_HOST", "hauswart.localhost")
+URL = f"https://{HOST}:{PORT}"
+vm.GUEST_URL = URL
+
 HOME = os.environ.get("PLAYGROUND_DIR", os.path.expanduser("~/.cache/hauswart-playground"))
 VERSION = os.environ.get("VERSION", "0.1.0")
-SSH_PORT = 2250
+SSH_PORT = int(os.environ.get("PLAYGROUND_SSH_PORT", "2250"))
+# gtk shows the VM in a window, none runs it without one, as for a test.
+DISPLAY = os.environ.get("PLAYGROUND_DISPLAY", "gtk")
 NAME = "playground"
 PERSON, PERSON_PASSWORD = "anna", "anna"
 PERSON_WEB_PASSWORD = "anna-password"  # the dashboard wants at least 10 characters
@@ -83,7 +91,7 @@ def start_server():
     log = open(f"{HOME}/server.log", "a")
     before = open(f"{HOME}/server.log").read().count("listening")
     server = subprocess.Popen([f"{HOME}/bin/hauswart-server", "-addr", f"127.0.0.1:{PORT}", "-data", f"{HOME}/data",
-                               "-url", vm.GUEST_URL, "-dev-http", f"127.0.0.1:{PLAIN_PORT}", "-notify-env", f"{HOME}/notify.env", "-oidc-env", f"{HOME}/oidc.env"],
+                               "-url", URL, "-hosts", "localhost,127.0.0.1", "-dev-http", f"127.0.0.1:{PLAIN_PORT}", "-notify-env", f"{HOME}/notify.env", "-oidc-env", f"{HOME}/oidc.env"],
                               stdout=log, stderr=log)
     for _ in range(100):
         if open(f"{HOME}/server.log").read().count("listening") > before:
@@ -159,7 +167,8 @@ def update_device(machine, tray, state):
         state["tray"] = digest(tray)
 
 
-def first_run(machine, signer, tray, kde, state):
+def connect_tool(signer, state):
+    """Logs the signing tool in to a new server and gives it the keys."""
     admin = login()
     command = admin.call("POST", "/api/enroll-tokens")[1]["command"]
     fingerprint = re.search(r"--ca-fingerprint (\w+)", command).group(1)
@@ -168,10 +177,33 @@ def first_run(machine, signer, tray, kde, state):
         sys.exit(done.stderr)
     signer.run("keys", "add", f"{HOME}/primary.pub", f"{HOME}/offline.pub")
     state["fingerprint"] = fingerprint
+    return admin
+
+
+def ensure_host(machine):
+    """Lets the VM find the server by its name, through the gateway of QEMU."""
+    machine.ssh(f"grep -q ' {HOST}$' /etc/hosts || echo '10.0.2.2 {HOST}' >>/etc/hosts")
+
+
+def enroll_again(machine, signer, state):
+    """Enrolls the VM with a new server and keeps its desktop: playgrounds from
+    before the server had a name need a new CA for it."""
+    print(f"enrolling the VM again, now with {URL}", flush=True)
+    admin = connect_tool(signer, state)
+    ensure_host(machine)
+    machine.ssh("systemctl disable --now hauswart-agent; rm -rf /var/lib/hauswart.old; "
+                "mv /var/lib/hauswart /var/lib/hauswart.old; mkdir -p /var/lib/hauswart")
+    state["device"] = vm.protected_agent(machine, admin, signer, f"{HOME}/bin/hauswart-agent", f"{NAME}-vm")
+    state.pop("agent", None)
+
+
+def first_run(machine, signer, tray, kde, state):
+    admin = connect_tool(signer, state)
 
     print("installing the desktop, this takes a while", flush=True)
     vm.desktop_session(machine, NAME, kde)
     machine.ssh(f"echo '{PERSON}:{PERSON_PASSWORD}' | chpasswd")
+    ensure_host(machine)
     device = vm.protected_agent(machine, admin, signer, f"{HOME}/bin/hauswart-agent", f"{NAME}-vm")
     machine.copy(tray, "/tmp/tray.rpm")
     installed = machine.ssh("dnf5 install -y /tmp/tray.rpm", timeout=600)
@@ -183,14 +215,14 @@ def first_run(machine, signer, tray, kde, state):
     state["agent"], state["tray"] = digest(f"{HOME}/bin/hauswart-agent"), digest(tray)
 
 
-def explain(signer, machine):
+def explain(signer, machine, device_id):
     admin = f"{HOME}/bin/hauswart-admin"
     print(f"""
 Hauswart is running. Your data stays in {HOME}.
 
   Dashboard     http://127.0.0.1:{PLAIN_PORT}  as admin, password {password()}
-                Passkeys need https://localhost:{PORT} instead, where the browser warns
-                once: Hauswart has its own CA, in {HOME}/data/pki/ca.pem.
+                With passkeys: {URL}, after `make playground-trust`
+                once, which puts the playground CA into your browsers.
   Desktop       the VM window, logged in as {PERSON} with the password {PERSON_PASSWORD}
                 {PERSON} has a Hauswart account as well, password {PERSON_WEB_PASSWORD}
   The device    is protected: policies and app rules need your signature.
@@ -199,6 +231,13 @@ Hauswart is running. Your data stays in {HOME}.
     export HAUSWART_ADMIN_DIR={HOME}/admin SSH_AUTH_SOCK={signer.socket}
     {admin} approve
   or the admin app instead of approve: {ROOT}/dist/hauswart-admin-gui
+  `approve --all` signs everything that waits after one question.
+
+  Approve with a passkey instead, also from a phone:
+    1. make playground-trust, then open {URL} and log in
+    2. Approvals, Add passkey
+    3. {admin} passkeys list
+       {admin} passkeys pin --device {device_id} --passkey N
 
   Root shell in the VM:
     ssh -i {HOME}/id -p {machine.port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null fedora@127.0.0.1
@@ -224,21 +263,38 @@ def main():
     tray = build()
     if not os.path.exists(f"{HOME}/id"):
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", f"{HOME}/id"], check=True)
-    e2e.URL = f"https://localhost:{PORT}"
+    e2e.URL = URL
+    if state.get("device") and state.get("host") != HOST:
+        # The CA of the old server cannot vouch for the name, so the server
+        # starts over. The VM keeps its desktop and is enrolled again.
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for old in ("data", "admin"):
+            if os.path.exists(f"{HOME}/{old}"):
+                os.rename(f"{HOME}/{old}", f"{HOME}/{old}-before-{stamp}")
+        state["reenroll"] = True
+        state.pop("device")
+    state["host"] = HOST
     server = start_server()
     signer = Signer(f"{HOME}/bin/hauswart-admin")
     seed = f"{HOME}/seed-{NAME}.iso"
     seed_args = ["-drive", f"file={seed},media=cdrom,readonly=on"] if os.path.exists(seed) else \
         vm.cloud_seed(HOME, NAME, open(f"{HOME}/id.pub").read().strip())
     machine = vm.VM(HOME, NAME, vm.cloud_image(), "fedora", SSH_PORT - vm.SSH_OFFSET, [*seed_args, "-vga", "virtio"],
-                    display="gtk")
+                    display=DISPLAY)
     try:
-        if not state.get("device"):
+        if state.get("reenroll"):
+            if not machine.wait_ssh():
+                sys.exit(f"the VM did not come up, see {machine.log}")
+            enroll_again(machine, signer, state)
+            state.pop("reenroll")
+            json.dump(state, open(state_file, "w"))
+        elif not state.get("device"):
             state["kde"] = kde
             first_run(machine, signer, tray, kde, state)
             json.dump(state, open(state_file, "w"))
         elif not machine.wait_ssh():
             sys.exit(f"the VM did not come up, see {machine.log}")
+        ensure_host(machine)
         ensure_person(state["device"])
         ensure_terminal(machine, kde)
         update_device(machine, tray, state)
@@ -247,7 +303,7 @@ def main():
         if signer.run("devices").returncode != 0:
             signer.run("login", "--server", e2e.URL, "--ca-fingerprint", state["fingerprint"], "--user", "admin",
                        input=password())
-        explain(signer, machine)
+        explain(signer, machine, state["device"])
         machine.process.wait()
     except KeyboardInterrupt:
         print("\nshutting down", flush=True)

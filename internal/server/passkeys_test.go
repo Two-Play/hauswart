@@ -178,7 +178,7 @@ func TestPasskeyCounterStaysAboveWhatTheDeviceReports(t *testing.T) {
 
 func TestPasskeyChallengeRefusesCLIOnlyTypes(t *testing.T) {
 	p := setupPasskey(t)
-	for _, taskType := range []string{api.TaskFilePut, api.TaskSudoGrant, api.TaskUserLock} {
+	for _, taskType := range []string{api.TaskFilePut, api.TaskSudoGrant, api.TaskUserPassword} {
 		id, err := p.store.CreateSigningTask(context.Background(), p.device, taskType, []byte(`{"secret":"x"}`), "admin")
 		if err != nil {
 			t.Fatal(err)

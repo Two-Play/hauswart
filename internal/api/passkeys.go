@@ -18,6 +18,13 @@ var DefaultPasskeyTypes = []string{
 	// At most a few hours of today, and an approver has to be able to give them
 	// from a phone.
 	TaskScreenExtend,
+	// Blocking or opening access, and the membership of ordinary groups. Groups
+	// that amount to root are refused on the device anyway, signed or not.
+	TaskAccessSet,
+	"group.add",
+	"group.remove",
+	TaskUserLock,
+	TaskUserUnlock,
 }
 
 // PasskeyEligible says whether a type can be approved with a passkey at all.

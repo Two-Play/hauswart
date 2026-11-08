@@ -103,6 +103,8 @@
   "history.event.access.login": "Logins refused until {{.Until}}",
   "history.event.access.ending": "Session ends at {{.Until}}",
   "history.event.access.open": "Access open again",
+  "admin.signevery": "Sign everything…",
+  "admin.signevery.title": "Sign these {{.Count}} tasks?",
   "history.event.software.flatpak_arrived": "Flatpak installed, new apps show after the next login",
   "blocker.default": "This device is blocked for now."
 }

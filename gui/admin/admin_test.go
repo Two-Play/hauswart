@@ -211,3 +211,19 @@ func TestPicture(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSigningEverythingShowsAllAndSkipsProblems(t *testing.T) {
+	one := admintool.Item{ID: "1", DeviceName: "laptop", Text: "ADD Linux user anna to group games"}
+	two := admintool.Item{ID: "2", DeviceName: "kid-pc", Text: "BLOCK THE SCREEN of anna", Warning: "careful"}
+	broken := admintool.Item{ID: "3", DeviceName: "tv", Problem: "changed"}
+	a, backend := newApp(t, one, two, broken)
+	items := a.signable()
+	text := everythingText(items)
+	if len(items) != 2 || !strings.Contains(text, "games") || !strings.Contains(text, "BLOCK THE SCREEN") || !strings.Contains(text, "careful") {
+		t.Fatalf("%d %q", len(items), text)
+	}
+	a.signEverything(items)
+	if strings.Join(backend.signed, ",") != "1,2" {
+		t.Fatalf("got %v", backend.signed)
+	}
+}
