@@ -203,9 +203,11 @@ export function ScreenTimeRules({ rules, onChange }: { rules: ScreenRule[]; onCh
           </Stack>
         </Paper>
       ))}
-      <Button size="xs" variant="light" onClick={() => onChange([...rules, { user: '', windows: [], daily_minutes: 120 }])}>
-        {t('policies.addRule')}
-      </Button>
+      <Group>
+        <Button size="xs" variant="light" onClick={() => onChange([...rules, { user: '', windows: [], daily_minutes: 120 }])}>
+          {t('policies.addRule')}
+        </Button>
+      </Group>
     </Stack>
   );
 }

@@ -241,6 +241,7 @@
     "hint": "Screen time per person, in the policy of each group. Windows say when, the daily minutes how long. Saving changes the group's policy, which protected devices only take with a signature.",
     "noGroups": "No groups yet. Screen time lives in the policy of a group.",
     "noDevices": "no devices",
-    "save": "Save screen time"
+    "save": "Save screen time",
+    "toGroups": "Create a group"
   }
 }
