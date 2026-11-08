@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/GehirnInc/crypt/sha512_crypt"
 
@@ -21,6 +22,7 @@ func init() {
 		mux.Handle("POST /api/tasks/{id}/signature", s.admin(s.handleSignature))
 		mux.Handle("POST /api/tasks/{id}/reject", s.approver(s.handleReject))
 		mux.Handle("GET /api/tasks", s.admin(s.handleTasks))
+		mux.Handle("GET /api/attention", s.admin(s.handleAttention))
 	})
 }
 
@@ -220,4 +222,26 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, _ store.Use
 		}
 	}
 	writeJSON(w, http.StatusOK, tasks)
+}
+
+// handleAttention counts what an admin should look at: tasks that failed in the
+// last day, and devices that differ from their policy.
+func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request, _ store.User) {
+	failed, err := s.store.FailedTasksSince(r.Context(), time.Now().Add(-24*time.Hour))
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	devices, err := s.store.ListDevices(r.Context())
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	deviating := 0
+	for _, d := range devices {
+		if !d.Revoked && d.Report != nil && d.Report.Policy != nil && len(d.Report.Policy.Deviations) > 0 {
+			deviating++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"failed_tasks": failed, "deviating_devices": deviating})
 }

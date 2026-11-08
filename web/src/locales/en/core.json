@@ -24,7 +24,11 @@
     "menu": "Toggle navigation",
     "password": "Change password",
     "actions": "Actions",
-    "screentime": "Screen time"
+    "screentime": "Screen time",
+    "attention": {
+      "tasks": "{{count}} failed in the last day",
+      "groups": "{{count}} devices differ from their policy"
+    }
   },
   "devices": {
     "add": "Add device",

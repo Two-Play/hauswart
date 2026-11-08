@@ -44,6 +44,12 @@ const (
 	janitorInterval  = 5 * time.Minute
 )
 
+// sender is what the server needs of a notifier, which tests replace.
+type sender interface {
+	Send(message string)
+	SendAs(subject notify.Subject, message string)
+}
+
 type Server struct {
 	store     *store.Store
 	ca        *pki.CA
@@ -65,8 +71,9 @@ type Server struct {
 	// index is the dashboard entry page, nil if the dashboard was not built.
 	index []byte
 
-	// notifier tells admins about new requests, nil if nothing is configured.
-	notifier *notify.Notifier
+	// notifier tells admins about new requests, failures and deviations, nil if
+	// nothing is configured.
+	notifier sender
 	// ownHosts are the names of this server, which no service may get.
 	ownHosts []string
 	// oidc logs people in through the identity provider, nil if not configured.

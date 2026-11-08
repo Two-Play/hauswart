@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Two-Play/hauswart/internal/api"
 	"github.com/Two-Play/hauswart/internal/notify"
 )
 
@@ -30,9 +31,10 @@ func (s *Server) StartNotifications(ctx context.Context, path string) {
 	}
 	// Home services often carry a certificate from this CA.
 	roots.AddCert(s.ca.Cert)
-	s.notifier = notify.New(cfg, roots, s.log)
+	notifier := notify.New(cfg, roots, s.log)
+	s.notifier = notifier
 	s.log.Info("admin notifications are on", "through", strings.Join(cfg.Channels(), ", "))
-	go s.notifier.Run(ctx)
+	go notifier.Run(ctx)
 }
 
 // notifyRequest tells admins that someone is waiting. The text leaves the house
@@ -64,4 +66,55 @@ func plainName(s string) string {
 		return string(runes[:maxShownHostname])
 	}
 	return name
+}
+
+// notifyFailure tells admins that a task failed. Like a request, the message
+// leaves the house, so it names the kind, the device and who asked, never what
+// the device said: that stays in the dashboard.
+func (s *Server) notifyFailure(ctx context.Context, taskID string) {
+	if s.notifier == nil {
+		return
+	}
+	summary, err := s.store.TaskSummary(ctx, taskID)
+	if err != nil {
+		s.log.Error("notification skipped", "err", err)
+		return
+	}
+	who := ""
+	if summary.Requester != "" {
+		who = ", asked for by " + plainName(summary.Requester)
+	}
+	s.notifier.SendAs(notify.SubjectAttention, fmt.Sprintf("%s failed on %s%s.\nSee Tasks in the dashboard: %s",
+		plainName(summary.Type), plainName(summary.Hostname), who, s.publicURL))
+}
+
+// notifyDeviations tells admins about deviations from the policy that a report
+// shows for the first time. What lasts is told once, and what the device put
+// right itself never shows up as a deviation.
+func (s *Server) notifyDeviations(hostname string, before, after *api.Report) {
+	if s.notifier == nil || after.Policy == nil {
+		return
+	}
+	known := map[string]bool{}
+	if before != nil && before.Policy != nil {
+		for _, d := range before.Policy.Deviations {
+			known[d.Kind+" "+d.Item] = true
+		}
+	}
+	var fresh []string
+	for _, d := range after.Policy.Deviations {
+		if key := d.Kind + " " + d.Item; !known[key] {
+			fresh = append(fresh, plainName(d.Kind)+" "+plainName(d.Item))
+		}
+	}
+	if len(fresh) == 0 {
+		return
+	}
+	const shown = 5
+	list := strings.Join(fresh[:min(len(fresh), shown)], ", ")
+	if len(fresh) > shown {
+		list += fmt.Sprintf(" and %d more", len(fresh)-shown)
+	}
+	s.notifier.SendAs(notify.SubjectAttention, fmt.Sprintf("%s differs from its policy: %s.\nSee Groups in the dashboard: %s",
+		plainName(hostname), list, s.publicURL))
 }

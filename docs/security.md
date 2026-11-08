@@ -372,8 +372,9 @@ the server has them too. **Use a dedicated mail account and an ntfy token limite
 to one topic**, not your own login. They are not in backups, which cover only the
 data directory.
 
-Messages hold a user name, a device name, the kind of request and the dashboard
-address, and no details or free text, because they leave the house when ntfy or
+Messages hold a user name, a device name, the kind of request or task, the kind and
+name of a deviation, and the dashboard address, and no details, free text or output
+of a device, because they leave the house when ntfy or
 mail run elsewhere. A device name comes from the device and is cleaned, so that it
 adds no lines, headers or links. With `SMTP_TLS=starttls`, mail is not sent if the
 server offers no STARTTLS, so nobody in between can downgrade the connection.
