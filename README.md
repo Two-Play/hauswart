@@ -62,7 +62,7 @@ Remote desktop access is planned but not built yet.
 
 ## How it works
 
-A server runs at home. An agent on every device connects outwards to it, so
+A server runs on site, at home or in the office. An agent on every device connects outwards to it, so
 devices need no open ports. Agents authenticate with client certificates from
 the server's own CA, and they carry out a fixed set of task types instead of
 arbitrary commands.
