@@ -310,7 +310,7 @@ func (f *fakeSMTP) config(mode string) Config {
 func TestMailIsPlainAndFixed(t *testing.T) {
 	f := newFakeSMTP(t, false)
 	n := New(f.config(tlsNone), x509.NewCertPool(), quiet())
-	if err := n.sendMail(context.Background(), "Anna asks for sudo on küche.\nDecide: https://x"); err != nil {
+	if err := n.sendMail(context.Background(), SubjectRequest, "Anna asks for sudo on küche.\nDecide: https://x"); err != nil {
 		t.Fatal(err)
 	}
 	text := f.text()
@@ -326,7 +326,7 @@ func TestMailRefusesAServerWithoutStartTLS(t *testing.T) {
 	cfg := f.config(tlsStart)
 	cfg.SMTPUser, cfg.SMTPPassword = "user", "hunter2"
 	n := New(cfg, x509.NewCertPool(), quiet())
-	err := n.sendMail(context.Background(), "hello")
+	err := n.sendMail(context.Background(), SubjectRequest, "hello")
 	if err == nil || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("got %v", err)
 	}
@@ -340,10 +340,18 @@ func TestMailChecksTheCertificate(t *testing.T) {
 	defer server.Close()
 	host, port, _ := net.SplitHostPort(server.Listener.Addr().String())
 	n := New(Config{SMTPHost: host, SMTPPort: port, SMTPTLS: tlsImplicit, SMTPFrom: "a@b.c", SMTPTo: []string{"a@b.c"}}, x509.NewCertPool(), quiet())
-	err := n.sendMail(context.Background(), "hello")
+	err := n.sendMail(context.Background(), SubjectRequest, "hello")
 	var unknown x509.UnknownAuthorityError
 	var verification *tls.CertificateVerificationError
 	if !errors.As(err, &unknown) && !errors.As(err, &verification) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestAttentionHasItsOwnSubject(t *testing.T) {
+	n := New(Config{SMTPFrom: "hauswart@example.org", SMTPTo: []string{"admin@example.org"}}, nil, slog.New(slog.DiscardHandler))
+	text := string(n.mailText(SubjectAttention, "pkg.install failed on laptop."))
+	if !strings.Contains(text, "Subject: Something needs attention in Hauswart\r\n") {
+		t.Fatalf("got %q", text)
 	}
 }
