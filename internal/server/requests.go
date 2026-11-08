@@ -130,7 +130,7 @@ func (s *Server) finishFiling(w http.ResponseWriter, r *http.Request, id, mode, 
 		if won {
 			// A protected device still waits for a signature: the rule decides
 			// for the approver, never for the admin tool.
-			if _, err := s.enqueue(r, device, taskType, payload, api.DecidedAutomatically+":"+u.Username); err != nil {
+			if _, err := s.enqueueFor(r, device, taskType, payload, api.DecidedAutomatically+":"+u.Username, id); err != nil {
 				s.internal(w, err)
 				return
 			}
@@ -299,7 +299,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, u store.U
 		fail(w, http.StatusConflict, api.ErrRequestDecided)
 		return
 	}
-	if _, err := s.enqueue(r, req.DeviceID, taskType, payload, u.Username); err != nil {
+	if _, err := s.enqueueFor(r, req.DeviceID, taskType, payload, u.Username, req.ID); err != nil {
 		s.internal(w, err)
 		return
 	}

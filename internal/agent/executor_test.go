@@ -143,7 +143,7 @@ func TestSudoGrantLifecycle(t *testing.T) {
 		t.Fatalf("visudo not run: %v", runner.calls)
 	}
 
-	if err := e.RevokeExpired(); err != nil {
+	if _, err := e.RevokeExpired(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(file); err != nil {
@@ -153,7 +153,7 @@ func TestSudoGrantLifecycle(t *testing.T) {
 	if err := e.Grants.Set(name, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.RevokeExpired(); err != nil {
+	if _, err := e.RevokeExpired(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
