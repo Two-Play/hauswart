@@ -208,3 +208,34 @@ func TestPopupsInGerman(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestSuspensionEndsSudoOnce(t *testing.T) {
+	n, d, me := newNotices(t)
+	ctx := context.Background()
+	if err := n.exec.Grants.Set(me, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	file := n.exec.path(sudoersFile(me))
+	if err := os.MkdirAll(file[:strings.LastIndex(file, "/")], 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("rule"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{exec: n.exec, notices: n, log: slog.New(slog.DiscardHandler)}
+	for range 2 {
+		a.suspend(ctx)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) || len(n.exec.Grants.All()) != 0 {
+		t.Fatalf("the grant survived: %v", err)
+	}
+	if shown := d.popups(n); len(shown) != 1 || !strings.Contains(shown[0], "suspended") || !n.Suspended() {
+		t.Fatalf("got %v", shown)
+	}
+	if !n.SetSuspended(ctx, false) || n.SetSuspended(ctx, false) {
+		t.Fatal("resuming tells once")
+	}
+	if h := n.History(me); len(h.Events) != 2 || h.Events[0].Kind != api.EventDeviceResumed {
+		t.Fatalf("got %+v", h.Events)
+	}
+}

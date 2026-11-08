@@ -47,6 +47,8 @@ var eventTexts = map[string]map[string]string{
 		api.EventGroupRemoved:      "You are no longer in the group {detail}.",
 		api.EventPolicyChanged:     "This device has new rules.",
 		api.EventPolicyCleared:     "The rules of this device were removed.",
+		api.EventDeviceSuspended:   "Hauswart has suspended this device. Requests are not possible for now, and admin rights have ended.",
+		api.EventDeviceResumed:     "Hauswart manages this device again.",
 		api.RequestSigning:         "Your request for {detail} was approved and waits for a signature.",
 		api.RequestDenied:          "Your request for {detail} was denied.",
 		api.RequestFailed:          "Your request for {detail} was approved, but did not work.",
@@ -69,6 +71,8 @@ var eventTexts = map[string]map[string]string{
 		api.EventGroupRemoved:      "Du bist nicht mehr in der Gruppe {detail}.",
 		api.EventPolicyChanged:     "Für dieses Gerät gelten neue Regeln.",
 		api.EventPolicyCleared:     "Die Regeln für dieses Gerät wurden entfernt.",
+		api.EventDeviceSuspended:   "Hauswart hat dieses Gerät gesperrt. Anfragen gehen vorerst nicht, und Admin-Rechte sind beendet.",
+		api.EventDeviceResumed:     "Hauswart verwaltet dieses Gerät wieder.",
 		api.RequestSigning:         "Deine Anfrage für {detail} wurde genehmigt und wartet auf eine Signatur.",
 		api.RequestDenied:          "Deine Anfrage für {detail} wurde abgelehnt.",
 		api.RequestFailed:          "Deine Anfrage für {detail} wurde genehmigt, hat aber nicht geklappt.",
@@ -136,6 +140,8 @@ type noticeState struct {
 	// Seen is the last state of each request, so a restart tells nothing twice.
 	// Nil means the device never asked, and then the first answer tells nothing.
 	Seen map[string]string `json:"seen"`
+	// Suspended is what the server last said about this device.
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 func OpenNotices(dir string, exec *Executor, language func() string, log *slog.Logger) *Notices {
@@ -347,6 +353,32 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 		}
 		n.show(ctx, r.User, eventText(language, r.State, requestName(language, r), time.Time{}), urgency)
 	}
+}
+
+// SetSuspended remembers whether the server holds the device back, and tells
+// everyone when that changes. It returns true when it changed.
+func (n *Notices) SetSuspended(ctx context.Context, suspended bool) bool {
+	n.mu.Lock()
+	if n.state.Suspended == suspended {
+		n.mu.Unlock()
+		return false
+	}
+	n.state.Suspended = suspended
+	n.saveLocked()
+	n.mu.Unlock()
+	kind, urgency := api.EventDeviceResumed, urgencyNormal
+	if suspended {
+		kind, urgency = api.EventDeviceSuspended, urgencyCritical
+	}
+	n.record(ctx, api.DeviceEvent{Kind: kind}, urgency)
+	return true
+}
+
+// Suspended says whether the server last held the device back.
+func (n *Notices) Suspended() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.state.Suspended
 }
 
 // Stale says that the requests are older than the loop would let them get.

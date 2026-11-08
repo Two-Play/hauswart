@@ -539,9 +539,26 @@ func (a *Agent) reportLoop(ctx context.Context) {
 	}
 }
 
+// errSuspended says that the server holds this device back.
+var errSuspended = errors.New("this device is suspended")
+
+// suspendedRetry is how often a suspended device asks whether it is back.
+const suspendedRetry = 30 * time.Second
+
 func (a *Agent) taskLoop(ctx context.Context) {
 	for ctx.Err() == nil {
 		task, err := a.poll(ctx)
+		if errors.Is(err, errSuspended) {
+			a.suspend(ctx)
+			select {
+			case <-ctx.Done():
+			case <-time.After(suspendedRetry):
+			}
+			continue
+		}
+		if err == nil && a.notices.SetSuspended(ctx, false) {
+			a.log.Info("the server manages this device again")
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -663,6 +680,8 @@ func (a *Agent) poll(ctx context.Context) (*api.Task, error) {
 	switch resp.StatusCode {
 	case http.StatusNoContent:
 		return nil, nil
+	case http.StatusLocked:
+		return nil, errSuspended
 	case http.StatusOK:
 		var t api.Task
 		if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&t); err != nil {
@@ -749,4 +768,18 @@ func (a *Agent) get(ctx context.Context, path string, v any) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(v)
+}
+
+// suspend ends the sudo grants once, when the server starts to hold the device
+// back: whoever grants them is not looking after this device for now.
+func (a *Agent) suspend(ctx context.Context) {
+	if !a.notices.SetSuspended(ctx, true) {
+		return
+	}
+	a.log.Warn("the server suspended this device")
+	for user := range a.exec.Grants.All() {
+		if _, err := a.exec.sudoRevoke(user); err != nil {
+			a.log.Error("ending a sudo grant failed", "user", user, "err", err)
+		}
+	}
 }

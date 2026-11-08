@@ -85,7 +85,9 @@ type userService struct {
 	// says that a request was filed, so its state is worth asking for soon.
 	history func(user string) api.History
 	filed   func()
-	now     func() time.Time
+	// suspended says that the server holds this device back.
+	suspended func() bool
+	now       func() time.Time
 
 	mu       sync.Mutex
 	asked    map[uint32][]time.Time
@@ -240,6 +242,7 @@ func (u *userService) handleStatus(w http.ResponseWriter, r *http.Request) {
 			Dashboard:  u.dashboard,
 		}
 		status.PolicyIssues, status.Nextcloud = u.policy.userView()
+		status.Suspended = u.suspended != nil && u.suspended()
 		u.mu.Lock()
 		u.recent[uid] = recentStatus{status, now}
 		u.mu.Unlock()
@@ -501,7 +504,8 @@ func (a *Agent) serveUsers(ctx context.Context, path string) {
 			}
 			return a.notices.History(user)
 		},
-		filed: a.askForRequests,
+		filed:     a.askForRequests,
+		suspended: a.notices.Suspended,
 	}
 	if err := service.serve(ctx, listener); err != nil {
 		a.log.Warn("the socket for desktop apps stopped", "err", err)
