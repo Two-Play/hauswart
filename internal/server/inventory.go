@@ -91,10 +91,14 @@ func (s *Server) inventoryDevices(ctx context.Context) ([]inventoryDevice, error
 	if err != nil {
 		return nil, err
 	}
+	tpms, err := s.store.TPMs(ctx)
+	if err != nil {
+		return nil, err
+	}
 	list := make([]inventoryDevice, 0, len(devices))
 	for _, d := range devices {
 		entry := inventoryDevice{ID: d.ID, Hostname: d.Hostname, Revoked: d.Revoked, LastSeen: d.LastSeen,
-			Asset: assets[d.ID], Warnings: deviceWarnings(d, assets[d.ID])}
+			Asset: assets[d.ID], Warnings: deviceWarnings(d, assets[d.ID], tpmOf(tpms, d.ID))}
 		if report := d.Report; report != nil {
 			entry.Distro, entry.Kernel, entry.CPUs = report.Distro, report.Kernel, report.CPUs
 			entry.MemTotal, entry.DiskTotal, entry.AgentVersion = report.MemTotal, report.DiskTotal, report.AgentVersion

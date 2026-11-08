@@ -5,6 +5,9 @@ go 1.26.10
 require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/google/go-attestation v0.6.4
+	github.com/google/go-tpm v0.9.8
+	github.com/google/go-tpm-tools v0.4.11
 	golang.org/x/crypto v0.58.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.47.0

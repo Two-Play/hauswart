@@ -446,6 +446,37 @@ certificate has less than 30 days left. An agent renews long before that, so thi
 means the device has been off for months or cannot reach the server. See
 [Certificates](#certificates).
 
+## Prove how a device started
+
+A device with a TPM 2.0 proves how it started, through measured boot. The agent
+registers the TPM with the server on its own, then sends a proof when it starts and
+every six hours: the TPM signs what the firmware recorded on the way, the boot loaders,
+the Secure Boot keys and the kernel parameters, together with a fresh value from the
+server, so an old proof cannot be replayed.
+
+The first proof is the boot to compare with. **Details** of a device, tab **Boot**,
+shows it next to the last one. What differs stays there until you accept it:
+
+- **Alarm**, with a notification and a red mark on the card: Secure Boot was
+  switched off, its keys changed, the kernel parameters changed (such as
+  `init=/bin/bash`), the device came with another TPM, or a proof did not check out.
+- **Note**: the firmware changed, as after a BIOS update, the list of revoked boot
+  loaders grew, or, with Secure Boot off, another boot loader started.
+- Updates of the kernel, grub and shim while Secure Boot is on raise nothing:
+  Secure Boot checked their signature.
+
+A device that reports but has sent no proof for three days gets a warning. Nothing
+stops a device on its own; you decide. Accept a boot once you know where a change came
+from, with **Accept this boot**.
+
+Devices without a TPM, or with the TPM switched off in the firmware, show nothing
+here. Without Secure Boot, a device can still prove its firmware and kernel
+parameters, but not which boot loader and kernel started.
+
+**Another TPM** shows when the mainboard was replaced, the TPM cleared in the firmware,
+or the files of the agent copied to another computer. Its proofs count once you accept
+it, and the next one becomes the boot to compare with.
+
 ## Keep an inventory
 
 **Inventory** in the dashboard lists every device, for admins only. A device sends its

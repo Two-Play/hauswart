@@ -1,0 +1,46 @@
+{
+  "boot": {
+    "tab": "Start",
+    "none": "Dieses Gerät hat seinen Start nicht nachgewiesen. Dafür braucht es ein TPM 2.0; der Agent meldet es nach seinem Start innerhalb eines Tages von selbst an.",
+    "waiting": "Das TPM ist angemeldet, der erste Nachweis ist unterwegs",
+    "lastAt": "Letzter Nachweis {{time}}",
+    "tpm": "TPM {{ek}}",
+    "secureBoot": "Secure Boot",
+    "on": "an",
+    "off": "aus",
+    "keys": "Secure-Boot-Schlüssel",
+    "revocations": "Sperrliste (dbx)",
+    "firmware": "Firmware",
+    "bootloaders": "Bootloader",
+    "commandLine": "Kernel-Parameter",
+    "accepted": "Bestätigt",
+    "current": "Letzter Start",
+    "changed": "Das Gerät ist anders gestartet als bestätigt",
+    "alarm": "Alarm",
+    "hint": "Hinweis",
+    "acceptHint": "Wenn du weißt, woher das kommt, etwa ein Firmware-Update oder eine eigene Änderung, bestätige den Start. Sonst sieh dir das Gerät vorher an.",
+    "accept": "Diesen Start bestätigen",
+    "acceptTPM": "Das andere TPM bestätigen",
+    "otherTPM": "Das Gerät meldet sich mit einem anderen TPM. Seine Nachweise zählen erst, wenn du es bestätigst. Das passiert, wenn das Mainboard getauscht, das TPM gelöscht oder die Dateien des Geräts auf einen anderen Rechner kopiert wurden.",
+    "noSecureBoot": "Secure Boot ist aus, deshalb kann das Gerät nicht nachweisen, was nach der Firmware gestartet ist. Nur Änderungen an Firmware und Kernel-Parametern fallen auf.",
+    "warning_one": "Start weicht ab ({{count}})",
+    "warning_other": "Start weicht ab ({{count}})",
+    "missing_one": "Seit {{count}} Tag kein Startnachweis",
+    "missing_other": "Seit {{count}} Tagen kein Startnachweis",
+    "kinds": {
+      "secure_boot_off": "Secure Boot wurde abgeschaltet",
+      "secure_boot_keys": "Die Secure-Boot-Schlüssel haben sich geändert",
+      "command_line": "Die Kernel-Parameter haben sich geändert",
+      "tpm": "Ein anderes TPM",
+      "quote": "Ein Nachweis war nicht stimmig",
+      "firmware": "Die Firmware hat sich geändert",
+      "revocations": "Die Sperrliste für Bootloader hat sich geändert",
+      "bootloader": "Ein anderer Bootloader ist gestartet"
+    }
+  },
+  "errors": {
+    "invalid_tpm": "Die TPM-Daten sind ungültig ({{value}}).",
+    "tpm_challenge": "Das TPM hat die Aufgabe nicht gelöst.",
+    "tpm_unknown": "Dieses Gerät hat noch keinen vertrauenswürdigen TPM-Schlüssel."
+  }
+}

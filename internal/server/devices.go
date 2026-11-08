@@ -37,15 +37,20 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request, u store.U
 		devices = slices.DeleteFunc(devices, func(d store.Device) bool { return !slices.Contains(assigned, d.ID) })
 	}
 	assets := map[string]api.Asset{}
+	tpms := map[string]store.TPMRecord{}
 	if u.Role == store.RoleAdmin {
 		if assets, err = s.store.Assets(r.Context()); err != nil {
+			s.internal(w, err)
+			return
+		}
+		if tpms, err = s.store.TPMs(r.Context()); err != nil {
 			s.internal(w, err)
 			return
 		}
 	}
 	for i := range devices {
 		if u.Role == store.RoleAdmin {
-			devices[i].Warnings = deviceWarnings(devices[i], assets[devices[i].ID])
+			devices[i].Warnings = deviceWarnings(devices[i], assets[devices[i].ID], tpmOf(tpms, devices[i].ID))
 		} else {
 			// They only need something to pick from when filing a request.
 			devices[i].Report = nil

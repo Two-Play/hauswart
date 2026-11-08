@@ -408,6 +408,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })
 	wg.Go(func() { a.requestLoop(ctx) })
 	wg.Go(func() { a.access.Loop(ctx) })
+	wg.Go(func() { a.attestLoop(ctx) })
 	wg.Wait()
 }
 

@@ -95,13 +95,14 @@ function ColorSchemeToggle() {
 interface Attention {
   failed_tasks: number;
   deviating_devices: number;
+  boot_alarms?: number;
 }
 
 /** Attention counts what an admin should look at, next to the views that show it. */
 function useAttention(admin: boolean): Partial<Record<string, number>> {
   const { data } = useResource<Attention>(admin ? '/api/attention' : '', 30_000);
   if (!admin || !data) return {};
-  return { tasks: data.failed_tasks, groups: data.deviating_devices };
+  return { devices: data.boot_alarms, tasks: data.failed_tasks, groups: data.deviating_devices };
 }
 
 function LanguageSwitch() {
