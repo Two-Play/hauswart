@@ -14,6 +14,7 @@ const (
 	ErrAdminOnly          = "admin_only"
 	ErrClientCertRequired = "client_cert_required"
 	ErrDeviceRefused      = "device_refused"
+	ErrDeviceSuspended    = "device_suspended"
 	ErrTooManyAttempts    = "too_many_attempts"
 	ErrWrongCredentials   = "wrong_credentials"
 	ErrWrongPassword      = "wrong_password"
@@ -78,6 +79,7 @@ var Messages = map[string]string{
 	ErrAdminOnly:          "admin only",
 	ErrClientCertRequired: "client certificate required",
 	ErrDeviceRefused:      "device revoked or unknown",
+	ErrDeviceSuspended:    "device is suspended in Hauswart",
 	ErrTooManyAttempts:    "too many attempts, try again in a minute",
 	ErrWrongCredentials:   "wrong username or password",
 	ErrWrongPassword:      "current password is wrong",
