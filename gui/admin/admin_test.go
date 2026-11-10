@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/test"
 
 	"github.com/Two-Play/hauswart/gui/translations"
@@ -69,6 +71,41 @@ func TestShowsTheFirstTask(t *testing.T) {
 	}
 	if a.signOne.Disabled() || !a.signAll.Hidden {
 		t.Fatal("wrong buttons")
+	}
+}
+
+func TestShowsTheContext(t *testing.T) {
+	now := time.Date(2026, 11, 10, 21, 32, 0, 0, time.Local)
+	a, _ := newApp(t, admintool.Item{
+		ID: "1", DeviceName: "laptop", Text: "x", CreatedBy: "admin",
+		CreatedAt: time.Date(2026, 11, 10, 21, 30, 0, 0, time.Local),
+		Request:   &admintool.Request{User: "anna", Reason: "homework", At: time.Date(2026, 11, 10, 21, 28, 0, 0, time.Local)},
+		Hostname:  "lap-1",
+		LastSeen:  now.Add(-2 * time.Minute),
+		Sessions:  []admintool.LoggedIn{{User: "anna", Active: true}, {User: "ben"}},
+	}, admintool.Item{ID: "2", DeviceName: "pc", Text: "y", CreatedBy: "auto:anna",
+		CreatedAt: time.Date(2026, 11, 10, 21, 0, 0, 0, time.Local)})
+	a.now = func() time.Time { return now }
+	a.show()
+	device := strings.Join([]string{
+		lang.L("admin.host", map[string]any{"Host": "lap-1"}),
+		lang.L("admin.seen.min", map[string]any{"N": 2}),
+		lang.L("admin.loggedin", map[string]any{"Who": "anna (" + lang.L("admin.active") + "), ben"}),
+	}, " · ")
+	for _, want := range []string{
+		lang.L("admin.created", map[string]any{"When": "10.11. 21:30", "Who": "admin"}),
+		lang.L("admin.requested.reason", map[string]any{"Who": "anna", "When": "10.11. 21:28", "Reason": "homework"}),
+		device,
+	} {
+		if !strings.Contains(a.body.Text, want) {
+			t.Errorf("missing %q in\n%s", want, a.body.Text)
+		}
+	}
+	a.list.Select(1)
+	auto := lang.L("admin.created.auto", map[string]any{"When": "10.11. 21:00"})
+	if !strings.Contains(a.body.Text, auto) || !strings.Contains(a.body.Text, lang.L("admin.seen.never")) ||
+		strings.Contains(a.body.Text, "anna") {
+		t.Errorf("automatic task:\n%s", a.body.Text)
 	}
 }
 

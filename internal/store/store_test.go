@@ -319,6 +319,47 @@ func TestSigningQueue(t *testing.T) {
 	}
 }
 
+func TestSigningQueueContext(t *testing.T) {
+	s := open(t)
+	device(t, s, "a")
+	report := api.Report{Hostname: "laptop", Sessions: []api.LoginSession{{User: "anna", Active: true}, {User: "ben"}}}
+	if err := s.SaveReport(ctx, "a", report); err != nil {
+		t.Fatal(err)
+	}
+	plain, err := s.CreateSigningTask(ctx, "a", api.TaskPkgInstall, []byte(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anna, err := s.CreateUser(ctx, "anna", "anna", "hash", RoleMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := s.CreateRequest(ctx, anna, "a", "software", "vim", "for school")
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked, err := s.CreateLinkedTask(ctx, "a", api.TaskPkgInstall, []byte(`{}`), "auto:rule", true, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := s.SigningQueue(ctx)
+	if err != nil || len(queue) != 2 {
+		t.Fatalf("queue: %+v %v", queue, err)
+	}
+	for _, q := range queue {
+		if q.Hostname != "laptop" || q.LastSeen == 0 || len(q.Sessions) != 2 || !q.Sessions[0].Active || q.Sessions[0].User != "anna" {
+			t.Errorf("device context: %+v", q)
+		}
+	}
+	if queue[0].ID != plain || queue[0].Request != nil {
+		t.Errorf("task without a request: %+v", queue[0])
+	}
+	got := queue[1].Request
+	if queue[1].ID != linked || got == nil || got.User != "anna" || got.Reason != "for school" || got.CreatedAt == 0 {
+		t.Errorf("task with a request: %+v %+v", queue[1], got)
+	}
+}
+
 func TestRejectTask(t *testing.T) {
 	s := open(t)
 	device(t, s, "a")
