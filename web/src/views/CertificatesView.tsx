@@ -2,7 +2,7 @@ import { Alert, Button, Code, CopyButton, Group, Modal, Stack, Table, Text, Text
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource } from '../api';
-import { Loaded, showError } from '../ui';
+import { ExpandableText, Loaded, showError } from '../ui';
 
 const SOON_DAYS = 30;
 
@@ -88,9 +88,9 @@ export function CertificatesView() {
   return (
     <Stack>
       <Title order={2}>{t('nav.certificates')}</Title>
-      <Text size="sm" c="dimmed">
+      <ExpandableText size="sm" c="dimmed">
         {t('certificates.hint')}
-      </Text>
+      </ExpandableText>
       <form onSubmit={issue}>
         <Group align="flex-end">
           <TextInput

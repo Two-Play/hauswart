@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
 import { useNavigation } from '../navigation';
 import type { DeviceGroup } from './GroupsView';
-import { showError, Loaded } from '../ui';
+import { ExpandableText, Loaded, showError } from '../ui';
 import { knownNames, KnownNamesContext } from './NameInput';
 import { normalized, ScreenTimeRules, type Policy, type PolicyView, type ScreenRule } from './PolicyPanel';
 
@@ -64,9 +64,9 @@ export function ScreenTimeView() {
   return (
     <Stack>
       <Title order={2}>{t('nav.screentime')}</Title>
-      <Text size="sm" c="dimmed">
+      <ExpandableText size="sm" c="dimmed">
         {t('screen.hint')}
-      </Text>
+      </ExpandableText>
       <Loaded data={groups.data} error={groups.error}>
         {(list) =>
           list.length === 0 ? (

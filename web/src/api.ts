@@ -80,6 +80,8 @@ export interface PasskeyEntry {
   username: string;
   name: string;
   created_at: number;
+  /** The protected devices that report this passkey as pinned. */
+  pinned_on?: { id: string; hostname: string }[];
 }
 
 export type RequestKind = 'software' | 'flatpak' | 'sudo' | 'screen';

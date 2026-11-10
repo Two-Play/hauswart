@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, isApprover, useResource, type AccessRequest, type Device, type User } from '../api';
-import { DataTable, formatTime, Loaded, showError, StatusBadge } from '../ui';
+import { DataTable, ExpandableText, formatTime, Loaded, showError, StatusBadge } from '../ui';
 import { REQUEST_KINDS } from './ApprovalRulesPanel';
 import { PackageSearch } from './PackageSearch';
 
@@ -82,11 +82,11 @@ export function RequestsView({ user }: { user: User }) {
               <Text size="xs" c="dimmed">
                 {r.username} · {r.hostname} · {formatTime(r.created_at)}
               </Text>
-              {r.reason && <Text size="sm">{r.reason}</Text>}
+              {r.reason && <ExpandableText size="sm">{r.reason}</ExpandableText>}
               {r.outcome_detail && (
-                <Text size="xs" c="red" style={{ wordBreak: 'break-word' }}>
+                <ExpandableText size="xs" c="red" lines={2}>
                   {r.outcome_detail}
-                </Text>
+                </ExpandableText>
               )}
               {decider(r) && (
                 <Text size="xs" c="dimmed">
@@ -186,13 +186,17 @@ export function RequestsView({ user }: { user: User }) {
                   r.username,
                   r.hostname,
                   describe(r),
-                  r.reason,
+                  r.reason && (
+                    <ExpandableText size="sm" maw={320} lines={2}>
+                      {r.reason}
+                    </ExpandableText>
+                  ),
                   <Stack gap={2}>
                     <StatusBadge status={r.outcome ?? r.status} />
                     {r.outcome_detail && (
-                      <Text size="xs" c="red" maw={260} style={{ wordBreak: 'break-word' }}>
+                      <ExpandableText size="xs" c="red" maw={260} lines={2}>
                         {r.outcome_detail}
-                      </Text>
+                      </ExpandableText>
                     )}
                   </Stack>,
                   decider(r),

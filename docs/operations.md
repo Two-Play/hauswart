@@ -312,6 +312,17 @@ reaches no other websites from there.
    The tool shows the resulting list and asks before it signs. A passkey is refused
    if it belongs to another server than the one you logged in to.
 
+   The admin app does the same under **Passkeys…**: pick the passkey, tick the
+   devices and choose **Pin on chosen devices**. Before it signs, it shows each
+   device's list after the change and the passkey's fingerprint. Compare that with
+   the one on the person's phone or key. Only devices that are protected and named on
+   this computer are offered. **Remove from chosen devices** takes a passkey off
+   again, also one the server no longer lists.
+
+A registered passkey approves nothing until it is pinned. **Approvals** in the
+dashboard shows, for each passkey, the devices that report it as pinned, and warns
+when none of yours is pinned anywhere.
+
 Pins end after 180 days. `hauswart-admin passkeys renew --device ID` extends them
 from what this computer remembers, without asking the server. To remove a passkey
 that was lost, or all of them after trouble with the server:

@@ -1,4 +1,4 @@
-import { Alert, Button, Code, Group, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Code, Group, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
@@ -14,13 +14,15 @@ import {
 } from '../passkey';
 import { taskKey } from '../tasks';
 import { PasskeyTypesPanel } from './PasskeyTypesPanel';
-import { DataTable, formatTime, Loaded, showError } from '../ui';
+import { DataTable, ExpandableText, formatTime, Loaded, showError } from '../ui';
 
 function Weakness() {
   const { t } = useTranslation();
   return (
     <Alert color="orange" icon={<IconAlertTriangle size={18} />} title={t('approvals.weaknessTitle')}>
-      <Text size="sm">{t('approvals.weakness')}</Text>
+      <ExpandableText size="sm" lines={2}>
+        {t('approvals.weakness')}
+      </ExpandableText>
     </Alert>
   );
 }
@@ -58,26 +60,53 @@ function PasskeyList() {
     <Paper withBorder p="md">
       <Stack>
         <Title order={4}>{t('approvals.passkeys')}</Title>
-        <Text size="sm" c="dimmed">
+        <ExpandableText size="sm" c="dimmed" lines={2}>
           {t('approvals.passkeysHint')}
-        </Text>
+        </ExpandableText>
         <Loaded data={data} error={error}>
           {(list) => (
+            <Stack>
+            {list.length > 0 && list.every((p) => (p.pinned_on ?? []).length === 0) && (
+              <Alert color="orange" title={t('approvals.nothingPinnedTitle')}>
+                <ExpandableText size="sm" lines={3}>
+                  {t('approvals.nothingPinned')}
+                </ExpandableText>
+              </Alert>
+            )}
             <DataTable
               empty={t('approvals.noPasskeys')}
-              headers={[t('approvals.passkeyName'), t('approvals.owner'), t('approvals.added'), '']}
+              headers={[t('approvals.passkeyName'), t('approvals.owner'), t('approvals.added'), t('approvals.pinnedOn'), '']}
               rows={list.map((p) => ({
                 key: String(p.id),
                 cells: [
                   p.name,
                   p.username,
                   formatTime(p.created_at),
+                  (p.pinned_on ?? []).length > 0 ? (
+                    <Group gap={4}>
+                      {(p.pinned_on ?? []).map((d) => (
+                        <Badge key={d.id} variant="light" color="teal">
+                          {d.hostname}
+                        </Badge>
+                      ))}
+                    </Group>
+                  ) : (
+                    <Stack gap={2}>
+                      <Badge variant="light" color="orange">
+                        {t('approvals.pinnedNowhere')}
+                      </Badge>
+                      <ExpandableText size="xs" c="dimmed" lines={1} maw={340}>
+                        {t('approvals.pinHow', { id: p.id })}
+                      </ExpandableText>
+                    </Stack>
+                  ),
                   <Button size="xs" variant="subtle" color="red" onClick={() => remove(p.id)}>
                     {t('approvals.deletePasskey')}
                   </Button>,
                 ],
               }))}
             />
+            </Stack>
           )}
         </Loaded>
         <form onSubmit={add}>
@@ -233,9 +262,9 @@ function SigningQueue() {
     <Paper withBorder p="md">
       <Stack>
         <Title order={4}>{t('approvals.signing')}</Title>
-        <Text size="sm" c="dimmed">
+        <ExpandableText size="sm" c="dimmed" lines={2}>
           {t('approvals.signingHint')}
-        </Text>
+        </ExpandableText>
         <Loaded data={data} error={error}>
           {(list) => (
             <DataTable

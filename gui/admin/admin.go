@@ -24,6 +24,10 @@ type Backend interface {
 	// Outdated is not empty when this app and the server know different
 	// tasks, so that some will be skipped.
 	Outdated() string
+	// Pins, PinPreview and Pin are for pinning passkeys on devices.
+	Pins() (admintool.PinState, error)
+	PinPreview(admintool.PinChange) (string, error)
+	Pin(c admintool.PinChange, shown string) error
 }
 
 // App is the window.
@@ -53,6 +57,8 @@ type App struct {
 	status    *widget.Label
 	// banner says that this app is older or newer than the server.
 	banner *widget.Label
+	// passkeys is the passkeys window while it is open.
+	passkeys *passkeyWindow
 }
 
 // New builds the window. Reload fills it.
@@ -90,7 +96,7 @@ func New(a fyne.App, backend Backend) *App {
 
 	t.reload = widget.NewButton(lang.L("admin.reload"), t.Reload)
 	t.signEvery = widget.NewButton(lang.L("admin.signevery"), t.confirmEverything)
-	reload := container.NewVBox(t.signEvery, t.reload)
+	reload := container.NewVBox(t.signEvery, widget.NewButton(lang.L("passkeys.open"), t.openPasskeys), t.reload)
 	left := container.NewBorder(widget.NewLabel(lang.L("admin.queue")), reload, nil, nil, t.list)
 	actions := container.NewVBox(t.warning, t.nameRow, container.NewHBox(t.signOne, t.signAll, t.reject), t.status)
 	right := container.NewBorder(t.head, actions, nil, nil, container.NewVScroll(t.body))

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Two-Play/hauswart/internal/api"
 	"github.com/Two-Play/hauswart/internal/sign"
 )
@@ -117,27 +119,51 @@ func confirm(input io.Reader, question string) (bool, error) {
 	return strings.ToLower(strings.TrimSpace(answer)) == "y", nil
 }
 
-// sendPins signs the complete list of a device and remembers it. keys.set
-// replaces what is pinned, so this tool is what remembers it between runs.
-func sendPins(cfg *config, id string, known *device, pins []sign.Passkey) error {
-	fmt.Printf("Device: %s (%s)\nPasskeys after this change:\n", known.Name, id)
+// pinWarning goes with every change to the pins, wherever it is signed.
+const pinWarning = "Compare the fingerprint with the one on the person's phone or key before you sign.\n" +
+	"Do not pin one on the computer you sign on: a Flatpak could reach your signing key there.\n"
+
+// pinText says what a device holds after a change, and what a passkey may
+// approve there. It is what the admin agrees to before signing.
+func pinText(id string, known *device, pins []sign.Passkey, report *api.Report) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Device: %s (%s)\nPasskeys after this change:\n", clean(known.Name), id)
 	for _, p := range pins {
-		fmt.Println(describePasskey(p))
+		b.WriteString(describePasskey(p) + "\n")
 	}
 	if len(pins) == 0 {
-		fmt.Println("  none")
+		b.WriteString("  none\n")
 	}
 	what := "nothing yet"
-	if report := deviceReport(cfg, id); report != nil && len(report.PasskeyTypes) > 0 {
+	if report != nil && len(report.PasskeyTypes) > 0 {
 		labels := make([]string, 0, len(report.PasskeyTypes))
 		for _, t := range report.PasskeyTypes {
 			labels = append(labels, passkeyTypeLabel(clean(t)))
 		}
 		what = strings.Join(labels, ", ")
 	}
-	fmt.Printf("On this device, the device says a passkey may approve: %s.\n"+
-		"Change that in the dashboard under Approvals; it takes a signature as well.\n"+
-		"Do not pin one on the computer you sign on: a Flatpak could reach your signing key there.\n", what)
+	fmt.Fprintf(&b, "On this device, the device says a passkey may approve: %s.\n"+
+		"Change that in the dashboard under Approvals; it takes a signature as well.\n", what)
+	return b.String()
+}
+
+// withPin is the list of a device with one passkey added, or renewed if it is
+// there already.
+func withPin(pins []sign.Passkey, pin sign.Passkey) ([]sign.Passkey, error) {
+	pins = slices.DeleteFunc(slices.Clone(pins), func(p sign.Passkey) bool {
+		return string(p.CredentialID) == string(pin.CredentialID)
+	})
+	pins = append(pins, pin)
+	if len(pins) > sign.MaxPasskeys {
+		return nil, fmt.Errorf("at most %d passkeys fit on a device", sign.MaxPasskeys)
+	}
+	return pins, nil
+}
+
+// sendPins asks in the terminal, then signs the complete list of a device.
+func sendPins(cfg *config, id string, known *device, pins []sign.Passkey) error {
+	fmt.Print(pinText(id, known, pins, deviceReport(cfg, id)))
+	fmt.Print(pinWarning)
 	ok, err := confirm(os.Stdin, "Sign?")
 	if err != nil {
 		return err
@@ -153,6 +179,12 @@ func sendPins(cfg *config, id string, known *device, pins []sign.Passkey) error 
 	if err != nil {
 		return err
 	}
+	return signPins(cfg, key, list, id, pins)
+}
+
+// signPins signs the complete list of a device and remembers it. keys.set
+// replaces what is pinned, so this tool is what remembers it between runs.
+func signPins(cfg *config, key ssh.Signer, list map[string]serverDevice, id string, pins []sign.Passkey) error {
 	payload, err := json.Marshal(api.KeysPayload{Keys: cfg.Keys, Passkeys: pins})
 	if err != nil {
 		return err
@@ -167,8 +199,19 @@ func sendPins(cfg *config, id string, known *device, pins []sign.Passkey) error 
 	if err := cfg.call("POST", "/api/devices/"+id+"/signed-tasks", map[string]any{"type": api.TaskKeysSet, "signed": signed}, nil); err != nil {
 		return err
 	}
-	known.Passkeys = pins
-	return cfg.save()
+	return rememberPins(cfg, id, pins)
+}
+
+// rememberPins writes only the pins, on top of what is on disk by now.
+func rememberPins(cfg *config, id string, pins []sign.Passkey) error {
+	if known := cfg.Devices[id]; known != nil {
+		known.Passkeys = pins
+	}
+	return updateConfig(func(fresh *config) {
+		if stored := fresh.Devices[id]; stored != nil {
+			stored.Passkeys = pins
+		}
+	})
 }
 
 func passkeysPin(args []string) error {
@@ -198,12 +241,9 @@ func passkeysPin(args []string) error {
 	if err != nil {
 		return err
 	}
-	pins := slices.DeleteFunc(slices.Clone(known.Passkeys), func(p sign.Passkey) bool {
-		return string(p.CredentialID) == string(pin.CredentialID)
-	})
-	pins = append(pins, pin)
-	if len(pins) > sign.MaxPasskeys {
-		return fmt.Errorf("at most %d passkeys fit on a device", sign.MaxPasskeys)
+	pins, err := withPin(known.Passkeys, pin)
+	if err != nil {
+		return err
 	}
 	return sendPins(cfg, *id, known, pins)
 }

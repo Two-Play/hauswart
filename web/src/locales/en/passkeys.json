@@ -39,7 +39,12 @@
     "added": "Added",
     "register": "Add passkey",
     "registered": "Passkey added. Now ask an admin to pin it.",
-    "deletePasskey": "Delete"
+    "deletePasskey": "Delete",
+    "pinnedOn": "Pinned on",
+    "pinnedNowhere": "On no device yet",
+    "pinHow": "It approves nothing until an admin pins it on a device: in the admin app under Passkeys, or with hauswart-admin passkeys pin --passkey {{id}} --device ID.",
+    "nothingPinnedTitle": "None of these passkeys can approve anything yet",
+    "nothingPinned": "A passkey works on a device only once an admin pinned it there with a signature, so that a hacked server cannot slip in its own. Ask an admin to pin it in the admin app under Passkeys, or with hauswart-admin passkeys pin."
   },
   "errors": {
     "approver_only": "Only admins and approvers may do this.",

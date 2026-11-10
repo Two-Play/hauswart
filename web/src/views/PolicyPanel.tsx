@@ -22,7 +22,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device } from '../api';
-import { Loaded, showError } from '../ui';
+import { ExpandableText, Loaded, showError } from '../ui';
 import { knownNames, KnownNamesContext, NameInput } from './NameInput';
 import { PackageSearch, SearchScopeContext } from './PackageSearch';
 
@@ -362,9 +362,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.files')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.filesHint')}
-      </Text>
+      </ExpandableText>
       {files.map((file, i) => (
         <Paper withBorder p="xs" key={i}>
           <Stack gap="xs">
@@ -401,9 +401,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.cas')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.casHint')}
-      </Text>
+      </ExpandableText>
       {cas.map((ca, i) => (
         <Paper withBorder p="xs" key={i}>
           <Stack gap="xs">
@@ -479,9 +479,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.screenTime')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.screenTimeHint')}
-      </Text>
+      </ExpandableText>
       <TextInput
         label={t('policies.timeZone')}
         placeholder={zone}
@@ -495,9 +495,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.apps')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.appsHint')}
-      </Text>
+      </ExpandableText>
       {appRules.map((rule, i) => (
         <AppRuleForm
           key={i}
@@ -513,9 +513,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.directory')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.directoryHint')}
-      </Text>
+      </ExpandableText>
       <Checkbox
         label={t('policies.directoryOn')}
         checked={!!p.directory}
@@ -561,9 +561,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.mounts')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.mountsHint')}
-      </Text>
+      </ExpandableText>
       {mounts.map((mount, i) => (
         <Group key={i} align="flex-end" wrap="nowrap">
           <TextInput
@@ -621,9 +621,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.wifi')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.wifiHint')}
-      </Text>
+      </ExpandableText>
       {wifi.map((net, i) => (
         <Paper withBorder p="xs" key={i}>
           <Group align="flex-end" grow>
@@ -667,9 +667,9 @@ function PolicyForm({
 
       <Divider />
       <Title order={5}>{t('policies.printers')}</Title>
-      <Text size="xs" c="dimmed">
+      <ExpandableText size="xs" c="dimmed">
         {t('policies.printersHint')}
-      </Text>
+      </ExpandableText>
       {printers.map((printer, i) => (
         <Paper withBorder p="xs" key={i}>
           <Group align="flex-end" grow>
