@@ -1111,11 +1111,21 @@ def test_screentime(admin, agent_bin, work, public_key, kde=False):
               vm.ssh(f"loginctl list-sessions; journalctl -b -u {manager} --no-pager | tail -15").stdout)
         time.sleep(20)  # the shell needs a moment before it owns the service
         uid = vm.ssh("id -u anna").stdout.strip()
+        # The full-screen block at the end of screen time comes with the desktop app.
+        tray = f"{ROOT}/dist/hauswart-tray-0.1.0-1.x86_64.rpm"
+        if os.path.exists(tray):
+            vm.copy(tray, "/tmp/tray.rpm")
+            vm.ssh("dnf5 install -y /tmp/tray.rpm cage", timeout=900)
         device = protected_agent(vm, admin, tool, agent_bin, group)
         bus = f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus"
         vm.ssh(f"systemd-run --unit=notifications --uid=anna --setenv={bus} "
                "sh -c \"exec dbus-monitor --session \\\"interface='org.freedesktop.Notifications',member='Notify'\\\" >/tmp/notifications.log\"")
 
+        # anna has a Hauswart account, so that she can ask for more time.
+        admin.call("POST", "/api/users", {"username": f"anna-{group}", "linux_user": "anna",
+                                         "password": "long enough password", "role": "member"})
+        account = next(u for u in admin.call("GET", "/api/users")[1] if u["username"] == f"anna-{group}")
+        admin.call("PUT", f"/api/users/{account['id']}/devices", {"devices": [device]})
         code, out = admin.call("POST", "/api/groups", {"name": group})
         check(group, "group created", code == 201, out)
         path = f"/api/groups/{out['id']}"
@@ -1163,20 +1173,55 @@ def test_screentime(admin, agent_bin, work, public_key, kde=False):
               wait_for(lambda: "LockedHint=yes" in vm.ssh(f"loginctl show-session {session} -p LockedHint").stdout, 120, 2),
               vm.ssh(f"loginctl show-session {session}").stdout)
         check(group, "the user is told", "vorbei" in notifications(), notifications())
-        check(group, "the session ends a minute later", wait_for(lambda: not graphical_session(vm), 100, 2),
+
+        def block_state():
+            raw = vm.ssh("runuser -u hauswart-block -- curl -s --unix-socket /run/hauswart/block/control.sock "
+                         "http://agent/state").stdout
+            try:
+                return json.loads(raw)
+            except ValueError:
+                return {}
+        check(group, "the full-screen block covers the session",
+              wait_for(lambda: vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip() == "tty9", 180, 2),
+              vm.ssh("systemctl status hauswart-block --no-pager | tail -5; journalctl -u hauswart-agent --no-pager | tail -5").stdout)
+        state = {}
+
+        def screen_state():
+            nonlocal state
+            state = block_state()
+            return state.get("kind") == "screen"
+        wait_for(screen_state, 60, 2)
+        check(group, "it says whose time ended and when it comes back",
+              state.get("kind") == "screen" and state.get("user") == "anna" and state.get("next") and state.get("logout_at"), str(state))
+        check(group, "the session is still there behind it", graphical_session(vm), vm.ssh("loginctl list-sessions").stdout)
+        refused = vm.ssh("runuser -u anna -- curl -s -o /dev/null -w '%{http_code}' --unix-socket "
+                         "/run/hauswart/block/control.sock http://agent/state").stdout
+        check(group, "only the block may use its socket", refused != "200", refused)
+        asked = vm.ssh("runuser -u hauswart-block -- curl -s -X POST -d '{\"minutes\":15}' --unix-socket "
+                       "/run/hauswart/block/control.sock http://agent/request").stdout
+        _, requests = admin.call("GET", "/api/requests")
+        check(group, "more time can be asked for on the block",
+              any(r.get("kind") == "screen" and r.get("detail") == "15" for r in requests or []), asked + str(requests)[:300])
+        vm.ssh("runuser -u hauswart-block -- curl -s -X POST --unix-socket /run/hauswart/block/control.sock http://agent/logout")
+        check(group, "the logout button ends the session", wait_for(lambda: not graphical_session(vm), 60, 2),
               vm.ssh("loginctl list-sessions").stdout)
+        check(group, "and the block goes away", wait_for(lambda: vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip() != "tty9", 30, 1),
+              vm.ssh("cat /sys/class/tty/tty0/active").stdout)
 
         vm.ssh(f"systemctl restart {manager}", timeout=60)
         appeared = wait_for(lambda: graphical_session(vm), 90, 1)
-        ended = wait_for(lambda: not graphical_session(vm), 40, 1)
         check(group, "a new login appears", appeared, vm.ssh(f"loginctl list-sessions; systemctl status {manager} --no-pager | tail").stdout)
-        check(group, "and ends within seconds", ended, vm.ssh("loginctl list-sessions").stdout)
+        check(group, "and is blocked at once",
+              wait_for(lambda: vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip() == "tty9", 60, 1),
+              vm.ssh("loginctl list-sessions").stdout)
 
         until = (datetime.now(timezone.utc) + timedelta(minutes=10))
         task, shown = signed_task(admin, tool, device, "screen.extend", {"user": "anna", "until": until.isoformat()})
         check(group, "the extension is shown", "Let anna stay logged in" in shown, shown)
         check(group, "the extension runs", task["status"] == "done", task["output"])
-        vm.ssh(f"systemctl restart {manager}", timeout=60)
+        check(group, "the extension lifts the block",
+              wait_for(lambda: vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip() != "tty9", 60, 2),
+              vm.ssh("cat /sys/class/tty/tty0/active").stdout)
         check(group, "with an extension the session comes back", wait_for(lambda: graphical_session(vm), 90, 2),
               vm.ssh("loginctl list-sessions").stdout)
         time.sleep(40)

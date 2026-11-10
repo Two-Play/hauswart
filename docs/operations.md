@@ -685,8 +685,18 @@ after a warning of 10 minutes.
 ### Screen time
 
 Each rule names a Linux user and their times per day. A day without a time means no
-session on that day. Warnings come 15, 5 and 1 minutes before the end. At the end
-the session locks, and a minute later it ends. **Unsaved work is lost then.**
+session on that day. Warnings come 15, 5 and 1 minutes before the end. At the end a
+full-screen notice covers the session. It says why, whether the minutes of the day are
+used up or the time window is over, and from when the device can be used again. It has
+two buttons: **Ask for more time**, 15, 30 or 60 minutes, which files a request as the
+person in front of it, and **Log out now**. The programs behind it keep running, and
+ten minutes later the session ends. **Unsaved work is lost then.** Someone who logs in
+outside their time sees the same notice. More time, such as an approved request, lifts
+the notice at once.
+
+The notice runs in the kiosk compositor `cage`, which the agent installs the first time,
+and comes with the package `hauswart-tray`. Without them, the session is only locked,
+and ends after the same ten minutes.
 
 A rule can also have **minutes per day**. The device counts the time someone's
 session is in front, locked or not, because a session can claim to be locked, and the session ends when the minutes are used up or the time

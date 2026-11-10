@@ -95,6 +95,8 @@ type PolicyEngine struct {
 	// screen is what the screen time check remembers about each user. Only the
 	// check uses it, so it needs no lock.
 	screen map[string]*screenUser
+	// blocked are the user IDs behind the full-screen block for their screen time.
+	blocked map[string]*screenBlock
 	// counted is when the time of each user ID was last counted.
 	counted map[string]time.Time
 	// screenIssue says why the last screen time check failed.
@@ -114,7 +116,7 @@ type PolicyEngine struct {
 // OpenPolicy loads the stored policy. A file that cannot be read shows up as a
 // deviation and never stops the agent, because signed tasks are what can fix it.
 func OpenPolicy(dir string, exec *Executor, log *slog.Logger) *PolicyEngine {
-	pe := &PolicyEngine{dir: dir, exec: exec, log: log, wake: make(chan struct{}, 1), screen: map[string]*screenUser{}, counted: map[string]time.Time{}, screenFresh: true}
+	pe := &PolicyEngine{dir: dir, exec: exec, log: log, wake: make(chan struct{}, 1), screen: map[string]*screenUser{}, blocked: map[string]*screenBlock{}, counted: map[string]time.Time{}, screenFresh: true}
 	raw, err := os.ReadFile(filepath.Join(dir, policyFile))
 	if err == nil {
 		var p api.Policy

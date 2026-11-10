@@ -258,6 +258,12 @@ that concern them or the whole device. A device learns the state of its requests
 with the Linux user, the kind and the detail, but never the reason, because whoever
 controls the device can read it.
 
+The full-screen notice runs as the system account `hauswart-block` and asks the agent
+on `/run/hauswart/block/control.sock`, which only that account may open. It can do two
+things for the person whose screen time ended, and only for them: ask for more time,
+at most once in five minutes, and log them out. Accounts below UID 1000, such as the
+one of the notice, may not use the socket of the desktop apps.
+
 ### The admin app
 
 `hauswart-admin-gui` runs no server and opens no port. It shows what the command line
