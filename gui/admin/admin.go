@@ -4,6 +4,7 @@ package admin
 
 import (
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -32,6 +33,8 @@ type App struct {
 	backend Backend
 	// background runs what can take a while, such as touching a security key.
 	background func(func())
+	// now is the clock for "last seen", which tests set.
+	now func() time.Time
 
 	items    []admintool.Item
 	selected int
@@ -57,7 +60,7 @@ type App struct {
 
 // New builds the window. Reload fills it.
 func New(a fyne.App, backend Backend) *App {
-	t := &App{backend: backend, selected: -1, background: func(f func()) { go f() }}
+	t := &App{backend: backend, selected: -1, background: func(f func()) { go f() }, now: time.Now}
 	t.window = a.NewWindow(lang.L("admin.title"))
 	t.window.Resize(fyne.NewSize(900, 600))
 
@@ -181,7 +184,7 @@ func (t *App) show() {
 	}
 	t.head.SetText(lang.L("admin.device", map[string]any{"Name": item.DeviceName}))
 	var text strings.Builder
-	text.WriteString(lang.L("admin.from", map[string]any{"Who": item.CreatedBy}) + "\n\n")
+	text.WriteString(t.context(item) + "\n\n")
 	if item.Problem != "" {
 		if item.Unnamed {
 			t.head.SetText(lang.L("admin.device", map[string]any{"Name": item.DeviceID}))
@@ -209,6 +212,44 @@ func (t *App) show() {
 		t.signOne.Enable()
 		t.signAll.Enable()
 	}
+}
+
+// context says when and why a task was made and what is known about its
+// device. It all comes from the server and helps to decide, but proves nothing.
+func (t *App) context(item admintool.Item) string {
+	when := func(at time.Time) string {
+		if at.IsZero() {
+			return "?"
+		}
+		return at.Local().Format(admintool.When)
+	}
+	var lines []string
+	if item.Automatic() {
+		lines = append(lines, lang.L("admin.created.auto", map[string]any{"When": when(item.CreatedAt)}))
+	} else {
+		lines = append(lines, lang.L("admin.created", map[string]any{"When": when(item.CreatedAt), "Who": item.CreatedBy}))
+	}
+	if r := item.Request; r != nil {
+		key := "admin.requested"
+		if r.Reason != "" {
+			key = "admin.requested.reason"
+		}
+		lines = append(lines, lang.L(key, map[string]any{"Who": r.User, "When": when(r.At), "Reason": r.Reason}))
+	}
+	device := []string{lang.L("admin.host", map[string]any{"Host": item.Hostname})}
+	if item.Hostname == "" {
+		device[0] = lang.L("admin.host.unknown")
+	}
+	if item.LastSeen.IsZero() {
+		device = append(device, lang.L("admin.seen.never"))
+	} else {
+		n, unit := admintool.Since(item.LastSeen, t.now())
+		device = append(device, lang.L("admin.seen."+unit, map[string]any{"N": n}))
+	}
+	if len(item.Sessions) > 0 {
+		device = append(device, lang.L("admin.loggedin", map[string]any{"Who": admintool.SessionList(item.Sessions, lang.L("admin.active"))}))
+	}
+	return strings.Join(append(lines, strings.Join(device, " · ")), "\n")
 }
 
 func (t *App) failed(err error) {

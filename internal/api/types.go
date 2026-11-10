@@ -134,11 +134,25 @@ type Report struct {
 
 	Insight
 
+	// Sessions says who is logged in, and whose session is in front, so that an
+	// admin who signs a task knows who is at the device.
+	Sessions []LoginSession `json:"sessions,omitempty"`
+
 	// Apps are the applications with a launcher, to choose from in the dashboard.
 	Apps []AppEntry `json:"apps,omitempty"`
 	// Policy is empty on a device without one.
 	Policy *PolicyStatus `json:"policy,omitempty"`
 }
+
+// LoginSession is someone logged in on a device. Active says that their session
+// is the one in front.
+type LoginSession struct {
+	User   string `json:"user"`
+	Active bool   `json:"active"`
+}
+
+// MaxReportSessions limits how many people a report names.
+const MaxReportSessions = 20
 
 type EnrollRequest struct {
 	Token    string `json:"token"`

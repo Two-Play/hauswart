@@ -3,6 +3,7 @@ package api
 import (
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -140,6 +141,26 @@ func (r *Report) Clean() {
 	for _, field := range []*string{&r.Hostname, &r.Distro, &r.Kernel, &r.AgentVersion} {
 		*field = CleanText(*field, maxReportText)
 	}
+	r.Sessions = cleanSessions(r.Sessions)
+}
+
+// cleanSessions keeps real user names, each once, and no more than a reader needs.
+func cleanSessions(in []LoginSession) []LoginSession {
+	var out []LoginSession
+	for _, s := range in {
+		if !userRe.MatchString(s.User) {
+			continue
+		}
+		if i := slices.IndexFunc(out, func(o LoginSession) bool { return o.User == s.User }); i >= 0 {
+			out[i].Active = out[i].Active || s.Active
+			continue
+		}
+		if len(out) == MaxReportSessions {
+			break
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // Check keeps out what would hurt the server or a reader. A device can still lie.

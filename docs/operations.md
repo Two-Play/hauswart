@@ -231,6 +231,12 @@ hauswart-admin approve --all
 hauswart-admin start-password --device <device-id> --user anna
 ```
 
+For every task, `approve` and the admin app also say when and by whom it was
+created (or that a rule approved the request on its own), who asked for it and
+why, and when the device was last seen and who is logged in on it. That comes from
+the server and the device, so it helps to decide but proves nothing, and none of it
+is signed.
+
 `approve --all` shows every waiting task in full and then asks once. The admin app
 does the same with **Sign everything**. A security key still wants a touch per
 task, because each task carries a signature of its own.

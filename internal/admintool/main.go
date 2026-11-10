@@ -613,6 +613,18 @@ type queued struct {
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedBy string          `json:"created_by"`
+	// The rest is context for the reader, never part of what is signed.
+	CreatedAt int64              `json:"created_at"`
+	Hostname  string             `json:"hostname"`
+	LastSeen  int64              `json:"last_seen"`
+	Sessions  []api.LoginSession `json:"sessions"`
+	Request   *queuedRequest     `json:"request"`
+}
+
+type queuedRequest struct {
+	User      string `json:"user"`
+	Reason    string `json:"reason"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 func approve(args []string) error {
@@ -653,6 +665,7 @@ func approve(args []string) error {
 	for i, task := range queue {
 		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
 		item := prepare(cfg, list, task, queue[i+1:])
+		printContext(item)
 		if item.Problem != "" {
 			fmt.Printf("  %s\n", item.Problem)
 			continue
@@ -709,6 +722,7 @@ func approveAll(cfg *config, key ssh.Signer, list map[string]serverDevice, queue
 	for i, task := range queue {
 		item := prepare(cfg, list, task, queue[i+1:])
 		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
+		printContext(item)
 		if item.Problem != "" {
 			fmt.Printf("  %s\n  Left in the queue.\n", item.Problem)
 			continue

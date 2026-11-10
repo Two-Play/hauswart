@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -531,6 +532,7 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		report.Insight = a.exec.collectInsight(ctx)
 		report.Policy = a.policy.Status()
 		report.Apps = a.policy.Apps()
+		report.Sessions = a.exec.sessionReport(ctx)
 		if a.access != nil {
 			report.Access = a.access.Current()
 		}
@@ -557,6 +559,27 @@ func (a *Agent) reportLoop(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// sessionReport says who is logged in, by name, and whose session is in front.
+// Nothing is said when loginctl does not work.
+func (e *Executor) sessionReport(ctx context.Context) []api.LoginSession {
+	users, err := e.loginSessions(ctx)
+	if err != nil {
+		return nil
+	}
+	front := e.activeUser(ctx)
+	var out []api.LoginSession
+	for _, u := range users {
+		if !slices.ContainsFunc(out, func(s api.LoginSession) bool { return s.User == u.name }) {
+			out = append(out, api.LoginSession{User: u.name, Active: u.name == front})
+		}
+	}
+	slices.SortFunc(out, func(a, b api.LoginSession) int { return strings.Compare(a.User, b.User) })
+	if len(out) > api.MaxReportSessions {
+		out = out[:api.MaxReportSessions]
+	}
+	return out
 }
 
 // errSuspended says that the server holds this device back.

@@ -675,11 +675,63 @@ func (s *Store) RejectTask(ctx context.Context, taskID, by string) error {
 	return nil
 }
 
+// QueuedTask is a task waiting for a signature, with what an admin wants to
+// know before signing it: the device, who is on it and the request behind it.
+type QueuedTask struct {
+	TaskRow
+	Hostname string             `json:"hostname"`
+	LastSeen int64              `json:"last_seen"`
+	Sessions []api.LoginSession `json:"sessions,omitempty"`
+	// Request is the request the task was made for, if any.
+	Request *QueuedRequest `json:"request,omitempty"`
+}
+
+// QueuedRequest is who asked for a task, and why.
+type QueuedRequest struct {
+	User      string `json:"user"`
+	Reason    string `json:"reason"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 // SigningQueue lists the tasks waiting for a signature, oldest first.
-func (s *Store) SigningQueue(ctx context.Context) ([]TaskRow, error) {
-	return s.queryTasks(ctx, `
-		SELECT id, device_id, type, payload, status, output, data, created_by, created_at, finished_at
-		FROM tasks WHERE status = 'signing' ORDER BY created_at, rowid`)
+func (s *Store) SigningQueue(ctx context.Context) ([]QueuedTask, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.id, t.device_id, t.type, t.payload, t.status, t.output, t.data, t.created_by, t.created_at, t.finished_at,
+		       d.hostname, d.last_seen, d.report,
+		       COALESCE(u.username, ''), COALESCE(r.reason, ''), COALESCE(r.created_at, 0), r.id IS NOT NULL
+		FROM tasks t JOIN devices d ON d.id = t.device_id
+		LEFT JOIN requests r ON r.id = (SELECT id FROM requests WHERE task_id = t.id ORDER BY created_at, rowid LIMIT 1)
+		LEFT JOIN users u ON u.id = r.user_id
+		WHERE t.status = 'signing' ORDER BY t.created_at, t.rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	queue := []QueuedTask{}
+	for rows.Next() {
+		var q QueuedTask
+		var payload, data, report string
+		var req QueuedRequest
+		var linked bool
+		if err := rows.Scan(&q.ID, &q.DeviceID, &q.Type, &payload, &q.Status, &q.Output, &data, &q.CreatedBy, &q.CreatedAt, &q.FinishedAt,
+			&q.Hostname, &q.LastSeen, &report, &req.User, &req.Reason, &req.CreatedAt, &linked); err != nil {
+			return nil, err
+		}
+		q.Payload = json.RawMessage(payload)
+		if data != "" {
+			q.Data = json.RawMessage(data)
+		}
+		var r api.Report
+		// A report that does not parse only means nobody is known to be there.
+		if json.Unmarshal([]byte(report), &r) == nil {
+			q.Sessions = r.Sessions
+		}
+		if linked {
+			q.Request = &req
+		}
+		queue = append(queue, q)
+	}
+	return queue, rows.Err()
 }
 
 // DeviceProtected reports whether a device says it requires signatures. A

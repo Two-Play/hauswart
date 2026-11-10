@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -40,13 +42,75 @@ type Item struct {
 	Unnamed    bool
 	ServerName string
 
+	// What follows is context from the server and the device. It helps to
+	// decide, but proves nothing and is not signed.
+	CreatedAt time.Time
+	// Request is the request the task was made for, nil if there was none.
+	Request  *Request
+	Hostname string
+	LastSeen time.Time
+	Sessions []LoggedIn
+
 	payload []byte
+}
+
+// Request is who asked for a task, and why.
+type Request struct {
+	User   string
+	Reason string
+	At     time.Time
+}
+
+// LoggedIn is someone logged in on the device. Active is the one in front.
+type LoggedIn struct {
+	User   string
+	Active bool
+}
+
+// Automatic says that a rule approved the request without anyone looking.
+func (i Item) Automatic() bool { return strings.HasPrefix(i.CreatedBy, api.DecidedAutomatically+":") }
+
+// maxReason is how much of a reason is shown.
+const maxReason = 300
+
+// cleanReason keeps a reason on one line and free of control characters.
+func cleanReason(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > maxReason {
+		s = string(r[:maxReason]) + "…"
+	}
+	return clean(s)
+}
+
+// unix turns a time from the server into one, zero for none.
+func unix(sec int64) time.Time {
+	if sec <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0)
+}
+
+// addContext copies what the server says around a task, cleaned.
+func addContext(item *Item, task queued) {
+	item.CreatedAt = unix(task.CreatedAt)
+	item.Hostname = clean(task.Hostname)
+	item.LastSeen = unix(task.LastSeen)
+	for _, s := range task.Sessions {
+		if len(item.Sessions) == api.MaxReportSessions {
+			break
+		}
+		item.Sessions = append(item.Sessions, LoggedIn{User: clean(s.User), Active: s.Active})
+	}
+	if r := task.Request; r != nil {
+		item.Request = &Request{User: clean(r.User), Reason: cleanReason(r.Reason), At: unix(r.CreatedAt)}
+	}
 }
 
 // prepare turns a task from the server into what is shown. Nothing from the server
 // reaches the signature except through review.
 func prepare(cfg *config, list map[string]serverDevice, task queued, rest []queued) Item {
 	item := Item{ID: task.ID, DeviceID: clean(task.DeviceID), Type: clean(task.Type), CreatedBy: clean(task.CreatedBy)}
+	addContext(&item, task)
 	known := cfg.Devices[task.DeviceID]
 	if known == nil || known.Name == "" {
 		item.Unnamed = true
