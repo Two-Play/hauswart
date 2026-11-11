@@ -749,9 +749,9 @@ def test_signing(admin, agent_bin, work, password, admin_bin, ca_pem):
         shown = tool.run("approve", input="n\n")
         check(name, "approve shows the popup text", 'titled "Hauswart"' in shown.stdout and "Essen ist fertig" in shown.stdout, shown.stdout + shown.stderr)
         tool.run("approve", input="r\n")
-        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "access.set", "payload": {"mode": "open"}})
+        code, out = admin.call("POST", f"/api/devices/{device}/tasks", {"type": "access.open", "payload": {}})
         queued = next(t for t in admin.call("GET", "/api/tasks")[1] if t["id"] == out["id"])
-        check(name, "access.set waits for a signature, opening as well", queued["status"] == "signing", str(queued))
+        check(name, "access.open waits for a signature too", queued["status"] == "signing", str(queued))
         shown = tool.run("approve", input="r\n")
         check(name, "approve says what opening does", "OPEN ACCESS" in shown.stdout, shown.stdout + shown.stderr)
         task = run_task(admin, device, "power.cancel", {}, wait=45)
@@ -932,7 +932,7 @@ def test_socket(admin, agent_bin):
 
         # Refused logins for the whole device keep everyone but root out through
         # pam_nologin, and opening again lets them in.
-        task = run_task(admin, device, "access.set", {"mode": "login"}, wait=60)
+        task = run_task(admin, device, "access.deny", {}, wait=60)
         check(name, "logins refused", task["status"] == "done", task["output"])
         check(name, "through /run/nologin", inside("cat /run/nologin").stdout.startswith("Hauswart"), inside("ls -l /run").stdout)
         status = as_user("anna", "/status").stdout
@@ -942,9 +942,9 @@ def test_socket(admin, agent_bin):
             time.sleep(2)
             status = as_user("anna", "/status").stdout
         check(name, "anna learns it", '"access":{"mode":"login"}' in status, status)
-        task = run_task(admin, device, "access.set", {"mode": "open"}, wait=60)
+        task = run_task(admin, device, "access.open", {}, wait=60)
         check(name, "access open again", task["status"] == "done" and inside("test -e /run/nologin").returncode != 0, task["output"])
-        task = run_task(admin, device, "access.set", {"mode": "open", "users": ["anna"]}, wait=60)
+        task = run_task(admin, device, "access.open", {"users": ["anna"]}, wait=60)
         check(name, "opening takes no names", task["status"] in ("failed", "rejected"), task["output"])
     finally:
         sh("podman", "rm", "-f", container, check_rc=False)

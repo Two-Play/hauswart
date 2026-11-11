@@ -67,7 +67,11 @@ func (s *seat) done() []string {
 
 func setAccess(t *testing.T, a *Access, p api.AccessPayload) {
 	t.Helper()
-	if result := a.Set(context.Background(), api.Task{Type: api.TaskAccessSet, Payload: payload(t, p)}); !result.OK {
+	taskType, raw, err := api.AccessTask(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := a.Set(context.Background(), api.Task{Type: taskType, Payload: raw}); !result.OK {
 		t.Fatal(result.Output)
 	}
 }
@@ -173,7 +177,11 @@ func TestAccessChecks(t *testing.T) {
 		"bad user":       {Mode: api.AccessLogin, Users: []string{"../x"}},
 		"twice":          {Mode: api.AccessLogin, Users: []string{"anna", "anna"}},
 	} {
-		if err := api.Validate(api.TaskAccessSet, payload(t, p)); err == nil {
+		taskType, raw, err := api.AccessTask(p)
+		if err == nil {
+			err = api.Validate(taskType, raw)
+		}
+		if err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -278,7 +286,11 @@ func TestFullscreenChecks(t *testing.T) {
 		"not base64":        {Mode: api.AccessFullscreen, Image: "!!"},
 		"two lines":         {Mode: api.AccessFullscreen, Message: "a\nb"},
 	} {
-		if err := api.Validate(api.TaskAccessSet, payload(t, p)); err == nil {
+		taskType, raw, err := api.AccessTask(p)
+		if err == nil {
+			err = api.Validate(taskType, raw)
+		}
+		if err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -301,5 +313,15 @@ func TestHugePictureIsRefused(t *testing.T) {
 	}
 	if _, err := api.AccessImage(pngOf(t, 64, 64)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A device list from before the split allows all four, as it did.
+func TestLegacyAccessTypeMeansAllFour(t *testing.T) {
+	cfg := Config{PasskeyTypes: []string{api.LegacyAccessSet}}
+	for _, taskType := range api.AccessTypes {
+		if !slices.Contains(cfg.passkeyTypes(), taskType) {
+			t.Errorf("%s is not allowed", taskType)
+		}
 	}
 }

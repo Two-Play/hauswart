@@ -11,7 +11,7 @@ import (
 func TestWaitingTasksLapseByKind(t *testing.T) {
 	s := open(t)
 	device(t, s, "a")
-	block, err := s.CreateSigningTask(ctx, "a", api.TaskAccessSet, []byte(`{}`), "admin")
+	block, err := s.CreateSigningTask(ctx, "a", api.TaskAccessLock, []byte(`{}`), "admin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,5 +45,17 @@ func TestWaitingTasksLapseByKind(t *testing.T) {
 	lapsed, _ = s.LapseWaiting(ctx, time.Now().Add(8*24*time.Hour))
 	if len(lapsed) != 1 || lapsed[0].ID != pkg {
 		t.Fatalf("%+v", lapsed)
+	}
+}
+
+// A choice saved before the split reads as all four access types.
+func TestLegacyPasskeyChoiceExpands(t *testing.T) {
+	s := open(t)
+	if err := s.SetPasskeyTypes(ctx, []string{api.TaskPkgInstall, api.LegacyAccessSet}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	types, chosen, err := s.ChosenPasskeyTypes(ctx)
+	if err != nil || !chosen || len(types) != 5 {
+		t.Fatalf("%v %v %v", types, chosen, err)
 	}
 }

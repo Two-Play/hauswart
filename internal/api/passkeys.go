@@ -24,7 +24,10 @@ var PasskeyCapable = []string{
 	TaskScreenExtend,
 	// Blocking or opening access, but a block approved by passkey must end
 	// within a day: see PasskeyLimits.
-	TaskAccessSet,
+	TaskAccessLock,
+	TaskAccessDeny,
+	TaskAccessCover,
+	TaskAccessOpen,
 	// A live shell, one session per touch, which must start within minutes:
 	// see ApprovalWindow.
 	TaskTerminalOpen,
@@ -46,15 +49,12 @@ const MaxPasskeyBlock = 24 * time.Hour
 // PasskeyLimits checks what a passkey may approve beyond its type. The device
 // runs it on the approved payload.
 func PasskeyLimits(taskType string, payload json.RawMessage, now time.Time) error {
-	if taskType != TaskAccessSet {
+	if !IsAccessTask(taskType) || taskType == TaskAccessOpen {
 		return nil
 	}
-	var p AccessPayload
-	if err := json.Unmarshal(payload, &p); err != nil {
+	p, err := AccessFromTask(taskType, payload)
+	if err != nil {
 		return err
-	}
-	if p.Mode == AccessOpen {
-		return nil
 	}
 	if p.Until.IsZero() || p.Until.Sub(now) > MaxPasskeyBlock {
 		return Fail(ErrPasskeyBlockTooLong, MaxPasskeyBlock.String())

@@ -165,7 +165,7 @@ func (g *Guard) SetPasskeys(passkeys []sign.Passkey, types []string) {
 	defer g.mu.Unlock()
 	g.passkeys = passkeys
 	g.passkeyTypes = map[string]bool{}
-	for _, taskType := range types {
+	for _, taskType := range api.ExpandLegacyTypes(types) {
 		if api.PasskeyEligible(taskType) {
 			g.passkeyTypes[taskType] = true
 		}

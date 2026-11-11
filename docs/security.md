@@ -66,7 +66,7 @@ hacked server can:
 What a touch can reach is limited by the device, not by the server, and only to
 the types in its local list. By default those are `pkg.install`, `pkg.remove`,
 `pkg.upgrade`, `flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`,
-`notify.send`, `screen.extend`, `access.set` and `terminal.open`. Admins narrow that
+`notify.send`, `screen.extend`, `access.lock`, `access.deny`, `access.cover`, `access.open` and `terminal.open`. Admins narrow that
 list in the dashboard, and the change reaches the devices only with a signature, so
 a hacked server cannot let a passkey approve more.
 

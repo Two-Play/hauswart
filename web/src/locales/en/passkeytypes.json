@@ -1,5 +1,7 @@
 {
-  "taskTypes": { "passkeys_types": "Set what a passkey may approve" },
+  "taskTypes": {
+    "passkeys_types": "Set what a passkey may approve"
+  },
   "passkeyTypes": {
     "title": "What a passkey may approve",
     "hint": "Each action either works with a passkey, from a phone too, or needs a signature from hauswart-admin or the admin app. A change reaches the protected devices only after you sign it with hauswart-admin approve: a passkey cannot widen its own reach.",
@@ -21,8 +23,11 @@
       "power_cancel": "Stops a restart or shutdown.",
       "notify_send": "A message on the desktops.",
       "screen_extend": "More screen time, for today only.",
-      "access_set": "Blocks or opens the device, for at most a day.",
-      "terminal_open": "A root shell for up to four hours, started within 15 minutes."
+      "terminal_open": "A root shell for up to four hours, started within 15 minutes.",
+      "access_lock": "Locks the screen, for at most a day.",
+      "access_deny": "Refuses logins and ends sessions, for at most a day.",
+      "access_cover": "Covers the screen with a notice, for at most a day.",
+      "access_open": "Opens the device again after a block."
     }
   },
   "errors": {

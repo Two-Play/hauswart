@@ -142,14 +142,18 @@ enrolling it again, as a new device.
 ## Block access to a device
 
 Suspending changes what Hauswart does. To change what people at a device can do,
-run **Block access** on it:
+run one of the access actions on it. Each is a task type of its own, so a passkey
+can be allowed some and not others:
 
-| Mode | What happens |
-| --- | --- |
-| Block the screen | Sessions are locked, and locked again within seconds whenever someone unlocks them. Work stays open. |
-| Full-screen notice | Your text and picture cover the screen, and the sessions behind are locked. Nobody at the device can close it, and work stays open. |
-| Refuse logins | Running sessions get a minute's warning, then they end, and unsaved work is lost. New logins are refused. |
-| Open access again | Lifts the block. |
+| Action | Type | What happens |
+| --- | --- | --- |
+| Lock the screen | `access.lock` | Sessions are locked, and locked again within seconds whenever someone unlocks them. Work stays open. |
+| Full-screen notice | `access.cover` | Your text and picture cover the screen, and the sessions behind are locked. Nobody at the device can close it, and work stays open. |
+| Refuse logins | `access.deny` | Running sessions get a minute's warning, then they end, and unsaved work is lost. New logins are refused. |
+| Open the device again | `access.open` | Lifts whichever block is in force. |
+
+A new block replaces the one before. These four replace `access.set` from earlier
+versions; a list of passkey types that still names `access.set` allows all four.
 
 - **Who:** It applies to the Linux users you name, or to every ordinary account if you
   name none. System accounts and root are never affected.
@@ -161,7 +165,7 @@ run **Block access** on it:
   - For single people, any session they start ends at once.
 - **End:** A block can end after some hours, at most 30 days. The device keeps to
   the end without the server, and a restart keeps the block.
-- **Signatures:** On a protected device, every mode needs a signature, opening
+- **Signatures:** On a protected device, each of them needs a signature, opening
   included.
 - **Full-screen notice:**
   - It needs the package `hauswart-tray` on the device. The agent installs the kiosk
@@ -358,7 +362,7 @@ passkey can never approve this change itself.
 
 A passkey can at most approve `pkg.install`, `pkg.remove`, `pkg.upgrade`,
 `flatpak.install`, `power.reboot`, `power.shutdown`, `power.cancel`, `notify.send`,
-`screen.extend`, `access.set` and `terminal.open`. Everything else, such as sudo,
+`screen.extend`, `access.lock`, `access.deny`, `access.cover`, `access.open` and `terminal.open`. Everything else, such as sudo,
 accounts, files, CAs and keys, always takes a signature. Until an admin chooses, every
 device keeps the list it was enrolled with, which is all of these. Removing
 `pkg.remove`, `flatpak.install` and `terminal.open` is a sensible first step. A block

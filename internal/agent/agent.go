@@ -84,7 +84,7 @@ func (c Config) passkeyTypes() []string {
 	if c.PasskeyTypes == nil {
 		return api.DefaultPasskeyTypes
 	}
-	return c.PasskeyTypes
+	return api.ExpandLegacyTypes(c.PasskeyTypes)
 }
 
 // DeviceID reads the ID of an enrolled device.
@@ -639,7 +639,7 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 		return a.setPolicy(task)
 	case api.TaskScreenExtend:
 		return a.extendScreenTime(task)
-	case api.TaskAccessSet:
+	case api.TaskAccessLock, api.TaskAccessDeny, api.TaskAccessCover, api.TaskAccessOpen:
 		if a.access == nil {
 			return api.TaskResult{OK: false, Output: "access is not available"}
 		}

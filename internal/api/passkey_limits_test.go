@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 )
@@ -17,10 +17,15 @@ func TestPasskeyBlocksEndWithinADay(t *testing.T) {
 		"without an end":    {AccessPayload{Mode: AccessLogin}, false},
 		"longer than a day": {AccessPayload{Mode: AccessFullscreen, Until: now.Add(25 * time.Hour)}, false},
 	} {
-		raw, _ := json.Marshal(c.p)
-		if err := PasskeyLimits(TaskAccessSet, raw, now); (err == nil) != c.ok {
+		taskType, raw, _ := AccessTask(c.p)
+		if err := PasskeyLimits(taskType, raw, now); (err == nil) != c.ok {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	// The old single type stands for all four in a list of types.
+	if got := ExpandLegacyTypes([]string{TaskPkgInstall, LegacyAccessSet}); !slices.Equal(SortedTypes(got),
+		SortedTypes([]string{TaskPkgInstall, TaskAccessLock, TaskAccessDeny, TaskAccessCover, TaskAccessOpen})) {
+		t.Errorf("expanded to %v", got)
 	}
 	for _, gone := range []string{"group.add", "group.remove", TaskUserLock, TaskUserUnlock} {
 		if PasskeyEligible(gone) {

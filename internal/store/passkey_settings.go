@@ -33,7 +33,7 @@ func (s *Store) ChosenPasskeyTypes(ctx context.Context) ([]string, bool, error) 
 	if err := json.Unmarshal([]byte(document), &p); err != nil {
 		return nil, false, err
 	}
-	return append([]string{}, api.SortedTypes(p.Types)...), true, nil
+	return append([]string{}, api.SortedTypes(api.ExpandLegacyTypes(p.Types))...), true, nil
 }
 
 // SetPasskeyTypes saves the admins' choice.

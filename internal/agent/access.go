@@ -126,8 +126,8 @@ func (a *Access) Set(ctx context.Context, task api.Task) api.TaskResult {
 	if err := api.Validate(task.Type, task.Payload); err != nil {
 		return api.TaskResult{OK: false, Output: err.Error()}
 	}
-	var p api.AccessPayload
-	if err := json.Unmarshal(task.Payload, &p); err != nil {
+	p, err := api.AccessFromTask(task.Type, task.Payload)
+	if err != nil {
 		return api.TaskResult{OK: false, Output: err.Error()}
 	}
 	if p.Mode == api.AccessFullscreen {

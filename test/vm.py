@@ -1610,7 +1610,7 @@ def test_desktop(admin, agent_bin, work, public_key):
 
         sessions = anna_session()
         check(group, "anna still has her session", len(sessions) == 1, str(sessions))
-        task, shown = signed_task(admin, tool, device, "access.set", {"mode": "screen", "users": ["anna"]})
+        task, shown = signed_task(admin, tool, device, "access.lock", {"users": ["anna"]})
         check(group, "approve says the screen is blocked", "BLOCK THE SCREEN of Linux user(s) anna" in shown, shown)
         check(group, "the screen block is in force", task["status"] == "done", task["output"])
         check(group, "anna's screen is locked", wait_for(lambda: locked(sessions[0]), 30))
@@ -1618,17 +1618,17 @@ def test_desktop(admin, agent_bin, work, public_key):
         check(group, "and she is told", "blocks the screen" in monitor_log(), monitor_log()[-800:])
         vm.ssh(f"loginctl unlock-session {sessions[0]}")
         check(group, "unlocked, it is locked again", wait_for(lambda: locked(sessions[0]), 20))
-        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        task, _ = signed_task(admin, tool, device, "access.open", {})
         vm.ssh(f"loginctl unlock-session {sessions[0]}")
         time.sleep(12)
         check(group, "opened, it stays unlocked", task["status"] == "done" and not locked(sessions[0]), task["output"])
 
-        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "login", "users": ["anna"], "until": valid_for()})
+        task, _ = signed_task(admin, tool, device, "access.deny", {"users": ["anna"], "until": valid_for()})
         check(group, "logins refused for anna", task["status"] == "done", task["output"])
         check(group, "she is warned", wait_for(lambda: "Your session ends at" in monitor_log(), 20), monitor_log()[-800:])
         check(group, "after a minute her session ends", wait_for(lambda: sessions[0] not in anna_session(), 120), str(anna_session()))
         check(group, "and a new one does not last", wait_for(lambda: anna_session() == [], 60), str(anna_session()))
-        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        task, _ = signed_task(admin, tool, device, "access.open", {})
         check(group, "access open again", task["status"] == "done", task["output"])
 
         # The full-screen notice: a console of its own, back in front within seconds.
@@ -1642,7 +1642,7 @@ def test_desktop(admin, agent_bin, work, public_key):
         def front():
             return vm.ssh("cat /sys/class/tty/tty0/active").stdout.strip()
         before = front()
-        task, shown = signed_task(admin, tool, device, "access.set", {"mode": "fullscreen", "message": "Abendessen um 18 Uhr"}, wait=600)
+        task, shown = signed_task(admin, tool, device, "access.cover", {"message": "Abendessen um 18 Uhr"}, wait=600)
         check(group, "approve says the screen is covered", "COVER THE SCREEN" in shown and "Abendessen um 18 Uhr" in shown, shown)
         check(group, "the full-screen block is in force", task["status"] == "done", task["output"])
         check(group, "it is in front on its own console", wait_for(lambda: front() == "tty9", 60),
@@ -1653,7 +1653,7 @@ def test_desktop(admin, agent_bin, work, public_key):
         screendump(monitor, f"{shots}/desktop-fullscreen.png")
         vm.ssh("chvt 2")
         check(group, "switching away comes back", wait_for(lambda: front() == "tty9", 20), front())
-        task, _ = signed_task(admin, tool, device, "access.set", {"mode": "open"})
+        task, _ = signed_task(admin, tool, device, "access.open", {})
         check(group, "opened, the block is gone", wait_for(lambda: vm.ssh("systemctl is-active hauswart-block").returncode != 0, 20))
         check(group, "and the console from before is in front", wait_for(lambda: front() == before, 20), front() + " " + before)
     finally:
