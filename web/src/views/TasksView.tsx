@@ -1,4 +1,4 @@
-import { Code, Paper, Spoiler, Stack, Title } from '@mantine/core';
+import { Code, Paper, Spoiler, Stack, Text, Title } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import { useResource, type Device, type Task } from '../api';
 import { taskKey } from '../tasks';
@@ -12,7 +12,10 @@ export function TasksView() {
 
   return (
     <Stack>
-      <Title order={2}>{t('nav.tasks')}</Title>
+      <div>
+        <Title order={2}>{t('nav.tasks')}</Title>
+        <Text c="dimmed">{t('tasks.subtitle')}</Text>
+      </div>
       <Paper withBorder p="md">
         <Loaded data={tasks.data} error={tasks.error}>
           {(list) => (

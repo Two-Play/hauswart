@@ -18,7 +18,7 @@
     "devices": "Devices",
     "requests": "Requests",
     "inventory": "Inventory",
-    "tasks": "Tasks",
+    "tasks": "Task history",
     "users": "Users",
     "audit": "Audit log",
     "logout": "Sign out",
@@ -30,7 +30,8 @@
     "attention": {
       "tasks": "{{count}} failed in the last day",
       "groups": "{{count}} devices differ from their policy",
-      "devices": "{{count}} devices started differently than accepted"
+      "devices": "{{count}} devices started differently than accepted",
+      "approvals": "{{count}} waiting for you"
     }
   },
   "devices": {
@@ -153,7 +154,8 @@
     "action": "Action",
     "by": "By",
     "status": "Status",
-    "output": "Output"
+    "output": "Output",
+    "subtitle": "What was sent to the devices and how it went."
   },
   "users": {
     "new": "New user",

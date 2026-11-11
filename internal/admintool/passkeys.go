@@ -143,7 +143,7 @@ func pinText(id string, known *device, pins []sign.Passkey, report *api.Report) 
 		what = strings.Join(labels, ", ")
 	}
 	fmt.Fprintf(&b, "On this device, the device says a passkey may approve: %s.\n"+
-		"Change that in the dashboard under Approvals; it takes a signature as well.\n", what)
+		"Change that in the dashboard under To approve; it takes a signature as well.\n", what)
 	return b.String()
 }
 

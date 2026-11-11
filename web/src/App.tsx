@@ -27,7 +27,7 @@ import {
   IconFolders,
   IconHistory,
   IconKey,
-  IconListCheck,
+  IconListDetails,
   IconLogout,
   IconMoon,
   IconSun,
@@ -71,10 +71,10 @@ const VIEWS: {
   { key: 'requests', icon: IconClipboardList, view: RequestsView },
   { key: 'approvals', icon: IconFingerprint, view: ApprovalsView, approverOnly: true },
   { key: 'inventory', icon: IconClipboardData, view: InventoryView, adminOnly: true },
-  { key: 'tasks', icon: IconListCheck, view: TasksView, adminOnly: true },
+  { key: 'tasks', icon: IconHistory, view: TasksView, adminOnly: true },
   { key: 'certificates', icon: IconCertificate, view: CertificatesView, adminOnly: true },
   { key: 'users', icon: IconUsers, view: UsersView, adminOnly: true },
-  { key: 'audit', icon: IconHistory, view: AuditView, adminOnly: true },
+  { key: 'audit', icon: IconListDetails, view: AuditView, adminOnly: true },
 ];
 
 function ColorSchemeToggle() {
@@ -104,6 +104,15 @@ interface Attention {
   deviating_devices: number;
   boot_alarms?: number;
   exposure?: Exposure | null;
+}
+
+/** useWaiting counts what waits for this user on the page to approve: what a
+ * passkey may approve, and for admins also what waits for a signature. */
+function useWaiting(approver: boolean, admin: boolean): number | undefined {
+  const passkey = useResource<{ id: string }[]>(approver ? '/api/approvals' : '', 15_000);
+  const signing = useResource<{ id: string }[]>(admin ? '/api/signing' : '', 15_000);
+  const ids = new Set([...(passkey.data ?? []), ...(signing.data ?? [])].map((task) => task.id));
+  return ids.size || undefined;
 }
 
 /** Attention counts what an admin should look at, next to the views that show it. */
@@ -144,7 +153,9 @@ export function App() {
   const [chosen, setChosen] = useState<string>();
   const [opened, { toggle, close }] = useDisclosure();
   const [changingPassword, setChangingPassword] = useState(false);
-  const { counts: attention, exposure } = useAttention(user?.role === 'admin');
+  const { counts, exposure } = useAttention(user?.role === 'admin');
+  const waiting = useWaiting(!!user && isApprover(user), user?.role === 'admin');
+  const attention: Partial<Record<string, number>> = { ...counts, approvals: waiting };
 
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
