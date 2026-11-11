@@ -17,7 +17,7 @@ import type { TFunction } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource, type Device, type UpdateStatus, type Warning } from '../api';
-import { DataTable, formatBytes, formatTime, Loaded, showError } from '../ui';
+import { DataTable, ExpandableText, formatBytes, formatTime, Loaded, showError } from '../ui';
 import { BootTab } from './BootTab';
 import { HistoryChart, type Point } from './HistoryChart';
 
@@ -236,9 +236,9 @@ function AccountsTab({ device }: { device: Device }) {
   const { t } = useTranslation();
   return (
     <Stack>
-      <Text size="sm" c="dimmed">
+      <ExpandableText size="sm" c="dimmed">
         {t('insight.accountsHint')}
-      </Text>
+      </ExpandableText>
       <DataTable
         headers={[t('insight.account'), t('insight.groups'), t('insight.sudo'), t('insight.grant')]}
         empty={t('insight.noAccounts')}
@@ -371,9 +371,9 @@ function LogsTab({ device }: { device: Device }) {
   const logs = task?.data;
   return (
     <Stack>
-      <Text size="sm" c="dimmed">
+      <ExpandableText size="sm" c="dimmed">
         {t('insight.logsHint')}
-      </Text>
+      </ExpandableText>
       <Group>
         <Button size="xs" onClick={fetchLogs} loading={busy}>
           {t('insight.fetchLogs')}

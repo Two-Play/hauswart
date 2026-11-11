@@ -4,7 +4,9 @@
     "failed": "Das hat nicht geklappt",
     "loading": "Wird geladen…",
     "copy": "Kopieren",
-    "copied": "Kopiert"
+    "copied": "Kopiert",
+    "more": "Mehr anzeigen",
+    "less": "Weniger anzeigen"
   },
   "login": {
     "title": "Bei Hauswart anmelden",

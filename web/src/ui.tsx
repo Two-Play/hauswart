@@ -1,4 +1,4 @@
-import { Alert, Badge, Center, Loader, Table, Text } from '@mantine/core';
+import { Alert, Badge, Center, Loader, Spoiler, Table, Text, type TextProps } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -110,5 +110,23 @@ export function DataTable({
         </Table.Tbody>
       </Table>
     </Table.ScrollContainer>
+  );
+}
+
+/** ExpandableText shows the first lines of a long text and the rest on demand,
+ * so that a long output or reason does not stretch a list. */
+export function ExpandableText({
+  children,
+  lines = 3,
+  ...props
+}: { children: ReactNode; lines?: number } & TextProps) {
+  const { t } = useTranslation();
+  const size = props.size === 'xs' ? 18 : 22;
+  return (
+    <Spoiler maxHeight={lines * size} showLabel={t('common.more')} hideLabel={t('common.less')} fz="xs">
+      <Text {...props} style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap', ...(props.style as object) }}>
+        {children}
+      </Text>
+    </Spoiler>
   );
 }

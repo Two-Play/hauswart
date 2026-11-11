@@ -35,7 +35,7 @@ export function TasksView() {
                   task.created_by,
                   <StatusBadge status={task.status} />,
                   task.output && (
-                    <Spoiler maxHeight={44} showLabel="…" hideLabel="↑">
+                    <Spoiler maxHeight={44} showLabel={t('common.more')} hideLabel={t('common.less')} fz="xs">
                       <Code block>{task.output}</Code>
                     </Spoiler>
                   ),

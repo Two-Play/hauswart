@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/Two-Play/hauswart/internal/api"
+	"github.com/Two-Play/hauswart/internal/sign"
 )
 
 // ErrChanged says that a task is no longer what was shown. It is not signed then.
@@ -98,6 +99,9 @@ type Session struct {
 	sign    func(ssh.Signer, map[string]serverDevice, Item) error
 	signer  func() (ssh.Signer, error)
 	schema  func() (string, error)
+	// passkeyList and pinSend are for pinning passkeys.
+	passkeyList func() ([]serverPasskey, error)
+	pinSend     func(ssh.Signer, map[string]serverDevice, string, []sign.Passkey) error
 
 	// mu keeps one thing going at a time, as all of it changes cfg.
 	mu sync.Mutex
@@ -131,6 +135,7 @@ func Open() (*Session, error) {
 	}
 	s.signer = func() (ssh.Signer, error) { return signer(cfg) }
 	s.schema = func() (string, error) { return serverSchema(cfg) }
+	s.pinFuncs()
 	return s, nil
 }
 

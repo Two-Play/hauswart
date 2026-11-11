@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, useResource } from '../api';
 import { taskKey } from '../tasks';
-import { Loaded, showError } from '../ui';
+import { ExpandableText, Loaded, showError } from '../ui';
 
 interface PasskeyTypes {
   types: string[];
@@ -50,9 +50,9 @@ export function PasskeyTypesPanel() {
         {(view) => (
           <Stack>
             <Title order={4}>{t('passkeyTypes.title')}</Title>
-            <Text size="sm" c="dimmed">
+            <ExpandableText size="sm" c="dimmed">
               {t('passkeyTypes.hint')}
-            </Text>
+            </ExpandableText>
             {view.devices.total > 0 && (
               <Group gap="xs">
                 <Badge color="green" variant="light">

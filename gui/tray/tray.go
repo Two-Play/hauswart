@@ -83,8 +83,12 @@ type App struct {
 	empty   *widget.Label
 	kind    *widget.Select
 	detail  *widget.Entry
-	reason  *widget.Entry
-	result  *widget.Label
+	// detailItem labels the detail beside it, as a placeholder is gone once
+	// something is typed and hard to see when the kind changes.
+	detailItem *widget.FormItem
+	detailForm *widget.Form
+	reason     *widget.Entry
+	result     *widget.Label
 	// sendButton is off while the device is suspended.
 	sendButton *widget.Button
 	cloudURL   *widget.Label
@@ -151,13 +155,15 @@ func (t *App) requestForm() fyne.CanvasObject {
 	t.reason = widget.NewEntry()
 	t.result = widget.NewLabel("")
 	t.result.Wrapping = fyne.TextWrapWord
+	t.detailItem = widget.NewFormItem("", container.NewVBox(t.detail, t.suggestions))
 	t.kind = widget.NewSelect(labels, func(string) { t.showDetailHint() })
-	t.kind.SetSelectedIndex(0)
 	form := widget.NewForm(
 		widget.NewFormItem(lang.L("request.kind"), t.kind),
-		widget.NewFormItem("", container.NewVBox(t.detail, t.suggestions)),
+		t.detailItem,
 		widget.NewFormItem(lang.L("request.reason"), t.reason),
 	)
+	t.detailForm = form
+	t.kind.SetSelectedIndex(0)
 	t.sendButton = widget.NewButton(lang.L("request.send"), t.send)
 	return container.NewVBox(form, t.sendButton, t.result)
 }
@@ -236,14 +242,15 @@ func (t *App) selectedKind() string {
 func timed(kind string) bool { return kind == "sudo" || kind == api.RequestScreen }
 
 func (t *App) showDetailHint() {
-	if t.detail == nil {
+	if t.detailItem == nil || t.detailForm == nil {
 		return
 	}
 	if timed(t.selectedKind()) {
-		t.detail.SetPlaceHolder(lang.L("request.detail.minutes"))
+		t.detailItem.Text = lang.L("request.detail.minutes")
 	} else {
-		t.detail.SetPlaceHolder(lang.L("request.detail.packages"))
+		t.detailItem.Text = lang.L("request.detail.packages")
 	}
+	t.detailForm.Refresh()
 }
 
 func (t *App) send() {
@@ -291,11 +298,11 @@ func (t *App) cloudForm() fyne.CanvasObject {
 	t.cloudTip = widget.NewLabel("")
 	t.cloudTip.Wrapping = fyne.TextWrapWord
 	t.password = widget.NewPasswordEntry()
-	t.password.SetPlaceHolder(lang.L("nextcloud.password"))
 	t.saveKey = widget.NewButton(lang.L("nextcloud.save"), t.saveNextcloud)
 	t.saved = widget.NewLabel("")
 	t.saved.Wrapping = fyne.TextWrapWord
-	return container.NewVBox(t.cloudURL, t.cloudTip, t.password, t.saveKey, t.saved)
+	password := widget.NewForm(widget.NewFormItem(lang.L("nextcloud.password"), t.password))
+	return container.NewVBox(t.cloudURL, t.cloudTip, password, t.saveKey, t.saved)
 }
 
 func (t *App) saveNextcloud() {

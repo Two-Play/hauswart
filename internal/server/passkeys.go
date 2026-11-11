@@ -60,13 +60,43 @@ func ownerFilter(u store.User) int64 {
 	return u.ID
 }
 
+// pinnedDevice is a protected device that says a passkey is pinned on it.
+type pinnedDevice struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+}
+
+// passkeyEntry is a passkey with where it can approve something.
+type passkeyEntry struct {
+	store.PasskeyRow
+	// PinnedOn are the protected devices whose last report names the passkey.
+	// Only a pin through a signed keys.set gets it there.
+	PinnedOn []pinnedDevice `json:"pinned_on"`
+}
+
 func (s *Server) handlePasskeys(w http.ResponseWriter, r *http.Request, u store.User) {
 	passkeys, err := s.store.ListPasskeys(r.Context(), ownerFilter(u))
 	if err != nil {
 		s.internal(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, passkeys)
+	devices, err := s.store.ListDevices(r.Context())
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	entries := make([]passkeyEntry, 0, len(passkeys))
+	for _, p := range passkeys {
+		entry := passkeyEntry{PasskeyRow: p, PinnedOn: []pinnedDevice{}}
+		id := base64.RawURLEncoding.EncodeToString(p.CredentialID)
+		for _, d := range devices {
+			if !d.Revoked && d.Report != nil && d.Report.Protected && slices.Contains(d.Report.Passkeys, id) {
+				entry.PinnedOn = append(entry.PinnedOn, pinnedDevice{ID: d.ID, Hostname: d.Hostname})
+			}
+		}
+		entries = append(entries, entry)
+	}
+	writeJSON(w, http.StatusOK, entries)
 }
 
 func (s *Server) handlePasskeyOptions(w http.ResponseWriter, r *http.Request, u store.User) {

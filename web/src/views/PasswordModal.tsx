@@ -1,9 +1,9 @@
-import { Button, Group, Modal, PasswordInput, Stack, Text } from '@mantine/core';
+import { Button, Group, Modal, PasswordInput, Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api';
-import { showError } from '../ui';
+import { ExpandableText, showError } from '../ui';
 
 export function PasswordModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -54,9 +54,9 @@ export function PasswordModal({ onClose }: { onClose: () => void }) {
             value={repeat}
             onChange={(e) => setRepeat(e.currentTarget.value)}
           />
-          <Text size="xs" c="dimmed">
+          <ExpandableText size="xs" c="dimmed">
             {t('password.hint')}
-          </Text>
+          </ExpandableText>
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t('common.cancel')}
