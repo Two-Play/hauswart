@@ -110,5 +110,21 @@
   "terminal.live": "Live access: an admin works here as {{.User}} since {{.Since}}, approved by {{.Approver}}, until {{.Until}} at the latest.",
   "history.event.terminal.started": "Live terminal as {{.Detail}} until {{.Until}}",
   "history.event.terminal.ended": "Live terminal ended",
-  "admin.outdated": "This app and the server know different tasks: one of them is older. Update both to the same version, or tasks with something new are skipped."
+  "admin.outdated": "This app and the server know different tasks: one of them is older. Update both to the same version, or tasks with something new are skipped.",
+  "passkeys.open": "Passkeys…",
+  "passkeys.title": "Pin passkeys",
+  "passkeys.registered": "Registered on the server",
+  "passkeys.devices": "Protected devices named on this computer:",
+  "passkeys.pick": "Pick a passkey on the left. A passkey approves nothing until it is pinned on a device.",
+  "passkeys.none": "No passkey is registered. Register one in the dashboard under Approvals first.",
+  "passkeys.nodevices": "No protected device has a name on this computer yet. Name one in the queue or with hauswart-admin name.",
+  "passkeys.fingerprint": "Fingerprint: {{.Fingerprint}}",
+  "passkeys.nowhere": "Pinned from here on no device yet, so it approves nothing.",
+  "passkeys.pinnedon": "Pinned from here on: {{.Devices}}",
+  "passkeys.problem": "Cannot be pinned: {{.Problem}}",
+  "passkeys.pin": "Pin on chosen devices",
+  "passkeys.remove": "Remove from chosen devices",
+  "passkeys.confirm": "Pin this passkey?",
+  "passkeys.confirmremove": "Remove this passkey?",
+  "passkeys.signed": "Signed. The devices take it with their next check-in."
 }

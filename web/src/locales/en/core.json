@@ -4,7 +4,9 @@
     "failed": "That did not work",
     "loading": "Loading…",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "more": "Show more",
+    "less": "Show less"
   },
   "login": {
     "title": "Sign in to Hauswart",

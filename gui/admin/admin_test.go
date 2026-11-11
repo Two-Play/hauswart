@@ -22,6 +22,19 @@ type fakeBackend struct {
 	err      error
 	logins   int
 	outdated string
+	pins     admintool.PinState
+	previews []admintool.PinChange
+	pinned   []string
+}
+
+func (f *fakeBackend) Pins() (admintool.PinState, error) { return f.pins, nil }
+func (f *fakeBackend) PinPreview(c admintool.PinChange) (string, error) {
+	f.previews = append(f.previews, c)
+	return "preview of " + c.Passkey, nil
+}
+func (f *fakeBackend) Pin(c admintool.PinChange, shown string) error {
+	f.pinned = append(f.pinned, shown)
+	return nil
 }
 
 func (f *fakeBackend) Items() ([]admintool.Item, error) { return f.items, nil }

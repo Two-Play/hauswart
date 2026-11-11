@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { api, type Device } from '../api';
 import { approveWithPasskey, decodeEnvelope, passkeysAvailable, type Challenge } from '../passkey';
 import { allowScriptStyles } from '../terminalStyles';
-import { showError } from '../ui';
+import { ExpandableText, showError } from '../ui';
 
 const MIN_USER_UID = 1000;
 const DEFAULT_MINUTES = 60;
@@ -89,9 +89,9 @@ export function TerminalView({ device, onClose }: { device: Device; onClose: () 
   } else {
     body = (
       <Stack>
-        <Text size="sm" c="dimmed">
+        <ExpandableText size="sm" c="dimmed">
           {t('terminal.hint')}
-        </Text>
+        </ExpandableText>
         <Select label={t('terminal.user')} data={users} value={user} onChange={(v) => setUser(v ?? 'root')} allowDeselect={false} />
         <NumberInput
           label={t('terminal.minutes')}

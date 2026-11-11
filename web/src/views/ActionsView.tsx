@@ -11,7 +11,7 @@ interface PasskeyTypes {
 import { useNavigation } from '../navigation';
 import { ACTION_ICONS, helpKey } from '../actionIcons';
 import { ACTION_AREAS, taskKey } from '../tasks';
-import { Loaded } from '../ui';
+import { ExpandableText, Loaded } from '../ui';
 import { ActionModal } from './ActionForm';
 
 /** matches says whether an action fits what someone typed, in its label, its
@@ -56,9 +56,9 @@ export function ActionsView() {
   return (
     <Stack>
       <Title order={2}>{t('nav.actions')}</Title>
-      <Text size="sm" c="dimmed">
+      <ExpandableText size="sm" c="dimmed">
         {t('actions.pageHint')}
-      </Text>
+      </ExpandableText>
       <Loaded data={devices.data} error={devices.error}>
         {() => (
           <Group align="flex-end" grow>

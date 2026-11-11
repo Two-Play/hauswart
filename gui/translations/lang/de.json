@@ -110,5 +110,21 @@
   "terminal.live": "Live-Zugriff: Ein Admin arbeitet hier seit {{.Since}} als {{.User}}, freigegeben von {{.Approver}}, spätestens bis {{.Until}}.",
   "history.event.terminal.started": "Live-Terminal als {{.Detail}} bis {{.Until}}",
   "history.event.terminal.ended": "Live-Terminal beendet",
-  "admin.outdated": "Diese App und der Server kennen unterschiedliche Aufgaben, eins von beiden ist älter. Bring beide auf denselben Stand, sonst werden Aufgaben mit Neuem übersprungen."
+  "admin.outdated": "Diese App und der Server kennen unterschiedliche Aufgaben, eins von beiden ist älter. Bring beide auf denselben Stand, sonst werden Aufgaben mit Neuem übersprungen.",
+  "passkeys.open": "Passkeys…",
+  "passkeys.title": "Passkeys pinnen",
+  "passkeys.registered": "Auf dem Server registriert",
+  "passkeys.devices": "Geschützte Geräte mit Namen auf diesem Rechner:",
+  "passkeys.pick": "Wähle links einen Passkey. Ein Passkey gibt nichts frei, bis er auf einem Gerät gepinnt ist.",
+  "passkeys.none": "Es ist kein Passkey registriert. Registriere zuerst einen im Dashboard unter Freigaben.",
+  "passkeys.nodevices": "Noch kein geschütztes Gerät hat auf diesem Rechner einen Namen. Benenne eines in der Warteschlange oder mit hauswart-admin name.",
+  "passkeys.fingerprint": "Fingerabdruck: {{.Fingerprint}}",
+  "passkeys.nowhere": "Von hier aus noch auf keinem Gerät gepinnt, er gibt also nichts frei.",
+  "passkeys.pinnedon": "Von hier aus gepinnt auf: {{.Devices}}",
+  "passkeys.problem": "Kann nicht gepinnt werden: {{.Problem}}",
+  "passkeys.pin": "Auf gewählten Geräten pinnen",
+  "passkeys.remove": "Von gewählten Geräten entfernen",
+  "passkeys.confirm": "Diesen Passkey pinnen?",
+  "passkeys.confirmremove": "Diesen Passkey entfernen?",
+  "passkeys.signed": "Signiert. Die Geräte übernehmen es bei ihrer nächsten Meldung."
 }
