@@ -293,7 +293,10 @@ export function ApprovalsView({ user }: { user: User }) {
   const { t } = useTranslation();
   return (
     <Stack>
-      <Title order={2}>{t('nav.approvals')}</Title>
+      <div>
+        <Title order={2}>{t('nav.approvals')}</Title>
+        <Text c="dimmed">{t('approvals.subtitle')}</Text>
+      </div>
       <Weakness />
       {!passkeysAvailable() && (
         <Alert color="red" title={t('approvals.unavailableTitle')}>

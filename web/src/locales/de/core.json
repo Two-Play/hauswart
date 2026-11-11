@@ -18,7 +18,7 @@
     "devices": "Geräte",
     "requests": "Anfragen",
     "inventory": "Inventar",
-    "tasks": "Aufgaben",
+    "tasks": "Verlauf",
     "users": "Benutzer",
     "audit": "Protokoll",
     "logout": "Abmelden",
@@ -30,7 +30,8 @@
     "attention": {
       "tasks": "{{count}} fehlgeschlagen am letzten Tag",
       "groups": "{{count}} Geräte weichen von ihrer Richtlinie ab",
-      "devices": "{{count}} Geräte starteten anders als bestätigt"
+      "devices": "{{count}} Geräte starteten anders als bestätigt",
+      "approvals": "{{count}} warten auf dich"
     }
   },
   "devices": {
@@ -153,7 +154,8 @@
     "action": "Aktion",
     "by": "Von",
     "status": "Status",
-    "output": "Ausgabe"
+    "output": "Ausgabe",
+    "subtitle": "Was an die Geräte ging und wie es ausging."
   },
   "users": {
     "new": "Neuer Benutzer",

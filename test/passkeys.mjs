@@ -246,6 +246,19 @@ const clickButton = (label) =>
     return true;
   })()`);
 const pageText = () => ev('document.body.innerText');
+// A view in the navigation, whose button may carry a badge after its name.
+const openView = (label) =>
+  ev(`(() => {
+    const button = [...document.querySelectorAll('nav button')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(label)}));
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+const badge = (label) =>
+  ev(`(() => {
+    const button = [...document.querySelectorAll('nav button')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(label)}));
+    return button?.querySelector('[aria-label]')?.getAttribute('aria-label') ?? '';
+  })()`);
 
 // --- the normal flow, through the dashboard ---
 
@@ -259,8 +272,8 @@ check('admin creates an approver', created.status === 201, String(created.status
 
 await loginAs('mama', PASSWORD);
 const nav = await ev(`document.querySelector('nav').innerText`);
-check('approver sees approvals, not admin views', nav.includes('Approvals') && !nav.includes('Audit') && !nav.includes('Users'), nav.replaceAll('\n', ' '));
-await until('the approvals link', () => clickButton('Approvals'));
+check('approver sees approvals, not admin views', nav.includes('To approve') && !nav.includes('Audit') && !nav.includes('Users'), nav.replaceAll('\n', ' '));
+await until('the approvals link', () => openView('To approve'));
 await until('the weakness notice', async () => (await pageText()).includes('it can show you one task here and have your passkey confirm another'));
 check('dashboard states the weakness', true);
 await shot('1-approvals');
@@ -310,7 +323,12 @@ await until('the report with the pin', async () => {
 
 const taskId = await sendTask('pkg.install', { packages: ['vim'] });
 await loginAs('mama', PASSWORD);
-await until('the approvals link', () => clickButton('Approvals'));
+const waiting = await until('the badge for the waiting task', async () => {
+  const label = await badge('To approve');
+  return label.startsWith('1 ') && label;
+}, 30);
+check('a red badge counts what waits', waiting, String(waiting));
+await until('the approvals link', () => openView('To approve'));
 await until('the approve button', () => clickButton('Approve with passkey'));
 await until('the confirm dialog', async () => (await pageText()).includes('Confirm with passkey'));
 const dialog = await ev(`document.querySelector('[role=dialog]').innerText`);
@@ -320,12 +338,13 @@ await shot('2-confirm');
 await until('the confirm button', () => clickButton('Confirm with passkey'));
 await until('the fake dnf', async () => readFileSync(installed, 'utf8').includes('vim'), 40);
 check('approved task ran on the device', true);
+check('the badge goes once it is approved', await until('no badge', async () => (await badge('To approve')) === '', 30));
 await shot('3-approved');
 
 // --- a live terminal, approved with the admin's own passkey ---
 
 await loginAs('admin', adminPassword);
-await until('the approvals link', () => clickButton('Approvals'));
+await until('the approvals link', () => openView('To approve'));
 await until('the passkey name field', () => ev(`!!document.querySelector('input[placeholder="For example: phone"]')`));
 await ev(`document.querySelector('input[placeholder="For example: phone"]').focus()`);
 await cdp('Input.insertText', { text: 'desk' });
@@ -547,7 +566,7 @@ await loginAs('kind', PASSWORD);
 const after = await call('GET', '/api/devices');
 check('member sees the assigned device', after.body.length === 1 && after.body[0].report === null);
 const memberNav = await ev(`document.querySelector('nav').innerText`);
-check('member has no approvals', !memberNav.includes('Approvals'), memberNav.replaceAll('\n', ' '));
+check('member has no approvals', !memberNav.includes('To approve'), memberNav.replaceAll('\n', ' '));
 
 // --- the signing path still works next to all this ---
 

@@ -116,7 +116,7 @@
   "passkeys.registered": "Registered on the server",
   "passkeys.devices": "Protected devices named on this computer:",
   "passkeys.pick": "Pick a passkey on the left. A passkey approves nothing until it is pinned on a device.",
-  "passkeys.none": "No passkey is registered. Register one in the dashboard under Approvals first.",
+  "passkeys.none": "No passkey is registered. Register one in the dashboard under To approve first.",
   "passkeys.nodevices": "No protected device has a name on this computer yet. Name one in the queue or with hauswart-admin name.",
   "passkeys.fingerprint": "Fingerprint: {{.Fingerprint}}",
   "passkeys.nowhere": "Pinned from here on no device yet, so it approves nothing.",

@@ -116,7 +116,7 @@
   "passkeys.registered": "Auf dem Server registriert",
   "passkeys.devices": "Geschützte Geräte mit Namen auf diesem Rechner:",
   "passkeys.pick": "Wähle links einen Passkey. Ein Passkey gibt nichts frei, bis er auf einem Gerät gepinnt ist.",
-  "passkeys.none": "Es ist kein Passkey registriert. Registriere zuerst einen im Dashboard unter Freigaben.",
+  "passkeys.none": "Es ist kein Passkey registriert. Registriere zuerst einen im Dashboard unter „Zu bestätigen“.",
   "passkeys.nodevices": "Noch kein geschütztes Gerät hat auf diesem Rechner einen Namen. Benenne eines in der Warteschlange oder mit hauswart-admin name.",
   "passkeys.fingerprint": "Fingerabdruck: {{.Fingerprint}}",
   "passkeys.nowhere": "Von hier aus noch auf keinem Gerät gepinnt, er gibt also nichts frei.",

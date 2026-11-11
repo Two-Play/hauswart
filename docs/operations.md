@@ -299,7 +299,7 @@ reaches no other websites from there.
 
 ### Register and pin
 
-1. Sign in to the dashboard as an approver or admin, and open **Approvals**. Choose
+1. Sign in to the dashboard as an approver or admin, and open **To approve**. Choose
    **Add passkey** on the phone or computer that will approve. Do not do this while
    you have any doubt about the server.
 2. On the computer you sign on, pin it on each device where it should work:
@@ -319,7 +319,11 @@ reaches no other websites from there.
    this computer are offered. **Remove from chosen devices** takes a passkey off
    again, also one the server no longer lists.
 
-A registered passkey approves nothing until it is pinned. **Approvals** in the
+A red badge at **To approve** counts what waits: for approvers what a passkey may
+approve, for admins also what waits for a signature. **Task history** lists what was
+sent to the devices and how it went.
+
+A registered passkey approves nothing until it is pinned. **To approve** in the
 dashboard shows, for each passkey, the devices that report it as pinned, and warns
 when none of yours is pinned anywhere.
 
@@ -337,7 +341,7 @@ rely on it, because a hacked server can withhold the task.
 
 ### Choose what a passkey may approve
 
-**Approvals**, section **What a passkey may approve**, has a switch per action:
+**To approve**, section **What a passkey may approve**, has a switch per action:
 **Passkey allowed** or **Signature only**. The choice holds for all protected devices.
 It reaches them as a signed task, so save it and then sign with `hauswart-admin approve`
 or the admin app, which show what a passkey may approve afterwards and what is new.
@@ -923,12 +927,12 @@ Hauswart tells admins through ntfy, mail or both:
 
 - **New request:** who asks for what kind of thing, on which device.
 - **Failed task:** of any kind, with the device and, for a request, who asked. What
-  the device said stays in the dashboard, under **Tasks**.
+  the device said stays in the dashboard, under **Task history**.
 - **New deviation from a policy:** a device that cannot reach its policy, such as a
   Flatpak that does not install. A deviation is told once, not with every report,
   and what the device put right itself is not told at all.
 
-The dashboard counts the same at **Tasks**, for the failures of the last day, and at
+The dashboard counts the same at **Task history**, for the failures of the last day, and at
 **Groups**, for devices that differ from their policy.
 
 To turn notifications on, edit `/etc/hauswart/notify.env`. Everything is off until

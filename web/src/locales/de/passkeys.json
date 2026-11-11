@@ -1,6 +1,6 @@
 {
   "nav": {
-    "approvals": "Freigaben"
+    "approvals": "Zu bestätigen"
   },
   "users": {
     "approver": "Freigabe",
@@ -44,7 +44,8 @@
     "pinnedNowhere": "Noch auf keinem Gerät",
     "pinHow": "Er gibt nichts frei, bis ein Admin ihn auf einem Gerät pinnt: in der Admin-App unter Passkeys oder mit hauswart-admin passkeys pin --passkey {{id}} --device ID.",
     "nothingPinnedTitle": "Keiner dieser Passkeys kann schon etwas freigeben",
-    "nothingPinned": "Ein Passkey wirkt auf einem Gerät erst, wenn ein Admin ihn dort mit einer Signatur gepinnt hat, damit ein gehackter Server keinen eigenen unterschieben kann. Bitte einen Admin, ihn in der Admin-App unter Passkeys zu pinnen, oder mit hauswart-admin passkeys pin."
+    "nothingPinned": "Ein Passkey wirkt auf einem Gerät erst, wenn ein Admin ihn dort mit einer Signatur gepinnt hat, damit ein gehackter Server keinen eigenen unterschieben kann. Bitte einen Admin, ihn in der Admin-App unter Passkeys zu pinnen, oder mit hauswart-admin passkeys pin.",
+    "subtitle": "Hier bestätigst du, was auf deine Freigabe wartet."
   },
   "errors": {
     "approver_only": "Das dürfen nur Admins und Personen mit der Rolle Freigabe.",
