@@ -32,7 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DISTROS = {
     "fedora": ("registry.fedoraproject.org/fedora:44", "dnf5 install -y sudo shadow-utils ca-certificates", "tree"),
     "debian": ("docker.io/library/debian:stable", "apt-get update && apt-get install -y sudo ca-certificates", "tree"),
-    "arch": ("docker.io/library/archlinux:latest", "pacman -Sy --noconfirm sudo ca-certificates", "tree"),
+    "arch": ("docker.io/library/archlinux:latest", "pacman -Syu --noconfirm sudo ca-certificates", "tree"),
     "opensuse": ("registry.opensuse.org/opensuse/tumbleweed:latest", "zypper --non-interactive install sudo shadow ca-certificates", "tree"),
 }
 
@@ -351,7 +351,7 @@ JOURNAL_IMAGES = {
     # The image has no machine ID, and what fails without one or in a container
     # takes the system bus with it.
     "arch": ("FROM docker.io/library/archlinux:latest\n"
-             "RUN pacman -Sy --noconfirm sudo ca-certificates && systemd-machine-id-setup && "
+             "RUN pacman -Syu --noconfirm sudo ca-certificates && systemd-machine-id-setup && "
              "systemctl mask systemd-firstboot.service systemd-homed.service systemd-resolved.service\n",
              "/usr/lib/systemd/systemd"),
     "opensuse": ("FROM registry.opensuse.org/opensuse/tumbleweed:latest\n"
