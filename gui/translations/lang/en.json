@@ -76,6 +76,7 @@
   "history.state.running": "approved, in progress",
   "history.state.done": "done",
   "history.state.failed": "approved, but it did not work",
+  "history.state.lapsed": "approved, but nobody confirmed it in time",
   "history.event.sudo.granted": "Admin rights until {{.Until}}",
   "history.event.sudo.revoked": "Admin rights taken back",
   "history.event.sudo.expiring": "Admin rights end at {{.Until}}",
@@ -126,5 +127,6 @@
   "passkeys.remove": "Remove from chosen devices",
   "passkeys.confirm": "Pin this passkey?",
   "passkeys.confirmremove": "Remove this passkey?",
-  "passkeys.signed": "Signed. The devices take it with their next check-in."
+  "passkeys.signed": "Signed. The devices take it with their next check-in.",
+  "admin.lapses": "Lapses at {{.Time}} unless it is signed."
 }

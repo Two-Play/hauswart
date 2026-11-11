@@ -323,6 +323,13 @@ A red badge at **To approve** counts what waits: for approvers what a passkey ma
 approve, for admins also what waits for a signature. **Task history** lists what was
 sent to the devices and how it went.
 
+What waits for approval does not wait forever. A block, more screen time, a
+message or a restart lapses after 2 hours, a live terminal after 15 minutes, and
+everything else after a week. **To approve**, `hauswart-admin approve` and the admin
+app say when. A lapsed task shows as **Lapsed** in **Task history**, its request on
+the device says that nobody confirmed it in time, and the audit log has
+`task.lapsed`. Whoever still wants it asks again.
+
 A registered passkey approves nothing until it is pinned. **To approve** in the
 dashboard shows, for each passkey, the devices that report it as pinned, and warns
 when none of yours is pinned anywhere.

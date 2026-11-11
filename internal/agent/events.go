@@ -66,6 +66,7 @@ var eventTexts = map[string]map[string]string{
 		api.RequestDenied:               "Your request for {detail} was denied.",
 		api.RequestFailed:               "Your request for {detail} was approved, but did not work.",
 		api.RequestDone:                 "Your request for {detail} is done.",
+		api.RequestLapsed:               "Your request for {detail} was approved, but nobody confirmed it in time.",
 	},
 	"de": {
 		api.EventSudoGranted:            "Du hast Admin-Rechte bis {time}.",
@@ -99,6 +100,7 @@ var eventTexts = map[string]map[string]string{
 		api.RequestDenied:               "Deine Anfrage für {detail} wurde abgelehnt.",
 		api.RequestFailed:               "Deine Anfrage für {detail} wurde genehmigt, hat aber nicht geklappt.",
 		api.RequestDone:                 "Deine Anfrage für {detail} ist erledigt.",
+		api.RequestLapsed:               "Deine Anfrage für {detail} wurde genehmigt, aber niemand hat sie rechtzeitig bestätigt.",
 	},
 }
 
@@ -385,7 +387,7 @@ func (n *Notices) CheckGrants(ctx context.Context, grants map[string]time.Time, 
 // requests tell through their task, so only what no task shows is left.
 func requestPopup(state string, told bool) bool {
 	switch state {
-	case api.RequestSigning, api.RequestDenied:
+	case api.RequestSigning, api.RequestDenied, api.RequestLapsed:
 		return true
 	case api.RequestFailed, api.RequestDone:
 		return !told
@@ -422,7 +424,7 @@ func (n *Notices) SetRequests(ctx context.Context, requests []api.RequestState) 
 	language := n.language()
 	for _, r := range popups {
 		urgency := urgencyNormal
-		if r.State == api.RequestDenied || r.State == api.RequestFailed {
+		if r.State == api.RequestDenied || r.State == api.RequestFailed || r.State == api.RequestLapsed {
 			urgency = urgencyCritical
 		}
 		n.show(ctx, r.User, eventText(language, r.State, requestName(language, r), time.Time{}), urgency)

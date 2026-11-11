@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 
@@ -253,5 +254,12 @@ func TestOutdatedAppSaysSo(t *testing.T) {
 	app.Reload()
 	if !app.banner.Visible() {
 		t.Fatal("no banner for an app that is older than the server")
+	}
+}
+
+func TestLapseIsShown(t *testing.T) {
+	a, _ := newApp(t, admintool.Item{ID: "1", DeviceName: "laptop", Text: "x", Lapses: time.Date(2026, 11, 12, 9, 30, 0, 0, time.Local)})
+	if !strings.Contains(a.body.Text, "2026-11-12 09:30") {
+		t.Fatalf("%q", a.body.Text)
 	}
 }

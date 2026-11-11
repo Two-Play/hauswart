@@ -76,6 +76,7 @@
   "history.state.running": "genehmigt, wird ausgeführt",
   "history.state.done": "erledigt",
   "history.state.failed": "genehmigt, hat aber nicht geklappt",
+  "history.state.lapsed": "genehmigt, aber niemand hat sie rechtzeitig bestätigt",
   "history.event.sudo.granted": "Admin-Rechte bis {{.Until}}",
   "history.event.sudo.revoked": "Admin-Rechte zurückgenommen",
   "history.event.sudo.expiring": "Admin-Rechte enden um {{.Until}}",
@@ -126,5 +127,6 @@
   "passkeys.remove": "Von gewählten Geräten entfernen",
   "passkeys.confirm": "Diesen Passkey pinnen?",
   "passkeys.confirmremove": "Diesen Passkey entfernen?",
-  "passkeys.signed": "Signiert. Die Geräte übernehmen es bei ihrer nächsten Meldung."
+  "passkeys.signed": "Signiert. Die Geräte übernehmen es bei ihrer nächsten Meldung.",
+  "admin.lapses": "Läuft am {{.Time}} ab, wenn es nicht signiert wird."
 }
