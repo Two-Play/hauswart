@@ -334,6 +334,11 @@ app say when. A lapsed task shows as **Lapsed** in **Task history**, its request
 the device says that nobody confirmed it in time, and the audit log has
 `task.lapsed`. Whoever still wants it asks again.
 
+To approve several waiting tasks with one touch, tick them in **To approve** and
+choose **Approve selected**. The dialog shows each task as the device will get it,
+and one touch covers exactly those, up to 10. A live terminal is always approved on
+its own.
+
 A registered passkey approves nothing until it is pinned. **To approve** in the
 dashboard shows, for each passkey, the devices that report it as pinned, and warns
 when none of yours is pinned anywhere.

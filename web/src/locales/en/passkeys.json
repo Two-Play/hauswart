@@ -47,7 +47,14 @@
     "nothingPinned": "A passkey works on a device only once an admin pinned it there with a signature, so that a hacked server cannot slip in its own. Ask an admin to pin it in the admin app under Passkeys, or with hauswart-admin passkeys pin.",
     "subtitle": "Approve here what waits for you.",
     "lapses": "Lapses",
-    "lapseHint": "A waiting task lapses unless someone approves it: a block, screen time or a restart after 2 hours, a live terminal after 15 minutes, everything else after a week."
+    "lapseHint": "A waiting task lapses unless someone approves it: a block, screen time or a restart after 2 hours, a live terminal after 15 minutes, everything else after a week.",
+    "select": "Approve together",
+    "approveSelected": "Approve selected ({{count}})",
+    "confirmBatchTitle": "Approve {{count}} tasks with one touch?",
+    "confirmBatch": "Confirm all {{count}} with passkey",
+    "batchHint": "One touch approves exactly these {{count}} tasks. Each device checks that its task is among them; nothing else can be added.",
+    "approvedAll": "{{count}} tasks approved.",
+    "approvedSome": "{{count}} approved, {{failed}} not. Look at those again."
   },
   "errors": {
     "approver_only": "Only admins and approvers may do this.",
@@ -59,6 +66,8 @@
     "passkey_retry": "Another approval went first. Please approve this task again.",
     "no_passkey_host": "Passkeys need a DNS name in the server URL, not an IP address.",
     "passkey_not_pinned": "None of your passkeys is pinned on this device yet.",
-    "passkey_block_too_long": "A block approved with a passkey must end within {{value}}. Sign longer ones with hauswart-admin."
+    "passkey_block_too_long": "A block approved with a passkey must end within {{value}}. Sign longer ones with hauswart-admin.",
+    "batch_size": "Choose 2 to {{value}} different tasks to approve together.",
+    "batch_terminal": "A live terminal is approved on its own."
   }
 }

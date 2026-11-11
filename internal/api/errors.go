@@ -75,6 +75,8 @@ const (
 	ErrInvalidPasskey      = "invalid_passkey"
 	ErrPasskeyRefused      = "passkey_refused"
 	ErrPasskeyRetry        = "passkey_retry"
+	ErrBatchSize           = "batch_size"
+	ErrBatchTerminal       = "batch_terminal"
 	ErrNoPasskeyHost       = "no_passkey_host"
 	ErrPasskeyNotPinned    = "passkey_not_pinned"
 )
@@ -147,6 +149,8 @@ var Messages = map[string]string{
 	ErrInvalidPasskey:      "invalid passkey",
 	ErrPasskeyRefused:      "the passkey approval was refused",
 	ErrPasskeyRetry:        "another approval went first, please approve again",
+	ErrBatchSize:           "choose 2 to %s different tasks to approve together",
+	ErrBatchTerminal:       "a live terminal is approved on its own",
 	ErrNoPasskeyHost:       "passkeys need a DNS name in the server URL, not an IP address",
 	ErrPasskeyNotPinned:    "none of your passkeys is pinned on this device yet",
 }

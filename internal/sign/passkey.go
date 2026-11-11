@@ -23,6 +23,13 @@ import (
 // the envelope alone could also be a valid challenge somewhere else.
 const passkeyNamespace = "hauswart-task-passkey@v1\x00"
 
+// passkeyBatchNamespace separates an approval of several envelopes from the
+// approval of one, so that neither can pass for the other.
+const passkeyBatchNamespace = "hauswart-task-passkey-batch@v1\x00"
+
+// MaxPasskeyBatch caps how many tasks one touch approves.
+const MaxPasskeyBatch = 10
+
 const (
 	// MaxPasskeys limits how many passkeys one device pins.
 	MaxPasskeys      = 16
@@ -131,6 +138,54 @@ func PasskeyChallenge(envelope []byte) []byte {
 	return h.Sum(nil)
 }
 
+// EnvelopeHash is how an envelope appears in a batch.
+func EnvelopeHash(envelope []byte) []byte {
+	sum := sha256.Sum256(envelope)
+	return sum[:]
+}
+
+// PasskeyBatchChallenge is the WebAuthn challenge for several envelopes, given
+// by their hashes in the order shown. Each device checks that its own envelope
+// is among them, so the touch covers exactly that list and nothing else.
+func PasskeyBatchChallenge(hashes [][]byte) []byte {
+	h := sha256.New()
+	h.Write([]byte(passkeyBatchNamespace))
+	for _, hash := range hashes {
+		h.Write(hash)
+	}
+	return h.Sum(nil)
+}
+
+// challengeFor is what the assertion of a signed task must have signed: the
+// envelope alone, or a batch that holds it exactly once.
+func challengeFor(s Signed) ([]byte, error) {
+	if s.Batch == nil {
+		return PasskeyChallenge(s.Envelope), nil
+	}
+	if len(s.Batch) < 2 || len(s.Batch) > MaxPasskeyBatch {
+		return nil, fmt.Errorf("a batch holds 2 to %d envelopes", MaxPasskeyBatch)
+	}
+	own := EnvelopeHash(s.Envelope)
+	found := 0
+	for i, hash := range s.Batch {
+		if len(hash) != sha256.Size {
+			return nil, errors.New("malformed batch")
+		}
+		for _, before := range s.Batch[:i] {
+			if bytes.Equal(before, hash) {
+				return nil, errors.New("an envelope appears twice in the batch")
+			}
+		}
+		if bytes.Equal(hash, own) {
+			found++
+		}
+	}
+	if found != 1 {
+		return nil, errors.New("the batch does not hold this envelope")
+	}
+	return PasskeyBatchChallenge(s.Batch), nil
+}
+
 type clientData struct {
 	Type        string  `json:"type"`
 	Challenge   string  `json:"challenge"`
@@ -164,10 +219,14 @@ func VerifyPasskey(s Signed, pins []Passkey, now time.Time) (Envelope, Passkey, 
 	if !now.Before(pin.NotAfter) {
 		return Envelope{}, Passkey{}, errors.New("the pin of this passkey has expired")
 	}
+	challenge, err := challengeFor(s)
+	if err != nil {
+		return Envelope{}, Passkey{}, err
+	}
 	if err := verifyAssertionSignature(pin.PublicKey, a); err != nil {
 		return Envelope{}, Passkey{}, err
 	}
-	if err := checkAssertion(a, pin, PasskeyChallenge(s.Envelope)); err != nil {
+	if err := checkAssertion(a, pin, challenge); err != nil {
 		return Envelope{}, Passkey{}, err
 	}
 	var env Envelope

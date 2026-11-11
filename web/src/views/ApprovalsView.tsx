@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Code, Group, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Checkbox, Code, Group, Modal, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
@@ -11,6 +11,9 @@ import {
   registerPasskey,
   type Challenge,
   type Envelope,
+  approveBatch,
+  decodeBatch,
+  type BatchChallenge,
 } from '../passkey';
 import { taskKey } from '../tasks';
 import { PasskeyTypesPanel } from './PasskeyTypesPanel';
@@ -129,6 +132,69 @@ function PasskeyList() {
   );
 }
 
+/** How many tasks one touch approves at most, as in internal/sign. */
+const MAX_BATCH = 10;
+
+/** Shows every envelope of a batch, then asks for one touch. */
+function BatchConfirmModal({ challenge, onClose }: { challenge: BatchChallenge; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const envelopes = decodeBatch(challenge);
+
+  async function confirm() {
+    setBusy(true);
+    try {
+      const results = await approveBatch(challenge);
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length === 0) {
+        notifications.show({ color: 'teal', message: t('approvals.approvedAll', { count: results.length }) });
+      } else {
+        notifications.show({
+          color: 'orange',
+          message: t('approvals.approvedSome', { count: results.length - failed.length, failed: failed.length }),
+        });
+      }
+      onClose();
+    } catch (err) {
+      setBusy(false);
+      showError(err);
+    }
+  }
+
+  return (
+    <Modal opened onClose={onClose} size="lg" title={t('approvals.confirmBatchTitle', { count: envelopes.length })}>
+      <Stack>
+        <Weakness />
+        {envelopes.map((envelope, i) => (
+          <Paper key={challenge.items[i].task} withBorder p="sm">
+            <Stack gap={4}>
+              <Text size="sm">
+                {t('approvals.device')}: <strong>{challenge.items[i].hostname}</strong> ({envelope.device_id})
+              </Text>
+              <Text size="sm">
+                {t('approvals.task')}: <strong>{t(taskKey(envelope.type), { defaultValue: envelope.type })}</strong>
+              </Text>
+              <Code block>{JSON.stringify(envelope.payload, null, 2)}</Code>
+              <Text size="xs" c="dimmed">
+                {t('approvals.validUntil', { time: new Date(envelope.not_after).toLocaleString() })}
+              </Text>
+            </Stack>
+          </Paper>
+        ))}
+        <Text size="sm">{t('approvals.batchHint', { count: envelopes.length })}</Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={busy} onClick={confirm}>
+            {t('approvals.confirmBatch', { count: envelopes.length })}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 /** Shows what is in the envelope and only then asks for the passkey. */
 function ConfirmModal({
   task,
@@ -189,6 +255,19 @@ function Queue() {
   const { t } = useTranslation();
   const { data, error, reload } = useResource<WaitingTask[]>('/api/approvals', 10_000);
   const [open, setOpen] = useState<{ task: WaitingTask; challenge: Challenge }>();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [batch, setBatch] = useState<BatchChallenge>();
+  // A live terminal belongs to whoever opened it and is approved on its own.
+  const batchable = (data ?? []).filter((task) => task.type !== 'terminal.open');
+  const chosen = selected.filter((id) => batchable.some((task) => task.id === id));
+
+  async function startBatch() {
+    try {
+      setBatch(await api<BatchChallenge>('POST', '/api/passkey-batch/challenge', { tasks: chosen }));
+    } catch (err) {
+      showError(err);
+    }
+  }
 
   async function start(task: WaitingTask) {
     try {
@@ -218,10 +297,23 @@ function Queue() {
           {(list) => (
             <DataTable
               empty={t('approvals.empty')}
-              headers={[t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from'), t('approvals.lapses'), '']}
+              headers={['', t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from'), t('approvals.lapses'), '']}
               rows={list.map((task) => ({
                 key: task.id,
                 cells: [
+                  task.type === 'terminal.open' ? (
+                    ''
+                  ) : (
+                    <Checkbox
+                      aria-label={t('approvals.select')}
+                      checked={selected.includes(task.id)}
+                      disabled={!selected.includes(task.id) && chosen.length >= MAX_BATCH}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        setSelected((ids) => (on ? [...ids, task.id] : ids.filter((id) => id !== task.id)));
+                      }}
+                    />
+                  ),
                   formatTime(task.created_at),
                   task.hostname,
                   t(taskKey(task.type), { defaultValue: task.type }),
@@ -240,7 +332,24 @@ function Queue() {
             />
           )}
         </Loaded>
+        {batchable.length > 1 && (
+          <Group>
+            <Button disabled={chosen.length < 2 || !passkeysAvailable()} onClick={startBatch}>
+              {t('approvals.approveSelected', { count: chosen.length })}
+            </Button>
+          </Group>
+        )}
       </Stack>
+      {batch && (
+        <BatchConfirmModal
+          challenge={batch}
+          onClose={() => {
+            setBatch(undefined);
+            setSelected([]);
+            reload();
+          }}
+        />
+      )}
       {open && (
         <ConfirmModal
           task={open.task}
