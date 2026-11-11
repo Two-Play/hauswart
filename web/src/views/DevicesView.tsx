@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, useResource, type Device, type User } from '../api';
+import { api, useResource, type Device, type User, type RunningTerminal } from '../api';
 import { useNavigation } from '../navigation';
 import { formatBytes, Loaded, showError } from '../ui';
 import { DeviceInsight, InsightBadges } from './DeviceInsight';
@@ -80,6 +80,9 @@ export function DevicesView({ user }: { user: User }) {
   const navigation = useNavigation();
   const [insightDevice, setInsightDevice] = useState<string>();
   const [terminalDevice, setTerminalDevice] = useState<Device>();
+  const [resumed, setResumed] = useState<RunningTerminal>();
+  // Sessions of this admin that still run after the window was closed.
+  const terminals = useResource<RunningTerminal[]>(isAdmin ? '/api/terminals' : '', 10_000);
   const [revokeDevice, setRevokeDevice] = useState<Device>();
   const [enrollCommand, setEnrollCommand] = useState<string>();
 
@@ -178,6 +181,21 @@ export function DevicesView({ user }: { user: User }) {
                             {t('terminal.open')}
                           </Button>
                         )}
+                        {(terminals.data ?? [])
+                          .filter((r) => r.device_id === d.id)
+                          .map((r) => (
+                            <Button
+                              key={r.session}
+                              size="xs"
+                              color="teal"
+                              onClick={() => {
+                                setResumed(r);
+                                setTerminalDevice(d);
+                              }}
+                            >
+                              {t('terminal.resume', { user: r.user })}
+                            </Button>
+                          ))}
                         <Button size="xs" variant="subtle" color="orange" onClick={() => suspend(d, !d.suspended)}>
                           {t(d.suspended ? 'devices.resume' : 'devices.suspend')}
                         </Button>
@@ -202,7 +220,15 @@ export function DevicesView({ user }: { user: User }) {
       )}
       {terminalDevice && (
         <Suspense>
-          <TerminalView device={terminalDevice} onClose={() => setTerminalDevice(undefined)} />
+          <TerminalView
+            device={terminalDevice}
+            resume={resumed}
+            onClose={() => {
+              setTerminalDevice(undefined);
+              setResumed(undefined);
+              terminals.reload();
+            }}
+          />
         </Suspense>
       )}
       {enrollCommand && <EnrollModal command={enrollCommand} onClose={() => setEnrollCommand(undefined)} />}

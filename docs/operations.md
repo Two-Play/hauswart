@@ -617,8 +617,10 @@ hauswart-admin terminal --device ID --user anna --minutes 30
 
 The device connects to the server for the session, the server passes everything on
 between it and your browser, and nothing needs a port on the device. A session ends
-when the shell ends, when nobody types for 15 minutes, when its time is up, or a
-minute after you closed the window. An approval that has not started a session within
+when the shell ends, when nobody types for 15 minutes, when its time is up, or 10
+minutes after you closed the window. Until then **Resume terminal** on the device
+brings you back, with the last output it missed; only you see that button, and the
+audit log notes `terminal.resumed`. An approval that has not started a session within
 15 minutes lapses.
 
 People at the device are told: a notification when it starts and when it ends, and

@@ -1,5 +1,7 @@
 {
-  "taskTypes": { "terminal_open": "Live-Terminal öffnen" },
+  "taskTypes": {
+    "terminal_open": "Live-Terminal öffnen"
+  },
   "terminal": {
     "open": "Terminal",
     "title": "Live-Terminal auf {{name}}",
@@ -17,7 +19,9 @@
     "ended": "Sitzung beendet: {{reason}}",
     "exit": "Die Shell hat mit Code {{code}} geendet.",
     "close": "Schließen",
-    "palette": "Live-Terminal öffnen"
+    "palette": "Live-Terminal öffnen",
+    "resume": "Terminal fortsetzen ({{user}})",
+    "resumeHint": "Das Fenster zu schließen beendet die Sitzung nicht: Sie läuft 10 Minuten weiter, und „Terminal fortsetzen“ am Gerät bringt dich zurück. Niemand sonst kann das."
   },
   "errors": {
     "invalid_terminal": "Die Terminal-Sitzung ist ungültig ({{value}}).",

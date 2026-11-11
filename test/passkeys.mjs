@@ -389,6 +389,16 @@ await shot('3b-terminal');
 const audit = await call('GET', '/api/audit');
 check('the audit log has the start', JSON.stringify(audit.body).includes('terminal.started'));
 check('and not what was typed', !JSON.stringify(audit.body).includes('term-'));
+
+// Closing the window leaves the shell running; the device offers to go back.
+await ev(`document.querySelector('.mantine-Modal-close').click()`);
+await until('the resume button', () => clickButton('Resume terminal (root)'), 20);
+const replayed = await until('the replayed output', async () => {
+  const text = await ev(`document.querySelector('.xterm-rows')?.innerText ?? ''`);
+  return text.includes('term-42') ? text : undefined;
+}, 20).catch((err) => String(err));
+check('a closed terminal can be resumed with its output', replayed.includes('term-42'), replayed.slice(-200));
+check('the audit log has the return', JSON.stringify((await call('GET', '/api/audit')).body).includes('terminal.resumed'));
 await ev(`document.querySelector('.xterm-helper-textarea').focus()`);
 await cdp('Input.insertText', { text: 'exit' });
 await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +23,9 @@ import (
 const (
 	// terminalFrame caps a single message in either direction.
 	terminalFrame = 32 << 10
-	// terminalAway is how long a session runs on without anyone watching it.
-	terminalAway = time.Minute
+	// terminalAway is how long a session runs on without anyone watching it,
+	// so that the admin can come back to it after closing the window.
+	terminalAway = 10 * time.Minute
 	// terminalReplay is what a browser that connects again sees of the output
 	// it missed.
 	terminalReplay = 64 << 10
@@ -33,6 +35,7 @@ func init() {
 	addRoutes(func(s *Server, mux *http.ServeMux) {
 		mux.Handle("POST /api/devices/{id}/terminal", s.admin(s.handleTerminalCreate))
 		mux.Handle("GET /api/terminal/{session}", s.admin(s.handleBrowserTerminal))
+		mux.Handle("GET /api/terminals", s.admin(s.handleTerminals))
 		mux.Handle("GET /agent/terminal/{session}", s.agent(s.handleAgentTerminal))
 	})
 }
@@ -56,6 +59,8 @@ type terminalSession struct {
 	// away ends the session when no browser comes back in time.
 	away   *time.Timer
 	replay []byte
+	// watched says that a browser was connected once, so the next is a return.
+	watched bool
 }
 
 type terminalHub struct {
@@ -67,6 +72,23 @@ func (h *terminalHub) get(id string) *terminalSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.sessions[id]
+}
+
+// running lists the sessions of an admin that a device has connected to and
+// that have not ended.
+func (h *terminalHub) running(admin string) []*terminalSession {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var list []*terminalSession
+	for _, t := range h.sessions {
+		t.mu.Lock()
+		live := t.admin == admin && t.agent != nil && !t.closed()
+		t.mu.Unlock()
+		if live {
+			list = append(list, t)
+		}
+	}
+	return list
 }
 
 func (h *terminalHub) remove(id string) {
@@ -282,6 +304,8 @@ func (s *Server) handleBrowserTerminal(w http.ResponseWriter, r *http.Request, u
 		go old.Close(websocket.StatusNormalClosure, "opened elsewhere")
 	}
 	t.browser = conn
+	resumed := t.watched
+	t.watched = true
 	if t.away != nil {
 		t.away.Stop()
 		t.away = nil
@@ -289,6 +313,9 @@ func (s *Server) handleBrowserTerminal(w http.ResponseWriter, r *http.Request, u
 	replay := append([]byte(nil), t.replay...)
 	agent := t.agent
 	t.mu.Unlock()
+	if resumed {
+		s.audit(r, u.Username, "terminal.resumed", fmt.Sprintf("%s %s as %s", t.hostname, t.task, t.user))
+	}
 	conn.Write(ctx, websocket.MessageText, []byte(`{"state":"open"}`))
 	if len(replay) > 0 {
 		conn.Write(ctx, websocket.MessageBinary, replay)
@@ -310,6 +337,30 @@ func (s *Server) handleBrowserTerminal(w http.ResponseWriter, r *http.Request, u
 		}
 	}
 	t.mu.Unlock()
+}
+
+// runningTerminal is a session the admin can return to.
+type runningTerminal struct {
+	Session  string    `json:"session"`
+	Task     string    `json:"task"`
+	Device   string    `json:"device_id"`
+	Hostname string    `json:"hostname"`
+	User     string    `json:"user"`
+	Until    time.Time `json:"until"`
+}
+
+// handleTerminals lists the caller's running sessions. Only the admin who
+// asked for a session can watch it, so nobody sees those of others.
+func (s *Server) handleTerminals(w http.ResponseWriter, _ *http.Request, u store.User) {
+	list := []runningTerminal{}
+	for _, t := range s.terminals.running(u.Username) {
+		t.mu.Lock()
+		list = append(list, runningTerminal{Session: t.id, Task: t.task, Device: t.device, Hostname: t.hostname,
+			User: t.user, Until: t.started.Add(time.Duration(t.minutes) * time.Minute)})
+		t.mu.Unlock()
+	}
+	slices.SortFunc(list, func(a, b runningTerminal) int { return a.Until.Compare(b.Until) })
+	writeJSON(w, http.StatusOK, list)
 }
 
 // toBrowser passes on what the device sent, and keeps the end of the output
