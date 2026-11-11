@@ -154,6 +154,9 @@ start(
     `--user-data-dir=${join(tmp, 'chrome')}`,
     '--no-first-run',
     '--no-default-browser-check',
+    // A fresh profile would otherwise ask the desktop's wallet for a password
+    // on every run.
+    '--password-store=basic',
     '--disable-gpu',
     '--lang=en',
     '--window-size=1200,900',
@@ -339,6 +342,25 @@ await until('the confirm button', () => clickButton('Confirm with passkey'));
 await until('the fake dnf', async () => readFileSync(installed, 'utf8').includes('vim'), 40);
 check('approved task ran on the device', true);
 check('the badge goes once it is approved', await until('no badge', async () => (await badge('To approve')) === '', 30));
+
+// Two tasks, one touch: both run, and the dialog showed both envelopes.
+await sendTask('pkg.install', { packages: ['htop'] });
+await sendTask('pkg.install', { packages: ['tree'] });
+await loginAs('mama', PASSWORD);
+await until('the approvals link', () => openView('To approve'));
+await until('two waiting', async () => (await badge('To approve')).startsWith('2 '), 30);
+await until('two checkboxes', () => ev(`document.querySelectorAll('input[aria-label="Approve together"]').length >= 2`), 30);
+await ev(`[...document.querySelectorAll('input[aria-label="Approve together"]')].slice(0, 2).forEach((box) => box.click())`);
+await until('the batch button', () => clickButton('Approve selected (2)'));
+await until('the batch dialog', async () => (await pageText()).includes('Approve 2 tasks with one touch?'));
+const batchDialog = await ev(`document.querySelector('[role=dialog]').innerText`);
+check('the batch dialog shows each envelope', batchDialog.includes('htop') && batchDialog.includes('tree'), batchDialog.slice(0, 200).replaceAll('\n', ' '));
+await until('the batch confirm button', () => clickButton('Confirm all 2 with passkey'));
+await until('both packages', async () => {
+  const text = readFileSync(installed, 'utf8');
+  return text.includes('htop') && text.includes('tree');
+}, 60);
+check('one touch approved both tasks', true);
 await shot('3-approved');
 
 // --- a live terminal, approved with the admin's own passkey ---

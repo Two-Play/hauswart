@@ -41,6 +41,9 @@ type Signed struct {
 	// Passkey replaces Signature on a task approved in a browser, which is
 	// weaker and limited by the device. See VerifyPasskey.
 	Passkey *Assertion `json:"passkey,omitempty"`
+	// Batch lists the SHA-256 of every envelope one passkey assertion approved
+	// together, this one among them. See PasskeyBatchChallenge.
+	Batch [][]byte `json:"batch,omitempty"`
 }
 
 // Only Ed25519 keys are accepted: one algorithm without hash choices, in a

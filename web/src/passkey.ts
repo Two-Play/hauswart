@@ -3,6 +3,7 @@
 import { api } from './api';
 
 const NAMESPACE = 'hauswart-task-passkey@v1\0';
+const BATCH_NAMESPACE = 'hauswart-task-passkey-batch@v1\0';
 
 function fromBase64(value: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
@@ -83,21 +84,77 @@ async function envelopeChallenge(envelope: Uint8Array<ArrayBuffer>): Promise<Arr
   return crypto.subtle.digest('SHA-256', message);
 }
 
-export async function approveWithPasskey(taskId: string, challenge: Challenge) {
+/** Asks the authenticator to sign a challenge, and returns the assertion as
+ * the server takes it. */
+async function assert(challenge: ArrayBuffer, rpId: string, credentials: string[]) {
   const assertion = (await navigator.credentials.get({
     publicKey: {
-      challenge: await envelopeChallenge(fromBase64(challenge.envelope)),
-      rpId: challenge.rp_id,
-      allowCredentials: challenge.credentials.map((id) => ({ type: 'public-key', id: fromBase64(id) })),
+      challenge,
+      rpId,
+      allowCredentials: credentials.map((id) => ({ type: 'public-key', id: fromBase64(id) })),
       userVerification: 'required',
     },
   })) as PublicKeyCredential | null;
   if (!assertion) throw new Error('no assertion');
   const response = assertion.response as AuthenticatorAssertionResponse;
-  await api('POST', `/api/tasks/${taskId}/passkey-approval`, {
+  return {
     credential_id: toBase64(assertion.rawId),
     authenticator_data: toBase64(response.authenticatorData),
     client_data_json: toBase64(response.clientDataJSON),
     signature: toBase64(response.signature),
+  };
+}
+
+export interface BatchItem {
+  task: string;
+  envelope: string;
+  hostname: string;
+}
+
+export interface BatchChallenge {
+  items: BatchItem[];
+  credentials: string[];
+  rp_id: string;
+}
+
+export interface BatchResult {
+  task: string;
+  ok: boolean;
+  code?: string;
+}
+
+/** What one touch is about to confirm, each read from the bytes it signs. */
+export function decodeBatch(challenge: BatchChallenge): Envelope[] {
+  return challenge.items.map((item) => JSON.parse(new TextDecoder().decode(fromBase64(item.envelope))) as Envelope);
+}
+
+/** The challenge of a batch covers the hashes of the envelopes shown, in their
+ * order, so it cannot stand for any other list. The same hash is in internal/sign. */
+async function batchChallenge(envelopes: Uint8Array<ArrayBuffer>[]): Promise<ArrayBuffer> {
+  const prefix = new TextEncoder().encode(BATCH_NAMESPACE);
+  const hashes = await Promise.all(envelopes.map((e) => crypto.subtle.digest('SHA-256', e)));
+  const message = new Uint8Array(prefix.length + 32 * hashes.length);
+  message.set(prefix);
+  hashes.forEach((hash, i) => message.set(new Uint8Array(hash), prefix.length + 32 * i));
+  return crypto.subtle.digest('SHA-256', message);
+}
+
+/** Approves several tasks with one touch. Each device checks for itself that its
+ * task is in the list the touch covers. */
+export async function approveBatch(challenge: BatchChallenge): Promise<BatchResult[]> {
+  const envelopes = challenge.items.map((item) => fromBase64(item.envelope));
+  const assertion = await assert(await batchChallenge(envelopes), challenge.rp_id, challenge.credentials);
+  return api<BatchResult[]>('POST', '/api/passkey-batch/approval', {
+    tasks: challenge.items.map((item) => item.task),
+    assertion,
   });
+}
+
+export async function approveWithPasskey(taskId: string, challenge: Challenge) {
+  const assertion = await assert(
+    await envelopeChallenge(fromBase64(challenge.envelope)),
+    challenge.rp_id,
+    challenge.credentials,
+  );
+  await api('POST', `/api/tasks/${taskId}/passkey-approval`, assertion);
 }

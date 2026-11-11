@@ -778,3 +778,33 @@ func TestPasskeyTypesComeSignedAndNarrowTheGuard(t *testing.T) {
 		t.Fatal("admitted without a signature")
 	}
 }
+
+// One touch over three envelopes of this device: each is admitted once, in
+// counter order, and one that was not in the list is refused.
+func TestGuardAdmitsABatchInOrder(t *testing.T) {
+	a := passkeytest.New(t)
+	g := passkeyGuard(t, a)
+	var raws [][]byte
+	var hashes [][]byte
+	for counter := uint64(1); counter <= 3; counter++ {
+		raw, _ := json.Marshal(passkeyEnvelope(counter))
+		raws = append(raws, raw)
+		hashes = append(hashes, sign.EnvelopeHash(raw))
+	}
+	assertion := a.AssertChallenge(t, sign.PasskeyBatchChallenge(hashes))
+	task := func(raw []byte) api.Task {
+		return api.Task{ID: "id", Type: api.TaskPkgInstall, Signed: &sign.Signed{Envelope: raw, Passkey: assertion, Batch: hashes}}
+	}
+	outside, _ := json.Marshal(passkeyEnvelope(4))
+	if _, err := g.Admit(task(outside), guardDevice, time.Now()); err == nil {
+		t.Fatal("an envelope outside the batch was admitted")
+	}
+	for i, raw := range raws {
+		if _, err := g.Admit(task(raw), guardDevice, time.Now()); err != nil {
+			t.Fatalf("envelope %d: %v", i+1, err)
+		}
+	}
+	if _, err := g.Admit(task(raws[2]), guardDevice, time.Now()); err == nil {
+		t.Fatal("admitted twice")
+	}
+}

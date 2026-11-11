@@ -101,7 +101,15 @@ Whatever a passkey approves, these limits are checked on the device:
 - An approval is valid for 24 hours at most, whatever its envelope says. It has to
   name a random value the device changes every 12 hours, so approvals cannot be
   collected in advance for later use.
-- A device runs at most 20 passkey approvals within any 24 hours.
+- A device runs at most 20 passkey approvals within any 24 hours. Each task of a
+  batch counts.
+- One touch can approve up to 10 tasks together. The assertion then covers the
+  hashes of exactly those envelopes, in a namespace of its own, and each device
+  checks that its envelope is among them. A hacked server cannot add a task to a
+  batch, nor use a batch as a single approval or the other way round. What it can do
+  is what it can do with one approval as well: show you something else than the
+  envelopes the touch covers. The dialog decodes every envelope from the bytes it
+  hashes, so read each one.
 - A device has to be online for a passkey approval, because the value comes from
   its latest report.
 - Each passkey pin ends after 180 days, unless `hauswart-admin` renews it.
