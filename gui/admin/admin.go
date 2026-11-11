@@ -187,7 +187,11 @@ func (t *App) show() {
 	}
 	t.head.SetText(lang.L("admin.device", map[string]any{"Name": item.DeviceName}))
 	var text strings.Builder
-	text.WriteString(lang.L("admin.from", map[string]any{"Who": item.CreatedBy}) + "\n\n")
+	text.WriteString(lang.L("admin.from", map[string]any{"Who": item.CreatedBy}) + "\n")
+	if !item.Lapses.IsZero() {
+		text.WriteString(lang.L("admin.lapses", map[string]any{"Time": item.Lapses.Local().Format("2006-01-02 15:04")}) + "\n")
+	}
+	text.WriteString("\n")
 	if item.Problem != "" {
 		if item.Unnamed {
 			t.head.SetText(lang.L("admin.device", map[string]any{"Name": item.DeviceID}))

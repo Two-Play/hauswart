@@ -96,6 +96,7 @@ func scanWaiting(row interface{ Scan(...any) error }) (WaitingRow, error) {
 	err := row.Scan(&w.ID, &w.DeviceID, &w.Type, &payload, &w.Status, &w.Output, &data, &w.CreatedBy, &w.CreatedAt, &w.FinishedAt,
 		&w.Hostname, &w.envelope)
 	w.Payload = json.RawMessage(payload)
+	w.fillExpiry()
 	return w, err
 }
 

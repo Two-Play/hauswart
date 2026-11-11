@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -40,6 +41,8 @@ type Item struct {
 	// ServerName is what the server calls it, which proves nothing.
 	Unnamed    bool
 	ServerName string
+	// Lapses is when the server lets it lapse, zero if unknown.
+	Lapses time.Time
 
 	payload []byte
 }
@@ -48,6 +51,9 @@ type Item struct {
 // reaches the signature except through review.
 func prepare(cfg *config, list map[string]serverDevice, task queued, rest []queued) Item {
 	item := Item{ID: task.ID, DeviceID: clean(task.DeviceID), Type: clean(task.Type), CreatedBy: clean(task.CreatedBy)}
+	if task.ExpiresAt > 0 {
+		item.Lapses = time.Unix(task.ExpiresAt, 0)
+	}
 	known := cfg.Devices[task.DeviceID]
 	if known == nil || known.Name == "" {
 		item.Unnamed = true

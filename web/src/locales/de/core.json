@@ -145,7 +145,8 @@
     "running": "Läuft",
     "done": "Fertig",
     "failed": "Fehlgeschlagen",
-    "signing": "Wartet auf Signatur"
+    "signing": "Wartet auf Signatur",
+    "lapsed": "Abgelaufen"
   },
   "tasks": {
     "empty": "Noch keine Aufgaben.",

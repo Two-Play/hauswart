@@ -189,6 +189,21 @@ func TestRequestStatesTellOnce(t *testing.T) {
 	}
 }
 
+// A request whose task lapsed says so, as nothing else on the device would.
+func TestLapsedRequestTells(t *testing.T) {
+	n, d, me := newNotices(t)
+	ctx := context.Background()
+	sudo := api.RequestState{ID: "sudo", User: me, Kind: api.RequestSudo, Detail: "30", State: api.RequestSigning}
+	n.SetRequests(ctx, nil)
+	n.SetRequests(ctx, []api.RequestState{sudo})
+	d.popups(n)
+	sudo.State = api.RequestLapsed
+	n.SetRequests(ctx, []api.RequestState{sudo})
+	if shown := d.popups(n); !slices.Equal(shown, []string{me + ": Your request for admin rights was approved, but nobody confirmed it in time."}) {
+		t.Fatalf("got %v", shown)
+	}
+}
+
 func TestBrokenHistoryStartsEmpty(t *testing.T) {
 	n, _, me := newNotices(t)
 	dir := n.path[:len(n.path)-len("/"+eventsFile)]

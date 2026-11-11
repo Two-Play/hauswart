@@ -613,6 +613,8 @@ type queued struct {
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedBy string          `json:"created_by"`
+	// ExpiresAt is when the server lets it lapse, for showing only.
+	ExpiresAt int64 `json:"expires_at"`
 }
 
 func approve(args []string) error {
@@ -651,7 +653,7 @@ func approve(args []string) error {
 	// Policies that were accepted for every device they are queued for.
 	acceptedPolicies := map[string]bool{}
 	for i, task := range queue {
-		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
+		fmt.Printf("\n[%d/%d] requested through %s%s\n", i+1, len(queue), clean(task.CreatedBy), lapseNote(task.ExpiresAt))
 		item := prepare(cfg, list, task, queue[i+1:])
 		if item.Problem != "" {
 			fmt.Printf("  %s\n", item.Problem)
@@ -708,7 +710,7 @@ func approveAll(cfg *config, key ssh.Signer, list map[string]serverDevice, queue
 	var items []Item
 	for i, task := range queue {
 		item := prepare(cfg, list, task, queue[i+1:])
-		fmt.Printf("\n[%d/%d] requested through %s\n", i+1, len(queue), clean(task.CreatedBy))
+		fmt.Printf("\n[%d/%d] requested through %s%s\n", i+1, len(queue), clean(task.CreatedBy), lapseNote(task.ExpiresAt))
 		if item.Problem != "" {
 			fmt.Printf("  %s\n  Left in the queue.\n", item.Problem)
 			continue
@@ -873,4 +875,12 @@ func schemaWarning(server string) string {
 	}
 	return "This hauswart-admin and the server know different tasks: one of them is older. " +
 		"Update both to the same version, or tasks with something new are skipped."
+}
+
+// lapseNote says when the server lets a waiting task lapse.
+func lapseNote(expires int64) string {
+	if expires == 0 {
+		return ""
+	}
+	return ", lapses at " + time.Unix(expires, 0).Local().Format("2006-01-02 15:04")
 }

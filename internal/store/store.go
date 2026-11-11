@@ -611,6 +611,16 @@ type TaskRow struct {
 	CreatedBy  string          `json:"created_by"`
 	CreatedAt  int64           `json:"created_at"`
 	FinishedAt int64           `json:"finished_at"`
+	// ExpiresAt is when a waiting task lapses, zero for all others.
+	ExpiresAt int64 `json:"expires_at,omitempty"`
+}
+
+// fillExpiry says when a waiting task lapses. It comes from the kind, so it
+// is not stored.
+func (t *TaskRow) fillExpiry() {
+	if t.Status == "signing" {
+		t.ExpiresAt = t.CreatedAt + int64(api.WaitLimit(t.Type)/time.Second)
+	}
 }
 
 func (s *Store) CreateTask(ctx context.Context, deviceID, taskType string, payload []byte, createdBy string) (string, error) {
@@ -673,6 +683,31 @@ func (s *Store) RejectTask(ctx context.Context, taskID, by string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// LapseWaiting closes the tasks that waited for approval longer than their
+// kind allows, and returns them.
+func (s *Store) LapseWaiting(ctx context.Context, now time.Time) ([]TaskRow, error) {
+	waiting, err := s.SigningQueue(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var lapsed []TaskRow
+	for _, t := range waiting {
+		if t.ExpiresAt > now.Unix() {
+			continue
+		}
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE tasks SET status = 'failed', output = ?, finished_at = ?, passkey_counter = 0, passkey_envelope = ''
+			WHERE id = ? AND status = 'signing'`, api.TaskLapsed, now.Unix(), t.ID)
+		if err != nil {
+			return lapsed, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			lapsed = append(lapsed, t)
+		}
+	}
+	return lapsed, nil
 }
 
 // SigningQueue lists the tasks waiting for a signature, oldest first.
@@ -800,6 +835,7 @@ func (s *Store) queryTasks(ctx context.Context, query string, args ...any) ([]Ta
 		if data != "" {
 			t.Data = json.RawMessage(data)
 		}
+		t.fillExpiry()
 		tasks = append(tasks, t)
 	}
 	return tasks, rows.Err()
@@ -849,7 +885,7 @@ func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var task string
 	err := row.Scan(&r.ID, &r.UserID, &r.Username, &r.LinuxUser, &r.DeviceID, &r.Hostname,
 		&r.Kind, &r.Detail, &r.Reason, &r.Status, &r.DecidedBy, &r.CreatedAt, &task, &r.OutcomeDetail)
-	r.Outcome = requestState(r.Status, task)
+	r.Outcome = requestState(r.Status, task, r.OutcomeDetail)
 	if r.Outcome != api.RequestFailed {
 		r.OutcomeDetail = ""
 	}
@@ -908,7 +944,7 @@ func clipDetail(s string) string {
 // FailedTasksSince counts the tasks that failed since a moment.
 func (s *Store) FailedTasksSince(ctx context.Context, since time.Time) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE status = 'failed' AND finished_at >= ?`, since.Unix()).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE status = 'failed' AND finished_at >= ? AND output != ?`, since.Unix(), api.TaskLapsed).Scan(&n)
 	return n, err
 }
 
@@ -969,7 +1005,7 @@ func (s *Store) SetRequestTask(ctx context.Context, requestID, taskID string) er
 // first, with how far each one got.
 func (s *Store) DeviceRequests(ctx context.Context, deviceID string, since time.Time) ([]api.RequestState, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.id, u.linux_user, r.kind, r.detail, r.status, COALESCE(t.status, ''), r.created_at
+		SELECT r.id, u.linux_user, r.kind, r.detail, r.status, COALESCE(t.status, ''), COALESCE(t.output, ''), r.created_at
 		FROM requests r JOIN users u ON u.id = r.user_id LEFT JOIN tasks t ON t.id = r.task_id AND r.task_id != ''
 		WHERE r.device_id = ? AND r.created_at >= ?
 		ORDER BY r.created_at DESC, r.rowid DESC LIMIT 200`, deviceID, since.Unix())
@@ -980,11 +1016,11 @@ func (s *Store) DeviceRequests(ctx context.Context, deviceID string, since time.
 	states := []api.RequestState{}
 	for rows.Next() {
 		var r api.RequestState
-		var decision, task string
-		if err := rows.Scan(&r.ID, &r.User, &r.Kind, &r.Detail, &decision, &task, &r.CreatedAt); err != nil {
+		var decision, task, output string
+		if err := rows.Scan(&r.ID, &r.User, &r.Kind, &r.Detail, &decision, &task, &output, &r.CreatedAt); err != nil {
 			return nil, err
 		}
-		r.State = requestState(decision, task)
+		r.State = requestState(decision, task, output)
 		states = append(states, r)
 	}
 	return states, rows.Err()
@@ -992,7 +1028,7 @@ func (s *Store) DeviceRequests(ctx context.Context, deviceID string, since time.
 
 // requestState follows a request into its task. An approval without a known
 // task counts as running: requests from before the link look like that.
-func requestState(decision, task string) string {
+func requestState(decision, task, output string) string {
 	switch decision {
 	case "open":
 		return api.RequestOpen
@@ -1005,6 +1041,9 @@ func requestState(decision, task string) string {
 	case "done":
 		return api.RequestDone
 	case "failed":
+		if output == api.TaskLapsed {
+			return api.RequestLapsed
+		}
 		return api.RequestFailed
 	}
 	return api.RequestRunning

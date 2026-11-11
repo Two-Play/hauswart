@@ -567,17 +567,18 @@ func TestMigrationRenamesParent(t *testing.T) {
 }
 
 func TestRequestStates(t *testing.T) {
-	for _, c := range []struct{ decision, task, want string }{
-		{"open", "", api.RequestOpen},
-		{"denied", "", api.RequestDenied},
-		{"approved", "signing", api.RequestSigning},
-		{"approved", "pending", api.RequestRunning},
-		{"approved", "running", api.RequestRunning},
-		{"approved", "done", api.RequestDone},
-		{"approved", "failed", api.RequestFailed},
-		{"approved", "", api.RequestRunning},
+	for _, c := range []struct{ decision, task, output, want string }{
+		{"open", "", "", api.RequestOpen},
+		{"denied", "", "", api.RequestDenied},
+		{"approved", "signing", "", api.RequestSigning},
+		{"approved", "pending", "", api.RequestRunning},
+		{"approved", "running", "", api.RequestRunning},
+		{"approved", "done", "", api.RequestDone},
+		{"approved", "failed", "exit 1", api.RequestFailed},
+		{"approved", "failed", api.TaskLapsed, api.RequestLapsed},
+		{"approved", "", "", api.RequestRunning},
 	} {
-		if got := requestState(c.decision, c.task); got != c.want {
+		if got := requestState(c.decision, c.task, c.output); got != c.want {
 			t.Errorf("%s/%s: got %s, want %s", c.decision, c.task, got, c.want)
 		}
 	}

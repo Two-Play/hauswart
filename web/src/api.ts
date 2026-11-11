@@ -68,6 +68,8 @@ export interface Task {
   output: string;
   created_by: string;
   created_at: number;
+  /** When a waiting task lapses, unset for all others. */
+  expires_at?: number;
 }
 
 export interface WaitingTask extends Task {
@@ -100,7 +102,7 @@ export interface AccessRequest {
   // mode says who decides an open request, by the rules of now.
   mode?: ApprovalMode;
   // outcome follows an approved request into its task.
-  outcome?: 'open' | 'denied' | 'signing' | 'running' | 'done' | 'failed';
+  outcome?: 'open' | 'denied' | 'signing' | 'running' | 'done' | 'failed' | 'lapsed';
   // outcome_detail is what the device said about a failure, for those who decide.
   outcome_detail?: string;
 }

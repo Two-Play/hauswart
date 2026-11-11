@@ -2,7 +2,7 @@ import { Code, Paper, Spoiler, Stack, Text, Title } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import { useResource, type Device, type Task } from '../api';
 import { taskKey } from '../tasks';
-import { DataTable, formatTime, Loaded, StatusBadge } from '../ui';
+import { DataTable, formatTime, Loaded, StatusBadge, taskStatus } from '../ui';
 
 export function TasksView() {
   const { t } = useTranslation();
@@ -36,7 +36,7 @@ export function TasksView() {
                   names.get(task.device_id) ?? task.device_id,
                   t(taskKey(task.type)),
                   task.created_by,
-                  <StatusBadge status={task.status} />,
+                  <StatusBadge status={taskStatus(task)} />,
                   task.output && (
                     <Spoiler maxHeight={44} showLabel={t('common.more')} hideLabel={t('common.less')} fz="xs">
                       <Code block>{task.output}</Code>

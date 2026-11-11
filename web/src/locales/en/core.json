@@ -145,7 +145,8 @@
     "running": "Running",
     "done": "Done",
     "failed": "Failed",
-    "signing": "Awaiting signature"
+    "signing": "Awaiting signature",
+    "lapsed": "Lapsed"
   },
   "tasks": {
     "empty": "No tasks yet.",

@@ -37,7 +37,26 @@ const STATUS_COLOR: Record<string, string> = {
   done: 'teal',
   denied: 'red',
   failed: 'red',
+  lapsed: 'gray',
 };
+
+/** LAPSED is what the server writes into a task nobody approved in time. */
+export const LAPSED = 'lapsed: nobody approved it in time';
+
+/** taskStatus tells a lapsed task from one that failed on the device. */
+export function taskStatus(task: { status: string; output: string }): string {
+  return task.status === 'failed' && task.output === LAPSED ? 'lapsed' : task.status;
+}
+
+/** lapsesIn says how soon a waiting task lapses, in words. */
+export function lapsesIn(ts: number | undefined): string {
+  if (!ts) return '–';
+  const minutes = Math.max(0, Math.round((ts * 1000 - Date.now()) / 60_000));
+  const format = new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' });
+  if (minutes < 90) return format.format(minutes, 'minute');
+  if (minutes < 48 * 60) return format.format(Math.round(minutes / 60), 'hour');
+  return format.format(Math.round(minutes / 1440), 'day');
+}
 
 export function StatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();

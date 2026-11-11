@@ -14,7 +14,7 @@ import {
 } from '../passkey';
 import { taskKey } from '../tasks';
 import { PasskeyTypesPanel } from './PasskeyTypesPanel';
-import { DataTable, ExpandableText, formatTime, Loaded, showError } from '../ui';
+import { DataTable, ExpandableText, formatTime, lapsesIn, Loaded, showError } from '../ui';
 
 function Weakness() {
   const { t } = useTranslation();
@@ -211,11 +211,14 @@ function Queue() {
     <Paper withBorder p="md">
       <Stack>
         <Title order={4}>{t('approvals.queue')}</Title>
+        <ExpandableText size="sm" c="dimmed" lines={2}>
+          {t('approvals.lapseHint')}
+        </ExpandableText>
         <Loaded data={data} error={error}>
           {(list) => (
             <DataTable
               empty={t('approvals.empty')}
-              headers={[t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from'), '']}
+              headers={[t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from'), t('approvals.lapses'), '']}
               rows={list.map((task) => ({
                 key: task.id,
                 cells: [
@@ -223,6 +226,7 @@ function Queue() {
                   task.hostname,
                   t(taskKey(task.type), { defaultValue: task.type }),
                   task.created_by,
+                  lapsesIn(task.expires_at),
                   <Group gap="xs" wrap="nowrap">
                     <Button size="xs" disabled={!passkeysAvailable()} onClick={() => start(task)}>
                       {t('approvals.approve')}
@@ -269,7 +273,7 @@ function SigningQueue() {
           {(list) => (
             <DataTable
               empty={t('approvals.signingEmpty')}
-              headers={[t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from')]}
+              headers={[t('approvals.time'), t('approvals.device'), t('approvals.task'), t('approvals.from'), t('approvals.lapses')]}
               rows={list
                 .filter((task) => !offered.has(task.id))
                 .map((task) => ({
@@ -279,6 +283,7 @@ function SigningQueue() {
                     task.device_id.slice(0, 12),
                     t(taskKey(task.type), { defaultValue: task.type }),
                     task.created_by,
+                    lapsesIn(task.expires_at),
                   ],
                 }))}
             />

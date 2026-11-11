@@ -171,7 +171,23 @@ func (s *Server) Janitor(ctx context.Context) {
 			if err := s.store.Cleanup(ctx, staleTaskAfter); err != nil {
 				s.log.Error("cleanup failed", "err", err)
 			}
+			s.lapseWaiting(ctx, time.Now())
 			s.syncDirectory(ctx)
+		}
+	}
+}
+
+// lapseWaiting closes what waited too long for approval, and says so in the
+// audit log.
+func (s *Server) lapseWaiting(ctx context.Context, now time.Time) {
+	lapsed, err := s.store.LapseWaiting(ctx, now)
+	if err != nil {
+		s.log.Error("lapsing waiting tasks failed", "err", err)
+	}
+	for _, t := range lapsed {
+		s.terminals.endTask(t.ID, "nobody approved it in time")
+		if err := s.store.Audit(ctx, "server", "task.lapsed", t.Type+" "+t.ID+" on "+t.DeviceID); err != nil {
+			s.log.Error("audit failed", "err", err)
 		}
 	}
 }
