@@ -4,7 +4,6 @@
     "flatpak_install": "Installiert Apps von Flathub für alle auf dem Gerät.",
     "pkg_remove": "Entfernt Pakete, mit allem, was von ihnen abhängt.",
     "pkg_upgrade": "Aktualisiert alle Pakete jetzt statt beim nächsten geplanten Mal.",
-    "access_set": "Sperrt den Bildschirm, verweigert die Anmeldung oder deckt den Bildschirm ab, für einzelne oder alle, oder öffnet das Gerät wieder.",
     "screen_extend": "Gibt jemandem mehr Bildschirmzeit, nur für heute.",
     "sudo_grant": "Gibt jemandem für begrenzte Zeit Admin-Rechte auf diesem Gerät.",
     "sudo_revoke": "Nimmt Admin-Rechte sofort zurück.",
@@ -21,7 +20,11 @@
     "notify_send": "Zeigt eine Nachricht auf den Desktops des Geräts.",
     "file_put": "Legt eine Datei in einen erlaubten Ordner des Geräts.",
     "ca_install": "Lässt das Gerät einer Zertifizierungsstelle vertrauen.",
-    "terminal_open": "Öffnet eine Live-Shell auf dem Gerät, als root oder als eines seiner Konten."
+    "terminal_open": "Öffnet eine Live-Shell auf dem Gerät, als root oder als eines seiner Konten.",
+    "access_lock": "Sperrt den Bildschirm für einzelne oder alle, bis die Sperre endet oder das Gerät wieder freigegeben wird.",
+    "access_deny": "Verweigert die Anmeldung und beendet laufende Sitzungen, für einzelne oder alle.",
+    "access_cover": "Deckt den Bildschirm mit einem eigenen Hinweis ab, den niemand am Gerät schließen kann.",
+    "access_open": "Hebt eine Bildschirmsperre, verweigerte Anmeldungen oder einen Vollbild-Hinweis auf."
   },
   "actions": {
     "approval": {

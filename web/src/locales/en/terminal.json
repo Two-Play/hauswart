@@ -1,5 +1,7 @@
 {
-  "taskTypes": { "terminal_open": "Open live terminal" },
+  "taskTypes": {
+    "terminal_open": "Open live terminal"
+  },
   "terminal": {
     "open": "Terminal",
     "title": "Live terminal on {{name}}",
@@ -17,7 +19,9 @@
     "ended": "Session ended: {{reason}}",
     "exit": "The shell ended with code {{code}}.",
     "close": "Close",
-    "palette": "Open a live terminal"
+    "palette": "Open a live terminal",
+    "resume": "Resume terminal ({{user}})",
+    "resumeHint": "Closing the window does not end the session: it runs on for 10 minutes, and Resume terminal on the device brings you back to it. Nobody else can."
   },
   "errors": {
     "invalid_terminal": "The terminal session is not valid ({{value}}).",

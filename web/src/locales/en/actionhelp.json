@@ -4,7 +4,6 @@
     "flatpak_install": "Installs apps from Flathub for everyone on the device.",
     "pkg_remove": "Removes packages, with what depends on them.",
     "pkg_upgrade": "Updates all packages now instead of at the next scheduled time.",
-    "access_set": "Blocks the screen, refuses logins or covers the screen, for some or everyone, or opens the device again.",
     "screen_extend": "Gives someone more screen time, for today only.",
     "sudo_grant": "Gives someone admin rights on this device for a limited time.",
     "sudo_revoke": "Takes admin rights back at once.",
@@ -21,7 +20,11 @@
     "notify_send": "Shows a message on the desktops of the device.",
     "file_put": "Puts a file into an allowed folder of the device.",
     "ca_install": "Makes the device trust a certificate authority.",
-    "terminal_open": "Opens a live shell on the device, as root or as one of its accounts."
+    "terminal_open": "Opens a live shell on the device, as root or as one of its accounts.",
+    "access_lock": "Locks the screen for some or everyone, until it ends or the device is opened again.",
+    "access_deny": "Refuses logins and ends running sessions, for some or everyone.",
+    "access_cover": "Covers the screen with a notice of your own that nobody at the device can close.",
+    "access_open": "Lifts a lock, refused logins or a full-screen notice."
   },
   "actions": {
     "approval": {

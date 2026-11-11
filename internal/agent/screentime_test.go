@@ -166,7 +166,7 @@ func TestWholeWeekHasAnEndToTheSearch(t *testing.T) {
 	}
 }
 
-func TestNewRulesGiveAWorkingUserALockAndAMinute(t *testing.T) {
+func TestNewRulesGiveAWorkingUserTheBlockAndTenMinutes(t *testing.T) {
 	pe, system, name := newScreenEngine(t)
 	p := *pe.policy
 	setPolicy(t, pe, p) // arrives while they are logged in, outside the window
@@ -174,13 +174,13 @@ func TestNewRulesGiveAWorkingUserALockAndAMinute(t *testing.T) {
 	if system.count("terminate-user", name) != 0 || system.count("lock-session", "7") != 1 {
 		t.Fatalf("got %v", system.calls)
 	}
-	tick(pe, monday(20, 1))
+	tick(pe, monday(20, 10))
 	if system.count("terminate-user", name) != 1 {
 		t.Fatalf("got %v", system.calls)
 	}
 }
 
-func TestRestartOfTheAgentGivesALockAndAMinute(t *testing.T) {
+func TestRestartOfTheAgentGivesTheBlock(t *testing.T) {
 	pe, system, name := newScreenEngine(t)
 	reopened := OpenPolicy(pe.dir, pe.exec, quiet())
 	tick(reopened, monday(20, 0))
@@ -215,40 +215,96 @@ func TestWarningsThenLockThenEnd(t *testing.T) {
 	if system.count("lock-session", "7") != 1 {
 		t.Fatalf("not locked: %v", system.calls)
 	}
-	if system.user == "" {
-		t.Fatal("ended without the grace period")
+	blocks := pe.ScreenBlocks()
+	if len(blocks) != 1 || blocks[0].Reason != api.ScreenReasonWindow || !blocks[0].LogoutAt.Equal(monday(19, 10)) {
+		t.Fatalf("not behind the block: %+v", blocks)
 	}
-	tick(pe, monday(19, 0).Add(30*time.Second))
-	if system.user == "" {
-		t.Fatal("ended before the grace period was over")
+	// The only window is on Mondays, so the next one is a week later.
+	if !blocks[0].Next.Equal(monday(15, 0).AddDate(0, 0, 7)) {
+		t.Fatalf("next allowed %s", blocks[0].Next)
 	}
-	tick(pe, monday(19, 1))
+	tick(pe, monday(19, 9))
+	if system.user == "" {
+		t.Fatal("ended before the block had been up for ten minutes")
+	}
+	tick(pe, monday(19, 10))
 	if system.user != "" {
 		t.Fatal("the session goes on")
 	}
 }
 
-func TestLoginOutsideTheWindowEndsAtOnce(t *testing.T) {
+// Someone who logs in outside their time sees the block, why and until when,
+// and is logged out after the same ten minutes.
+func TestLoginOutsideTheWindowIsBlockedFirst(t *testing.T) {
 	pe, system, name := newScreenEngine(t)
 	tick(pe, monday(20, 0))
+	if system.count("terminate-user", name) != 0 || len(pe.ScreenBlocks()) != 1 {
+		t.Fatalf("got %v", system.calls)
+	}
+	tick(pe, monday(20, 10))
 	if system.count("terminate-user", name) != 1 {
 		t.Fatalf("got %v", system.calls)
 	}
-	if system.count("lock-session", "7") != 0 || len(system.popups()) != 0 {
-		t.Fatalf("no time to warn anyone: %v", system.calls)
-	}
 }
 
-// Otherwise logging out and in again would earn another minute every time.
-func TestLoggingInAgainEarnsNoGrace(t *testing.T) {
+// Logging in again shows the block again: behind it, there is nothing to use.
+func TestLoggingInAgainIsBlockedAgain(t *testing.T) {
 	pe, system, name := newScreenEngine(t)
 	tick(pe, monday(18, 59))
 	tick(pe, monday(19, 0))
-	tick(pe, monday(19, 1))
+	tick(pe, monday(19, 10))
+	system.user = ""
+	tick(pe, monday(19, 11))
+	if len(pe.ScreenBlocks()) != 0 {
+		t.Fatal("the block outlived the session")
+	}
 	system.user = name
+	tick(pe, monday(19, 12))
+	if blocks := pe.ScreenBlocks(); len(blocks) != 1 || blocks[0].User != name {
+		t.Fatalf("a new login is not blocked: %+v", blocks)
+	}
+}
+
+// More time lets someone out from behind the block.
+func TestExtensionLiftsTheBlock(t *testing.T) {
+	pe, _, name := newScreenEngine(t)
+	tick(pe, monday(19, 0))
+	if len(pe.ScreenBlocks()) != 1 {
+		t.Fatal("not blocked")
+	}
+	if _, err := pe.Extend(context.Background(), api.ScreenExtendPayload{User: name, Until: monday(19, 30)}, monday(19, 1)); err != nil {
+		t.Fatal(err)
+	}
 	tick(pe, monday(19, 2))
-	if system.user != "" {
-		t.Fatal("a new login got a grace period")
+	if len(pe.ScreenBlocks()) != 0 {
+		t.Fatal("still blocked with more time")
+	}
+}
+
+func TestNextAllowed(t *testing.T) {
+	window := api.Window{Days: []string{"mon", "tue"}, Start: "15:00", End: "19:00"}
+	for name, c := range map[string]struct {
+		rule api.ScreenTimeRule
+		now  time.Time
+		used time.Duration
+		want time.Time
+	}{
+		"later today":       {api.ScreenTimeRule{Windows: []api.Window{window}}, monday(10, 0), 0, monday(15, 0)},
+		"tomorrow":          {api.ScreenTimeRule{Windows: []api.Window{window}}, monday(20, 0), 0, monday(15, 0).AddDate(0, 0, 1)},
+		"quota used today":  {api.ScreenTimeRule{Windows: []api.Window{window}, DailyMinutes: 30}, monday(16, 0), 30 * time.Minute, monday(15, 0).AddDate(0, 0, 1)},
+		"quota at midnight": {api.ScreenTimeRule{DailyMinutes: 60}, monday(16, 0), time.Hour, monday(0, 0).AddDate(0, 0, 1)},
+		"never":             {api.ScreenTimeRule{}, monday(16, 0), 0, time.Time{}},
+	} {
+		if got := nextAllowed(c.rule, c.now, c.used); !got.Equal(c.want) {
+			t.Errorf("%s: got %s, want %s", name, got, c.want)
+		}
+	}
+	quota := api.ScreenTimeRule{Windows: []api.Window{window}, DailyMinutes: 30}
+	if got := blockReason(quota, monday(16, 0)); got != api.ScreenReasonQuota {
+		t.Errorf("used up within a window: %s", got)
+	}
+	if got := blockReason(quota, monday(20, 0)); got != api.ScreenReasonWindow {
+		t.Errorf("outside the window: %s", got)
 	}
 }
 
@@ -265,6 +321,7 @@ func TestFailureToEndASessionIsReported(t *testing.T) {
 	pe, system, _ := newScreenEngine(t)
 	system.failStop = true
 	tick(pe, monday(20, 0))
+	tick(pe, monday(20, 10))
 	status := pe.Status()
 	if len(status.Deviations) != 1 || status.Deviations[0].Kind != deviationScreen {
 		t.Fatalf("got %+v", status)
@@ -302,6 +359,7 @@ func TestRenamingAnAccountLeadsNowhere(t *testing.T) {
 	system.accounts["free-at-last"] = "2007"
 	system.user, system.uid = "free-at-last", "2007"
 	tick(pe, monday(20, 0))
+	tick(pe, monday(20, 10))
 	if system.count("terminate-user", "free-at-last") != 1 {
 		t.Fatalf("the new name got out of the rule: %v", system.calls)
 	}
@@ -311,6 +369,7 @@ func TestRenamingAnAccountLeadsNowhere(t *testing.T) {
 	reopened := OpenPolicy(pe.dir, pe.exec, quiet())
 	tick(reopened, monday(1, 0))
 	tick(reopened, monday(20, 1))
+	tick(reopened, monday(20, 11))
 	if system.count("terminate-user", "free-at-last") != 2 {
 		t.Fatalf("got %v", system.calls)
 	}
@@ -326,6 +385,7 @@ func TestRuleFollowsTheNameAsWell(t *testing.T) {
 	system.accounts["mia"] = "2020"
 	system.user, system.uid = "mia", "2020"
 	tick(pe, monday(20, 0))
+	tick(pe, monday(20, 10))
 	if system.count("terminate-user", "mia") != 1 {
 		t.Fatalf("got %v", system.calls)
 	}

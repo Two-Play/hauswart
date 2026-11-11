@@ -9,7 +9,10 @@
     "notify_send": "Send desktop message",
     "group_add": "Add user to Linux group",
     "group_remove": "Remove user from Linux group",
-    "access_set": "Block access"
+    "access_lock": "Lock the screen",
+    "access_deny": "Refuse logins",
+    "access_cover": "Full-screen notice",
+    "access_open": "Open the device again"
   },
   "fields": {
     "delay_minutes": "Warning time in minutes",
@@ -17,16 +20,13 @@
     "notify_message": "Message, shown under the title Hauswart",
     "notify_user": "Linux user, empty for everyone logged in",
     "group": "Linux group",
-    "access_mode": "Mode",
-    "access_mode_screen": "Block the screen",
-    "access_mode_login": "Refuse logins",
-    "access_mode_open": "Open access again",
-    "access_hint": "A full-screen notice covers the screen with your text and picture, and nobody at the device can close it. Refused logins end running sessions after a minute. Without names, local admins are locked out as well.",
     "access_users": "Linux users, separated by spaces, empty for everyone",
     "access_hours": "Ends after hours, empty until opened again",
-    "access_mode_fullscreen": "Full-screen notice",
     "access_message": "Text of the full-screen notice",
-    "access_image": "Picture of the full-screen notice (PNG or JPEG, up to 512 KB)"
+    "access_image": "Picture of the full-screen notice (PNG or JPEG, up to 512 KB)",
+    "access_lock_hint": "Sessions stay open but are locked again at once. Without names, local admins are locked out as well.",
+    "access_deny_hint": "Running sessions end after a minute, and unsaved work is lost. Without names, local admins are locked out as well.",
+    "access_cover_hint": "Covers the screen with your text and picture, and nobody at the device can close it. Without names, local admins are covered as well."
   },
   "certificates": {
     "hint": "Certificates for home services, such as a NAS. Devices that trust the Hauswart CA accept them.",

@@ -389,6 +389,16 @@ await shot('3b-terminal');
 const audit = await call('GET', '/api/audit');
 check('the audit log has the start', JSON.stringify(audit.body).includes('terminal.started'));
 check('and not what was typed', !JSON.stringify(audit.body).includes('term-'));
+
+// Closing the window leaves the shell running; the device offers to go back.
+await ev(`document.querySelector('.mantine-Modal-close').click()`);
+await until('the resume button', () => clickButton('Resume terminal (root)'), 20);
+const replayed = await until('the replayed output', async () => {
+  const text = await ev(`document.querySelector('.xterm-rows')?.innerText ?? ''`);
+  return text.includes('term-42') ? text : undefined;
+}, 20).catch((err) => String(err));
+check('a closed terminal can be resumed with its output', replayed.includes('term-42'), replayed.slice(-200));
+check('the audit log has the return', JSON.stringify((await call('GET', '/api/audit')).body).includes('terminal.resumed'));
 await ev(`document.querySelector('.xterm-helper-textarea').focus()`);
 await cdp('Input.insertText', { text: 'exit' });
 await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
@@ -509,8 +519,8 @@ check('control: the device ran it', readFileSync(installed, 'utf8').includes('nm
 const replay = await outcome(inject('pkg.install', good, valid));
 check('refused on the device: replay', replay.status === 'failed' && replay.output.includes('is not above'), replay.output);
 // Opening access is on the list now: a phone can lift a block without the CLI.
-const open = envelope('access.set', { mode: 'open' }, 101);
-const opened = await outcome(inject('access.set', open, await assertion(open)));
+const open = envelope('access.open', {}, 101);
+const opened = await outcome(inject('access.open', open, await assertion(open)));
 check('a passkey opens access', opened.status === 'done' && opened.output.includes('open'), opened.output);
 const lines = readFileSync(installed, 'utf8').split('\n').filter((line) => line.includes('nmap')).length;
 check('the replay did not run', lines === 1, `${lines} runs`);
@@ -523,24 +533,24 @@ check('device logs what a passkey approved', journal.includes('approved by passk
 // --- what a passkey may approve, set in the dashboard and signed ---
 
 await loginAs('admin', adminPassword);
-const narrowed = await call('PUT', '/api/passkey-types', { types: ['access.set', 'power.reboot'] });
+const narrowed = await call('PUT', '/api/passkey-types', { types: ['access.open', 'power.reboot'] });
 check('admin narrows what a passkey may approve', narrowed.status === 204, String(narrowed.status));
 const typesOut = admin(['approve', '--all'], 'y\n');
 check('hauswart-admin shows the passkey types it signs',
   typesOut.includes('SET WHAT A PASSKEY MAY APPROVE') && typesOut.includes('- install packages'), typesOut.slice(0, 400));
 await until('the new list on the device', async () => {
   const config = JSON.parse(readFileSync(join(agentDir, 'agent.json'), 'utf8'));
-  return JSON.stringify(config.passkey_types) === JSON.stringify(['access.set', 'power.reboot']);
+  return JSON.stringify(config.passkey_types) === JSON.stringify(['access.open', 'power.reboot']);
 }, 40);
 check('the device took the signed list', true);
 const takenAway = envelope('pkg.install', { packages: ['after-narrowing'] }, 150);
 const afterNarrowing = await outcome(inject('pkg.install', takenAway, await assertion(takenAway)));
 check('refused on the device: a type the admins took away', afterNarrowing.status === 'failed' &&
   afterNarrowing.output.includes('may not approve pkg.install'), afterNarrowing.output);
-const reopen = envelope('access.set', { mode: 'open' }, 151);
-const stillAllowed = await outcome(inject('access.set', reopen, await assertion(reopen)));
+const reopen = envelope('access.open', {}, 151);
+const stillAllowed = await outcome(inject('access.open', reopen, await assertion(reopen)));
 check('a type that stayed still works', stillAllowed.status === 'done', stillAllowed.output);
-await call('PUT', '/api/passkey-types', { types: ['access.set', 'pkg.install', 'power.reboot'] });
+await call('PUT', '/api/passkey-types', { types: ['access.open', 'pkg.install', 'power.reboot'] });
 admin(['approve', '--all'], 'y\n');
 await until('pkg.install back on the device', async () => {
   const config = JSON.parse(readFileSync(join(agentDir, 'agent.json'), 'utf8'));

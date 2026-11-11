@@ -69,7 +69,7 @@ export function buildPayload(values: Record<string, string>, type = ''): Record<
 /** The areas of the actions page, each with its actions in the order shown. */
 export const ACTION_AREAS: { key: string; types: string[] }[] = [
   { key: 'software', types: ['pkg.install', 'flatpak.install', 'pkg.remove', 'pkg.upgrade'] },
-  { key: 'access', types: ['access.set'] },
+  { key: 'access', types: ['access.lock', 'access.deny', 'access.cover', 'access.open'] },
   { key: 'screen', types: ['screen.extend'] },
   { key: 'rights', types: ['sudo.grant', 'sudo.revoke'] },
   { key: 'accounts', types: ['user.create', 'user.lock', 'user.unlock', 'user.passwd', 'group.add', 'group.remove', 'limit.set'] },

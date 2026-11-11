@@ -1,5 +1,7 @@
 {
-  "taskTypes": { "passkeys_types": "Festlegen, was ein Passkey freigeben darf" },
+  "taskTypes": {
+    "passkeys_types": "Festlegen, was ein Passkey freigeben darf"
+  },
   "passkeyTypes": {
     "title": "Was ein Passkey freigeben darf",
     "hint": "Jede Aktion geht entweder per Passkey, auch vom Handy, oder braucht eine Signatur mit hauswart-admin oder der Admin-App. Eine Änderung erreicht die geschützten Geräte erst, wenn du sie mit hauswart-admin approve signierst: Ein Passkey kann sich nicht selbst mehr erlauben.",
@@ -21,8 +23,11 @@
       "power_cancel": "Hält einen Neustart oder das Herunterfahren auf.",
       "notify_send": "Eine Nachricht auf den Desktops.",
       "screen_extend": "Mehr Bildschirmzeit, nur für heute.",
-      "access_set": "Sperrt oder öffnet das Gerät, höchstens für einen Tag.",
-      "terminal_open": "Eine root-Shell für bis zu vier Stunden, Start innerhalb von 15 Minuten."
+      "terminal_open": "Eine root-Shell für bis zu vier Stunden, Start innerhalb von 15 Minuten.",
+      "access_lock": "Sperrt den Bildschirm, höchstens für einen Tag.",
+      "access_deny": "Verweigert Anmeldungen und beendet Sitzungen, höchstens für einen Tag.",
+      "access_cover": "Deckt den Bildschirm mit einem Hinweis ab, höchstens für einen Tag.",
+      "access_open": "Gibt das Gerät nach einer Sperre wieder frei."
     }
   },
   "errors": {

@@ -109,6 +109,7 @@ export function ActionForm({ device, type, onDone }: { device: Device; type: str
               <TagsInput
                 key={field.name}
                 label={label}
+                description={field.hint && t(`fields.${field.hint}`)}
                 data={names.users}
                 value={value.split(/\s+/).filter(Boolean)}
                 onChange={(next) => set(next.join(' '))}

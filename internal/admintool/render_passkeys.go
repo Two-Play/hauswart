@@ -20,7 +20,10 @@ var passkeyTypeLabels = map[string]string{
 	"power.cancel":         "cancel a restart or shutdown",
 	"notify.send":          "show a desktop message",
 	api.TaskScreenExtend:   "give more screen time today",
-	api.TaskAccessSet:      "block or open the device, for at most a day",
+	api.TaskAccessLock:     "lock the screen, for at most a day",
+	api.TaskAccessDeny:     "refuse logins and end sessions, for at most a day",
+	api.TaskAccessCover:    "cover the screen with a notice, for at most a day",
+	api.TaskAccessOpen:     "open the device again after a block",
 	api.TaskTerminalOpen:   "open a live ROOT SHELL for up to 4 hours",
 }
 

@@ -21,14 +21,25 @@ export const ACTION_FIELDS: Record<string, TaskField[]> = {
   'group.add': [user, group],
   'group.remove': [user, group],
   'screen.extend': [user, { name: 'extend_minutes', kind: 'number', required: true }],
-  'access.set': [
-    { name: 'access_mode', kind: 'select', required: true, options: ['screen', 'fullscreen', 'login', 'open'], hint: 'access_hint' },
-    { name: 'access_users', label: 'access_users' },
+  'access.lock': [
+    { name: 'access_users', label: 'access_users', hint: 'access_lock_hint' },
+    { name: 'access_hours', label: 'access_hours', kind: 'number' },
+  ],
+  'access.deny': [
+    { name: 'access_users', label: 'access_users', hint: 'access_deny_hint' },
+    { name: 'access_hours', label: 'access_hours', kind: 'number' },
+  ],
+  'access.cover': [
+    { name: 'access_users', label: 'access_users', hint: 'access_cover_hint' },
     { name: 'access_hours', label: 'access_hours', kind: 'number' },
     { name: 'access_message', label: 'access_message' },
     { name: 'access_image', label: 'access_image', kind: 'image' },
   ],
+  'access.open': [],
 };
+
+/** The access tasks, one per kind of block. */
+const ACCESS_TYPES = ['access.lock', 'access.deny', 'access.cover', 'access.open'];
 
 /** Adds what these tasks need beyond the form. */
 export function addActionPayload(type: string, payload: Record<string, unknown>): Record<string, unknown> {
@@ -39,18 +50,16 @@ export function addActionPayload(type: string, payload: Record<string, unknown>)
     payload.until = new Date(Date.now() + Number(payload.extend_minutes) * 60_000).toISOString();
     delete payload.extend_minutes;
   }
-  if (type === 'access.set') {
-    payload.mode = payload.access_mode;
+  if (ACCESS_TYPES.includes(type)) {
     const users = String(payload.access_users ?? '').split(/[\s,]+/).filter(Boolean);
     if (users.length > 0) payload.users = users;
     if (payload.access_hours !== undefined) {
       payload.until = new Date(Date.now() + Number(payload.access_hours) * 3_600_000).toISOString();
     }
-    if (payload.mode === 'fullscreen') {
+    if (type === 'access.cover') {
       if (payload.access_message) payload.message = payload.access_message;
       if (payload.access_image) payload.image = payload.access_image;
     }
-    delete payload.access_mode;
     delete payload.access_users;
     delete payload.access_hours;
     delete payload.access_message;

@@ -4,7 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type Device } from '../api';
+import { api, type Device, type RunningTerminal } from '../api';
 import { approveWithPasskey, decodeEnvelope, passkeysAvailable, type Challenge } from '../passkey';
 import { allowScriptStyles } from '../terminalStyles';
 import { ExpandableText, showError } from '../ui';
@@ -25,13 +25,24 @@ interface Approval {
   minutes: number;
 }
 
-/** A live shell on a device: choose the account, approve with a passkey, type. */
-export function TerminalView({ device, onClose }: { device: Device; onClose: () => void }) {
+/** A live shell on a device: choose the account, approve with a passkey, type.
+ * With resume, it goes straight back to a session that still runs. */
+export function TerminalView({
+  device,
+  resume,
+  onClose,
+}: {
+  device: Device;
+  resume?: RunningTerminal;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const [user, setUser] = useState('root');
   const [minutes, setMinutes] = useState(DEFAULT_MINUTES);
   const [approval, setApproval] = useState<Approval>();
-  const [session, setSession] = useState<{ id: string; until: Date }>();
+  const [session, setSession] = useState<{ id: string; until: Date } | undefined>(
+    resume && { id: resume.session, until: new Date(resume.until) },
+  );
   const [busy, setBusy] = useState(false);
 
   const accounts = (device.report?.accounts ?? []).filter((a) => a.uid >= MIN_USER_UID).map((a) => a.name);
@@ -91,6 +102,9 @@ export function TerminalView({ device, onClose }: { device: Device; onClose: () 
       <Stack>
         <ExpandableText size="sm" c="dimmed">
           {t('terminal.hint')}
+        </ExpandableText>
+        <ExpandableText size="sm" c="dimmed" lines={2}>
+          {t('terminal.resumeHint')}
         </ExpandableText>
         <Select label={t('terminal.user')} data={users} value={user} onChange={(v) => setUser(v ?? 'root')} allowDeselect={false} />
         <NumberInput

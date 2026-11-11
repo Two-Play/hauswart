@@ -261,3 +261,13 @@ export interface SoftwareEntry {
   version: string;
   devices: { id: string; hostname: string }[];
 }
+
+/** A live terminal of the signed-in admin that still runs and can be resumed. */
+export interface RunningTerminal {
+  session: string;
+  task: string;
+  device_id: string;
+  hostname: string;
+  user: string;
+  until: string;
+}

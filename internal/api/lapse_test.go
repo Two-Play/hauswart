@@ -8,7 +8,7 @@ import (
 func TestWaitLimitByKind(t *testing.T) {
 	for taskType, want := range map[string]time.Duration{
 		TaskTerminalOpen: MaxTerminalApproval,
-		TaskAccessSet:    2 * time.Hour,
+		TaskAccessDeny:   2 * time.Hour,
 		TaskScreenExtend: 2 * time.Hour,
 		TaskPowerReboot:  2 * time.Hour,
 		TaskNotifySend:   2 * time.Hour,

@@ -84,7 +84,7 @@ func (c Config) passkeyTypes() []string {
 	if c.PasskeyTypes == nil {
 		return api.DefaultPasskeyTypes
 	}
-	return c.PasskeyTypes
+	return api.ExpandLegacyTypes(c.PasskeyTypes)
 }
 
 // DeviceID reads the ID of an enrolled device.
@@ -368,6 +368,7 @@ func Load(dir string, log *slog.Logger) (*Agent, error) {
 		a.notices.record(context.Background(), api.DeviceEvent{Kind: api.EventFlatpakArrived}, urgencyNormal)
 	}
 	a.access = OpenAccess(dir, a.exec, a.notices, log)
+	a.access.screen = a.policy
 	a.requestsChanged = make(chan struct{}, 1)
 	a.client = &http.Client{
 		Timeout: (pollWaitSecs + 15) * time.Second,
@@ -413,6 +414,7 @@ func (a *Agent) Run(ctx context.Context) {
 	wg.Go(func() { a.policy.Loop(ctx) })
 	wg.Go(func() { a.policy.ScreenLoop(ctx) })
 	wg.Go(func() { a.serveUsers(ctx, userSocket) })
+	wg.Go(func() { a.serveBlockControl(ctx, blockControl) })
 	wg.Go(func() { a.requestLoop(ctx) })
 	wg.Go(func() { a.access.Loop(ctx) })
 	wg.Go(func() { a.attestLoop(ctx) })
@@ -637,7 +639,7 @@ func (a *Agent) run(ctx context.Context, task api.Task) api.TaskResult {
 		return a.setPolicy(task)
 	case api.TaskScreenExtend:
 		return a.extendScreenTime(task)
-	case api.TaskAccessSet:
+	case api.TaskAccessLock, api.TaskAccessDeny, api.TaskAccessCover, api.TaskAccessOpen:
 		if a.access == nil {
 			return api.TaskResult{OK: false, Output: "access is not available"}
 		}
