@@ -272,12 +272,13 @@ def task_data(admin, task):
 
 
 # Puts a real pending update in place where the image is up to date. An older
-# version comes from the repositories on Fedora. On Debian, the package database
-# is told so, which apt then fixes for real.
+# version comes from the repositories on Fedora. On Debian and Arch, the package
+# database is told so, which the package manager then fixes for real.
 PENDING_SETUP = {
     "fedora": "dnf5 downgrade -y tzdata",
     "debian": "sed -i '/^Package: ca-certificates$/,/^$/ s/^Version: .*/Version: 20000101/' /var/lib/dpkg/status",
-    "arch": "",
+    "arch": "d=$(ls -d /var/lib/pacman/local/sudo-[0-9]*) && sed -i '/^%VERSION%$/{n;s/.*/1.0-1/}' \"$d/desc\" "
+            "&& mv \"$d\" /var/lib/pacman/local/sudo-1.0-1",
     "opensuse": "",
 }
 # What the package manager says itself, to compare with. Arch needs no number:
