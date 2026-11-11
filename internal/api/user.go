@@ -157,3 +157,36 @@ func CheckUserRequest(r UserRequest) error {
 	}
 	return nil
 }
+
+// Why screen time ended.
+const (
+	ScreenReasonQuota  = "quota"
+	ScreenReasonWindow = "window"
+)
+
+// Kinds of a full-screen block.
+const (
+	BlockAccess = "access"
+	BlockScreen = "screen"
+)
+
+// BlockState is what the full-screen block shows. The agent hands it to the
+// blocker, which shows nothing else.
+type BlockState struct {
+	Kind string `json:"kind"`
+	// Message is the text of an access block.
+	Message string `json:"message,omitempty"`
+	// User is whose screen time ended, for a screen time block.
+	User   string `json:"user,omitempty"`
+	Reason string `json:"reason,omitempty"`
+	// Next is when the user may use the device again, zero if not within a week.
+	Next time.Time `json:"next,omitzero"`
+	// LogoutAt is when the agent ends the sessions behind the block.
+	LogoutAt time.Time `json:"logout_at,omitzero"`
+	// RequestedAt is when more time was asked for from the block, and
+	// RequestState how that request stands.
+	RequestedAt  time.Time `json:"requested_at,omitzero"`
+	RequestState string    `json:"request_state,omitempty"`
+	// Language is the language of the device's policy.
+	Language string `json:"language,omitempty"`
+}

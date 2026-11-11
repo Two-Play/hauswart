@@ -18,8 +18,6 @@ import (
 const (
 	// screenTick bounds how long a session outside its time can last.
 	screenTick = 15 * time.Second
-	// screenGrace is between the lock and the end of a running session.
-	screenGrace = time.Minute
 	// maxSessionWalk ends the search for the end of a session. A rule can cover
 	// the whole week, and then there is no end to find.
 	maxSessionWalk = 8 * 24 * time.Hour
@@ -45,12 +43,12 @@ type screenUser struct {
 var screenTexts = map[string]map[string]string{
 	"en": {
 		"left":   "%d minute(s) of screen time left. Please save your work.",
-		"locked": "Screen time is over. This session ends in a minute.",
+		"locked": "Screen time is over. The screen is blocked, and this session ends in 10 minutes.",
 		"given":  "You may stay until %s.",
 	},
 	"de": {
 		"left":   "Noch %d Minute(n) Bildschirmzeit. Bitte speichere deine Arbeit.",
-		"locked": "Die Bildschirmzeit ist vorbei. Diese Sitzung endet in einer Minute.",
+		"locked": "Die Bildschirmzeit ist vorbei. Der Bildschirm ist gesperrt, und diese Sitzung endet in 10 Minuten.",
 		"given":  "Du darfst bis %s bleiben.",
 	},
 }
@@ -321,6 +319,7 @@ func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {
 			session := sessions[uid]
 			if session == nil {
 				delete(pe.screen, uid)
+				pe.unblock(uid)
 				continue
 			}
 			if number, _ := strconv.Atoi(uid); number < minUserUID {
@@ -338,10 +337,13 @@ func (pe *PolicyEngine) checkScreenTime(ctx context.Context, now time.Time) {
 			if rule.DailyMinutes > 0 {
 				pe.countScreenTime(ctx, uid, session.ids, local)
 			}
-			if end, ok := ruleEnd(rule, local, extension, pe.usedToday(uid, local)); ok {
+			used := pe.usedToday(uid, local)
+			if end, ok := ruleEnd(rule, local, extension, used); ok {
+				pe.unblock(uid)
 				pe.warnScreenUser(ctx, session.name, state, language, local, end)
 				continue
 			}
+			pe.block(uid, session.name, blockReason(rule, local), nextAllowed(rule, local, used), now)
 			if err := pe.endScreenUser(ctx, session.name, session.ids, state, language, now); err != nil {
 				issues = append(issues, rule.User+": "+err.Error())
 			}
@@ -390,20 +392,21 @@ func (pe *PolicyEngine) popup(ctx context.Context, user, message, urgency string
 	pe.popups.Go(func() { pe.exec.popup(context.WithoutCancel(ctx), user, message, urgency) })
 }
 
-// endScreenUser locks a session that ran out of time and ends it a minute later.
-// Someone who logs in outside their time has nothing to save yet, so that
-// session ends right away. The error is what stops it from working.
+// endScreenUser keeps a session that ran out of time behind the full-screen
+// block, which says why and until when, and ends it once the block has been up
+// for screenLogout. The sessions are locked as well, for a device where the
+// block cannot run. The error is what stops it from working.
 func (pe *PolicyEngine) endScreenUser(ctx context.Context, user string, ids []string, state *screenUser, language string, now time.Time) error {
-	if state.allowed {
+	if state.allowed || state.graceUntil.IsZero() {
 		state.allowed = false
-		state.graceUntil = now.Add(screenGrace)
+		state.graceUntil = pe.logoutAt(user, now)
 		for _, id := range ids {
 			if out, err := pe.exec.Run(ctx, "loginctl", "lock-session", id); err != nil {
 				pe.log.Warn("locking a session failed", "user", user, "err", err, "output", clip(out, maxDeviationText))
 			}
 		}
 		pe.popup(ctx, user, screenText(language, "locked"), urgencyCritical)
-		pe.log.Info("screen time is over", "user", user)
+		pe.log.Info("screen time is over, blocking the screen", "user", user)
 		return nil
 	}
 	if now.Before(state.graceUntil) {
@@ -414,6 +417,37 @@ func (pe *PolicyEngine) endScreenUser(ctx context.Context, user string, ids []st
 		return fmt.Errorf("%w: %s", err, clip(out, maxDeviationText))
 	}
 	return nil
+}
+
+// block puts someone behind the full-screen block, or keeps them there with
+// what is new about when they may come back.
+func (pe *PolicyEngine) block(uid, user, reason string, next, now time.Time) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	if b := pe.blocked[uid]; b != nil {
+		b.user, b.reason, b.next = user, reason, next
+		return
+	}
+	pe.blocked[uid] = &screenBlock{user: user, reason: reason, next: next, logoutAt: now.Add(screenLogout)}
+}
+
+// unblock lets someone out from behind the block.
+func (pe *PolicyEngine) unblock(uid string) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	delete(pe.blocked, uid)
+}
+
+// logoutAt is when the block of someone ends in a logout.
+func (pe *PolicyEngine) logoutAt(user string, now time.Time) time.Time {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	for _, b := range pe.blocked {
+		if b.user == user {
+			return b.logoutAt
+		}
+	}
+	return now.Add(screenLogout)
 }
 
 // ScreenStatus says how someone stands with their screen time, nil without a rule.

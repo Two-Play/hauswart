@@ -143,7 +143,9 @@ func (c *limitedConn) Close() error {
 func (u *userService) perUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid, ok := r.Context().Value(peerKey{}).(uint32)
-		if !ok {
+		// System accounts, such as the one of the full-screen block, are no
+		// person who could ask for anything.
+		if !ok || (uid != 0 && uid < minUserUID) {
 			http.Error(w, "unknown user", http.StatusForbidden)
 			return
 		}

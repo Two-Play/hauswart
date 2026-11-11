@@ -49,6 +49,20 @@ type Access struct {
 	returnTo string
 	// checking keeps checks from overlapping.
 	checking sync.Mutex
+	// screen says who is behind the block for their screen time, nil without
+	// screen time.
+	screen screenSource
+	// blockedFor is whose screen time the block shows, empty for an access block.
+	blockedFor string
+	// ready says that the block can run for screen time, preparing that it is
+	// being set up: cage may have to be installed first.
+	ready, preparing bool
+}
+
+// screenSource is the part of the policy engine the block needs.
+type screenSource interface {
+	ScreenBlocks() []api.BlockState
+	screenBlocked(user string) bool
 }
 
 func OpenAccess(dir string, exec *Executor, notices *Notices, log *slog.Logger) *Access {
@@ -224,21 +238,9 @@ func (a *Access) Check(ctx context.Context) {
 	}
 
 	a.syncNologin(active && block.Mode == api.AccessLogin && len(block.Users) == 0)
-	if !active || block.Mode != api.AccessFullscreen {
-		a.hideBlock(ctx)
-	}
+	a.showOrHide(ctx, active && block.Mode == api.AccessFullscreen, block)
 	if !active {
 		return
-	}
-	if block.Mode == api.AccessFullscreen {
-		// For single people, the block covers the screen while their session is
-		// in front, and stays while it is: the console cannot be switched from it.
-		front := a.exec.activeUser(ctx)
-		if len(block.Users) == 0 || affects(block, front) || front == blockUser {
-			a.showBlock(ctx)
-		} else {
-			a.hideBlock(ctx)
-		}
 	}
 	sessions, err := a.exec.loginSessions(ctx)
 	if err != nil {
@@ -326,4 +328,92 @@ func (a *Access) syncNologin(want bool) {
 			a.log.Error("allowing logins again failed", "err", err)
 		}
 	}
+}
+
+// showOrHide decides whether the full-screen block covers the screen: for an
+// access block, or for someone whose screen time ended, while their session
+// is in front. It stays while it is: the console cannot be switched from it.
+func (a *Access) showOrHide(ctx context.Context, fullscreen bool, block api.AccessPayload) {
+	screenBlocked := a.screen != nil && len(a.screen.ScreenBlocks()) > 0
+	if !fullscreen && !screenBlocked {
+		a.setBlockedFor("")
+		a.hideBlock(ctx)
+		return
+	}
+	front := a.exec.activeUser(ctx)
+	switch {
+	case fullscreen && (len(block.Users) == 0 || affects(block, front)):
+		a.setBlockedFor("")
+		a.showBlock(ctx)
+	case screenBlocked && front != blockUser && front != "" && a.screen.screenBlocked(front):
+		if !a.screenBlockReady(ctx) {
+			// Until the block can run, the locked session is all there is.
+			return
+		}
+		a.setBlockedFor(front)
+		a.showBlock(ctx)
+	case front == blockUser && (fullscreen || a.stillScreenBlocked()):
+		// Already in front.
+	default:
+		a.setBlockedFor("")
+		a.hideBlock(ctx)
+	}
+}
+
+func (a *Access) setBlockedFor(user string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.blockedFor = user
+}
+
+// stillScreenBlocked says whether the person the block shows is still behind it.
+func (a *Access) stillScreenBlocked() bool {
+	a.mu.Lock()
+	user := a.blockedFor
+	a.mu.Unlock()
+	return user != "" && a.screen != nil && a.screen.screenBlocked(user)
+}
+
+// BlockState is what the blocker shows now.
+func (a *Access) BlockState() api.BlockState {
+	a.mu.Lock()
+	block, user := a.block, a.blockedFor
+	active := a.activeLocked(a.now())
+	a.mu.Unlock()
+	if user == "" && active && block.Mode == api.AccessFullscreen {
+		return api.BlockState{Kind: api.BlockAccess, Message: block.Message}
+	}
+	if user != "" && a.screen != nil {
+		for _, s := range a.screen.ScreenBlocks() {
+			if s.User == user {
+				return s
+			}
+		}
+	}
+	return api.BlockState{Kind: api.BlockAccess}
+}
+
+// screenBlockReady sets the block up once for screen time, in the background:
+// installing cage takes a while, and the check must not wait for it.
+func (a *Access) screenBlockReady(ctx context.Context) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.ready || a.preparing {
+		return a.ready
+	}
+	a.preparing = true
+	go func() {
+		err := a.exec.prepareFullscreen(context.WithoutCancel(ctx), api.AccessPayload{})
+		if err == nil {
+			err = a.exec.writeBlockContent(api.AccessPayload{})
+		}
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.preparing = false
+		a.ready = err == nil
+		if err != nil {
+			a.log.Warn("the full-screen block for screen time is not available", "err", err)
+		}
+	}()
+	return false
 }
